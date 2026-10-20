@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase local state (สร้างอัตโนมัติ ไม่ขึ้น git)
+supabase/.branches
+supabase/.temp
