@@ -29,7 +29,7 @@ export function Navbar() {
             <Link
               key={href}
               href={href}
-              className="rounded-full px-3 py-2 font-heading text-sm font-semibold text-text-secondary transition-colors hover:bg-primary-50 hover:text-primary-700"
+              className="rounded-full px-3 py-2 font-heading text-sm font-semibold text-text-primary transition-colors hover:bg-primary-50 hover:text-primary-700"
             >
               {label}
             </Link>
@@ -75,7 +75,7 @@ export function Navbar() {
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
-                className="rounded-full px-4 py-3 font-heading text-base font-semibold text-text-secondary transition-colors hover:bg-primary-50 hover:text-primary-700"
+                className="rounded-full px-4 py-3 font-heading text-base font-semibold text-text-primary transition-colors hover:bg-primary-50 hover:text-primary-700"
               >
                 {label}
               </Link>

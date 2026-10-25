@@ -3,13 +3,6 @@ import Link from "next/link";
 
 import { Logo } from "./Logo";
 
-const LINKS = [
-  { label: "แจ้งขอความช่วยเหลือ", href: "/request" },
-  { label: "ติดตามเคส", href: "/track" },
-  { label: "เบอร์สายด่วน", href: "/hotlines" },
-  { label: "คู่มือเอาตัวรอด", href: "/survival" },
-];
-
 /**
  * คำนวณปี พ.ศ. ปัจจุบัน — cache 1 วัน
  * ป้องกัน "unstable value new Date()" ขณะ prerender
@@ -25,31 +18,27 @@ export async function Footer() {
 
   return (
     <footer className="mt-auto border-t border-border-default bg-bg-nav">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-          {/* Brand */}
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
+        {/* แถวหลัก: logo ซ้าย · disclaimer ขวา */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Logo size="sm" />
 
-          {/* Links */}
-          <nav aria-label="ลิงก์ด่วน">
-            <ul className="flex flex-wrap gap-x-6 gap-y-2">
-              {LINKS.map(({ label, href }) => (
-                <li key={href}>
-                  <Link
-                    href={href}
-                    className="text-sm text-text-secondary transition-colors hover:text-primary-600"
-                  >
-                    {label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          {/* Disclaimer + ลิงก์ คั่นด้วย · */}
+          <p className="text-xs leading-relaxed text-text-secondary sm:text-right">
+            ระบบประสานงานอาสา ไม่ใช่หน่วยงานรัฐ
+            <span className="mx-2 select-none opacity-50">·</span>
+            กรณีฉุกเฉินโทร&nbsp;1669 หรือ&nbsp;1784
+            <span className="mx-2 select-none opacity-50">·</span>
+            <Link href="/privacy" className="underline underline-offset-2 hover:text-primary-600">
+              นโยบายความเป็นส่วนตัว
+            </Link>
+          </p>
         </div>
 
-        <div className="mt-6 border-t border-border-default pt-4 text-xs text-text-secondary">
+        {/* ลิขสิทธิ์ */}
+        <p className="mt-4 border-t border-border-default pt-4 text-xs text-text-secondary">
           © พ.ศ. {yearBE} น้ำใจไทย SOS — ข้อมูลทุกอย่างในระบบใช้เพื่อการช่วยเหลือในภาวะฉุกเฉินเท่านั้น
-        </div>
+        </p>
       </div>
     </footer>
   );
