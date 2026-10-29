@@ -1,9 +1,13 @@
 import {
   step1Schema,
+  step3Schema,
+  step4Schema,
+  step5Schema,
   Urgency,
   WaterLevel,
-  type Need,
+  Need,
 } from "../../lib/domain";
+import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
 
 export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v1";
 
@@ -14,6 +18,20 @@ export interface SosStepDefinition {
   title: string;
   shortLabel: string;
   description: string;
+}
+
+/**
+ * ข้อมูลรูปถ่ายที่ผ่านการบีบอัด (<= 500 KB) และแนบไว้ในร่างฟอร์มขั้นที่ 5
+ */
+export interface SosDraftPhoto {
+  id: string;
+  name: string;
+  mimeType: string;
+  originalBytes: number;
+  compressedBytes: number;
+  width: number;
+  height: number;
+  dataUrl: string;
 }
 
 /**
@@ -81,11 +99,12 @@ export interface SosDraft {
   // ขั้นที่ 4: สิ่งที่ต้องการ (TF-11)
   needs: Need[];
   otherDetail: string;
-  // ขั้นที่ 5: ข้อมูลติดต่อ (TF-11)
+  // ขั้นที่ 5: ข้อมูลติดต่อและรูปถ่าย (TF-11)
   name: string;
   phone: string;
   lineId: string;
   notes: string;
+  photos: SosDraftPhoto[];
   // เวลาที่บันทึกร่างล่าสุด (ISO string)
   updatedAt?: string;
 }
@@ -107,6 +126,7 @@ export function createInitialSosDraft(): SosDraft {
     phone: "",
     lineId: "",
     notes: "",
+    photos: [],
   };
 }
 
@@ -159,6 +179,210 @@ export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel
   };
 }
 
+export interface Step3ValidationErrors {
+  totalPeople?: string;
+  missingSummary: string[];
+}
+
+/**
+ * คำนวณจำนวนคนรวม (ไม่นับสัตว์เลี้ยง)
+ */
+export function getTotalPeopleCount(
+  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children">,
+): number {
+  return (
+    Math.max(0, draft.adults) +
+    Math.max(0, draft.elderly) +
+    Math.max(0, draft.bedridden) +
+    Math.max(0, draft.children)
+  );
+}
+
+/**
+ * ตรวจสอบข้อมูลขั้นที่ 3 (ผู้ติดค้าง) ด้วย step3Schema จาก src/lib/domain
+ * เกณฑ์ผ่าน: จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน
+ */
+export function validateStep3Draft(
+  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets">,
+): {
+  valid: boolean;
+  totalPeople: number;
+  errors: Step3ValidationErrors;
+} {
+  const totalPeople = getTotalPeopleCount(draft);
+  const result = step3Schema.safeParse({
+    adults: draft.adults,
+    elderly: draft.elderly,
+    bedridden: draft.bedridden,
+    children: draft.children,
+    pets: draft.pets,
+  });
+
+  if (result.success) {
+    return {
+      valid: true,
+      totalPeople,
+      errors: { missingSummary: [] },
+    };
+  }
+
+  return {
+    valid: false,
+    totalPeople,
+    errors: {
+      totalPeople: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน (ไม่นับรวมสัตว์เลี้ยง)",
+      missingSummary: ["จำนวนผู้ติดค้างอย่างน้อย 1 คน"],
+    },
+  };
+}
+
+export interface Step4ValidationErrors {
+  otherDetail?: string;
+  missingSummary: string[];
+}
+
+/**
+ * ตรวจสอบข้อมูลขั้นที่ 4 (สิ่งที่ต้องการ) ด้วย step4Schema จาก src/lib/domain
+ * เกณฑ์ผ่าน: เมื่อเลือก "อื่นๆ (พิมพ์เอง)" ต้องพิมพ์รายละเอียด (1–200 ตัวอักษร) ก่อนไปขั้นถัดไป
+ */
+export function validateStep4Draft(
+  draft: Pick<SosDraft, "needs" | "otherDetail">,
+): {
+  valid: boolean;
+  errors: Step4ValidationErrors;
+} {
+  const trimmedOther = draft.otherDetail?.trim() ?? "";
+
+  if (draft.needs.includes(Need.OTHER)) {
+    if (trimmedOther.length === 0) {
+      return {
+        valid: false,
+        errors: {
+          otherDetail: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ก่อนไปขั้นถัดไป",
+          missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ"],
+        },
+      };
+    }
+
+    if (draft.otherDetail.length > 200) {
+      return {
+        valid: false,
+        errors: {
+          otherDetail: "รายละเอียดสิ่งที่ต้องการอื่นๆ ต้องไม่เกิน 200 ตัวอักษร",
+          missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ ไม่เกิน 200 ตัวอักษร"],
+        },
+      };
+    }
+  }
+
+  const result = step4Schema.safeParse({
+    needs: draft.needs,
+    otherDetail: draft.needs.includes(Need.OTHER) ? draft.otherDetail : undefined,
+  });
+
+  if (result.success) {
+    return {
+      valid: true,
+      errors: { missingSummary: [] },
+    };
+  }
+
+  return {
+    valid: false,
+    errors: {
+      otherDetail: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ก่อนไปขั้นถัดไป",
+      missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ"],
+    },
+  };
+}
+
+export interface Step5ValidationErrors {
+  name?: string;
+  phone?: string;
+  notes?: string;
+  photos?: string;
+  missingSummary: string[];
+}
+
+/**
+ * ตรวจสอบข้อมูลขั้นที่ 5 (ข้อมูลติดต่อและรูปแนบ) ด้วย step5Schema จาก src/lib/domain
+ * เกณฑ์ผ่าน:
+ * - ชื่อต้องไม่ว่างเปล่า
+ * - เบอร์โทรตรวจรูปแบบเบอร์ไทย (มือถือ 06x-09x 10 หลัก หรือเบอร์บ้าน 02x-05x 9-10 หลัก)
+ * - รูปถ่ายแนบได้ไม่เกิน 3 รูป และแต่ละรูปต้องถูกบีบอัดให้ไม่เกิน 500 KB
+ */
+export function validateStep5Draft(
+  draft: Pick<SosDraft, "name" | "phone" | "lineId" | "notes"> & {
+    photos?: readonly SosDraftPhoto[];
+  },
+): {
+  valid: boolean;
+  normalizedPhone?: string;
+  errors: Step5ValidationErrors;
+} {
+  const errors: Step5ValidationErrors = {
+    missingSummary: [],
+  };
+
+  const trimmedName = draft.name?.trim() ?? "";
+  if (trimmedName.length === 0) {
+    errors.name = "กรุณาระบุชื่อผู้แจ้งหรือผู้ติดต่อ";
+    errors.missingSummary.push("ชื่อผู้แจ้ง");
+  }
+
+  const cleanedPhone = (draft.phone ?? "").replace(/[\s\-]/g, "");
+  if (cleanedPhone.length === 0) {
+    errors.phone = "กรุณาระบุเบอร์โทรศัพท์สำหรับติดต่อกลับ";
+    errors.missingSummary.push("เบอร์โทรศัพท์");
+  }
+
+  if ((draft.notes ?? "").length > 500) {
+    errors.notes = "รายละเอียดเพิ่มเติมต้องไม่เกิน 500 ตัวอักษร";
+    errors.missingSummary.push("รายละเอียดเพิ่มเติมไม่เกิน 500 ตัวอักษร");
+  }
+
+  const parsed = step5Schema.safeParse({
+    name: draft.name,
+    phone: draft.phone,
+    lineId: draft.lineId || undefined,
+    notes: draft.notes || undefined,
+  });
+
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      const field = issue.path[0];
+      if (field === "name" && !errors.name) {
+        errors.name = issue.message;
+        errors.missingSummary.push("ชื่อผู้แจ้ง");
+      } else if (field === "phone" && !errors.phone) {
+        errors.phone = issue.message;
+        errors.missingSummary.push("เบอร์โทรศัพท์ไทยที่ถูกต้อง");
+      } else if (field === "notes" && !errors.notes) {
+        errors.notes = issue.message;
+        errors.missingSummary.push("รายละเอียดเพิ่มเติม");
+      }
+    }
+  }
+
+  const photos = draft.photos ?? [];
+  if (photos.length > MAX_SOS_PHOTOS) {
+    errors.photos = `แนบรูปได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป`;
+    errors.missingSummary.push(`รูปถ่ายไม่เกิน ${MAX_SOS_PHOTOS} รูป`);
+  } else if (photos.some((p) => p.compressedBytes > MAX_PHOTO_BYTES)) {
+    errors.photos = "มีรูปถ่ายที่ขนาดเกิน 500 KB กรุณาลบแล้วเลือกใหม่";
+    errors.missingSummary.push("ขนาดรูปไม่เกิน 500 KB");
+  }
+
+  const valid =
+    !errors.name && !errors.phone && !errors.notes && !errors.photos && parsed.success;
+
+  return {
+    valid,
+    normalizedPhone: parsed.success ? parsed.data.phone : undefined,
+    errors,
+  };
+}
+
 function isValidStepNumber(value: unknown): value is SosStepNumber {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
 }
@@ -196,6 +420,7 @@ export function loadSosDraft(
 
     const validUrgencies = Object.values(Urgency) as string[];
     const validWaterLevels = Object.values(WaterLevel) as string[];
+    const validNeeds = Object.values(Need) as string[];
 
     const urgency =
       typeof parsed.urgency === "string" && validUrgencies.includes(parsed.urgency)
@@ -206,6 +431,16 @@ export function loadSosDraft(
       typeof parsed.waterLevel === "string" && validWaterLevels.includes(parsed.waterLevel)
         ? (parsed.waterLevel as WaterLevel)
         : undefined;
+
+    const needs = Array.isArray(parsed.needs)
+      ? parsed.needs.filter(
+          (item): item is Need => typeof item === "string" && validNeeds.includes(item),
+        )
+      : initial.needs;
+
+    const photos = Array.isArray(parsed.photos)
+      ? parsed.photos.slice(0, MAX_SOS_PHOTOS)
+      : initial.photos;
 
     // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ ให้กลับมาเริ่มที่ขั้นที่ 1
     const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
@@ -218,6 +453,8 @@ export function loadSosDraft(
       currentStep,
       urgency,
       waterLevel,
+      needs,
+      photos,
     };
   } catch {
     return initial;
