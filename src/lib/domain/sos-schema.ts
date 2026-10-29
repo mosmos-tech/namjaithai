@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Urgency, WaterLevel, Need } from "./enums";
+import { latSchema, lngSchema } from "./geo";
 
 const urgencyValues = Object.values(Urgency) as [Urgency, ...Urgency[]];
 const waterLevelValues = Object.values(WaterLevel) as [WaterLevel, ...WaterLevel[]];
@@ -18,14 +19,8 @@ export const step1Schema = z.object({
 // province/district/subdistrict เป็น optional เพราะเซิร์ฟเวอร์จะเติมจากพิกัดทีหลัง
 // ตอนออฟไลน์ geocode ไม่ได้ เลยต้องไม่บังคับกรอกหน้าฟอร์ม
 export const step2Schema = z.object({
-  lat: z
-    .number()
-    .min(5, "พิกัดอยู่นอกประเทศไทย (ละติจูดต้องอยู่ระหว่าง 5–21°)")
-    .max(21, "พิกัดอยู่นอกประเทศไทย (ละติจูดต้องอยู่ระหว่าง 5–21°)"),
-  lng: z
-    .number()
-    .min(97, "พิกัดอยู่นอกประเทศไทย (ลองจิจูดต้องอยู่ระหว่าง 97–106°)")
-    .max(106, "พิกัดอยู่นอกประเทศไทย (ลองจิจูดต้องอยู่ระหว่าง 97–106°)"),
+  lat: latSchema,
+  lng: lngSchema,
   accuracyM: z.number().optional(),
   province: z.string().optional(),
   district: z.string().optional(),

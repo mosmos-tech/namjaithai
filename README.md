@@ -64,3 +64,18 @@ npm run dev
 | Studio                            | http://127.0.0.1:54323                           |
 
 **ห้ามสร้างหรือแก้ตารางผ่าน Studio** ให้เขียนเป็น migration เสมอ เพื่อนจะได้ฐานข้อมูลเหมือนกัน
+
+## ข้อมูลจังหวัด/อำเภอ/ตำบล
+
+`npm run db:reset` โหลด 77 จังหวัด 928 อำเภอ 7,425 ตำบล พร้อมขอบเขต จาก `supabase/seeds/thai_admin_areas.sql` ให้อัตโนมัติ
+
+| API                                        | ได้อะไร                                        |
+| ------------------------------------------ | ---------------------------------------------- |
+| `GET /api/geo/provinces`                   | จังหวัดทั้งหมด เรียงตามชื่อไทย                 |
+| `GET /api/geo/provinces/10/districts`      | อำเภอ/เขตในจังหวัด (รหัส 2 หลัก)               |
+| `GET /api/geo/districts/1001/subdistricts` | ตำบล/แขวงในอำเภอ (รหัส 4 หลัก)                 |
+| `GET /api/geo/reverse?lat=13.76&lng=100.5` | จังหวัด/อำเภอ/ตำบลของพิกัด (404 ถ้าอยู่นอกไทย) |
+
+ไฟล์ seed สร้างจาก `npm run geo:build-seed` (โหลดไฟล์ต้นฉบับ ~375 MB ไว้ใน `.cache/geo`) ไม่ต้องรันเองนอกจากจะอัปเดตข้อมูล และห้ามแก้ไฟล์ seed ด้วยมือ
+
+ข้อมูลขอบเขต: [OCHA / Royal Thai Survey Department](https://data.humdata.org/dataset/cod-ab-tha) (CC BY-IGO)
