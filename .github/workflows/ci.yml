@@ -1,0 +1,37 @@
+# ตรวจโค้ดอัตโนมัติทุกครั้งที่เปิด/อัปเดต PR และทุกครั้งที่ merge เข้า develop/main
+# ถ้าขั้นไหนล้ม เช็ก "ci" จะเป็นสีแดง และ ruleset จะไม่ยอมให้กด merge
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+# push ซ้ำใน PR เดิม ให้ยกเลิกรอบเก่าที่ยังรันไม่จบ ประหยัดเวลา
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+      # build จริงเพื่อจับ error ที่ lint/typecheck ไม่เห็น (เช่น ลืมครอบ <Suspense>)
+      # ใช้ค่าปลอมของ Supabase เพราะตอน build ไม่ได้ต่อฐานข้อมูลจริง และไม่ต้องใส่คีย์ลับใน CI
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder

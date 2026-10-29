@@ -23,7 +23,7 @@
 - [ ] npm run lint และ npm run typecheck ผ่าน
 - [ ] มี branch develop และตั้ง protect ห้าม push ตรงเข้า main/develop
 - [ ] README บอกวิธีรันในเครื่อง
-- [ ] เพื่อนทุกคนรับคำเชิญ repo แล้ว clone + npm install + npm run dev ในเครื่องตัวเองได้ (Node 26)
+- [ ] เพื่อนทุกคนรับคำเชิญ repo แล้ว clone + npm install + npm run dev ในเครื่องตัวเองได้ (Node 24)
 
 ### TF-02 · ตั้ง Supabase และการเชื่อมต่อ
 
