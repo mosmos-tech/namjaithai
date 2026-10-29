@@ -12,7 +12,7 @@
 - TypeScript, Tailwind v4, shadcn/ui, Zod, Vitest
 - Supabase (Postgres + PostGIS, Auth, Storage, RLS, pg_cron) — รันในเครื่องด้วย Docker, CLI ใช้ผ่าน `npx supabase`
 - ล็อกอินด้วย LINE, แผนที่ MapLibre + OpenStreetMap, PWA (Service Worker + IndexedDB) สำหรับส่ง SOS ตอนออฟไลน์
-- Deploy: Vercel; Node 26 (.nvmrc)
+- Deploy: Vercel; Node 24 (.nvmrc)
 
 ## คำสั่ง
 - `npm run dev` · `npm run lint` · `npm run typecheck` · `npm run format` · `npm test`
