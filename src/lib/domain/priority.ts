@@ -2,7 +2,7 @@ import { Urgency, WaterLevel, WATER_LEVEL_ORDER } from "./enums";
 
 export interface PriorityInput {
   urgency: Urgency;
-  waterLevel: WaterLevel;
+  waterLevel?: WaterLevel; // ไม่บังคับ (มือถือไม่ได้ถาม) ไม่ระบุ = ไม่มีโบนัสระดับน้ำ
   bedridden: number; // ผู้ป่วยติดเตียง
   elderly: number;   // ผู้สูงอายุ
   children: number;  // เด็กเล็ก
@@ -33,7 +33,7 @@ const WAIT_BONUS_PER_10_MIN = 1;
 const MAX_BONUS = 899;
 
 export function priorityScore(input: PriorityInput, now: Date = new Date()): number {
-  const waterIndex = WATER_LEVEL_ORDER.indexOf(input.waterLevel);
+  const waterIndex = input.waterLevel ? WATER_LEVEL_ORDER.indexOf(input.waterLevel) : 0;
   const waterBonus = waterIndex * WATER_LEVEL_BONUS_PER_STEP;
 
   const waitMinutes = Math.max(0, (now.getTime() - input.createdAt.getTime()) / 60_000);

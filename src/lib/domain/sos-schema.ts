@@ -13,7 +13,8 @@ const thaiPhoneRegex = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
 // ── ขั้น 1: ความเร่งด่วนและระดับน้ำ ─────────────────────────────────────────
 export const step1Schema = z.object({
   urgency: z.enum(urgencyValues, { error: "กรุณาเลือกระดับความเร่งด่วน" }),
-  waterLevel: z.enum(waterLevelValues, { error: "กรุณาเลือกระดับน้ำ" }),
+  // ไม่บังคับ: Figma มือถือไม่มีคำถามระดับน้ำ มีเฉพาะจอคอม
+  waterLevel: z.enum(waterLevelValues, { error: "ไม่มีตัวเลือกระดับน้ำนี้" }).optional(),
 });
 
 // ── ขั้น 2: ตำแหน่ง ──────────────────────────────────────────────────────────

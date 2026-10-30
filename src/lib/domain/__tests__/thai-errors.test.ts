@@ -18,7 +18,7 @@ describe("sosSchema — ข้อความ error เป็นภาษาไ�
   it("ช่องสำคัญได้ข้อความที่คนทั่วไปอ่านเข้าใจ", () => {
     const { fieldErrors } = z.flattenError(sosSchema.safeParse({}).error!);
     expect(fieldErrors.urgency).toEqual(["กรุณาเลือกระดับความเร่งด่วน"]);
-    expect(fieldErrors.waterLevel).toEqual(["กรุณาเลือกระดับน้ำ"]);
+    expect(fieldErrors.waterLevel).toBeUndefined(); // ไม่บังคับ
     expect(fieldErrors.lat).toEqual(["กรุณาระบุตำแหน่ง (พิกัด)"]);
     expect(fieldErrors.landmark).toEqual(["กรุณาระบุจุดสังเกต"]);
     expect(fieldErrors.phone).toEqual(["กรุณาระบุเบอร์โทรศัพท์"]);
