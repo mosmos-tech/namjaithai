@@ -12,7 +12,11 @@ const NAV_LINKS = [
   { label: "คู่มือเอาตัวรอด", href: "/survival" },
 ];
 
-export function Navbar() {
+// account: คนที่ล็อกอินอยู่ (ส่งมาจาก NavbarWithAccount) — ไม่มี = ปุ่ม "เข้าสู่ระบบ"
+export function Navbar({ account }: { account?: { href: string } | null }) {
+  const accountHref = account?.href ?? "/login";
+  const accountLabel = account ? "หน้าของฉัน" : "เข้าสู่ระบบ";
+
   const [open, setOpen] = useState(false);
 
   return (
@@ -39,10 +43,10 @@ export function Navbar() {
         {/* Desktop login — outline */}
         <div className="hidden md:block">
           <Link
-            href="/login"
+            href={accountHref}
             className="inline-flex h-12 items-center rounded-full border border-border-strong bg-bg-surface px-5 font-heading text-sm font-semibold text-text-primary transition-colors hover:bg-bg-subtle active:bg-bg-subtle"
           >
-            เข้าสู่ระบบ
+            {accountLabel}
           </Link>
         </div>
 
@@ -81,11 +85,11 @@ export function Navbar() {
               </Link>
             ))}
             <Link
-              href="/login"
+              href={accountHref}
               onClick={() => setOpen(false)}
               className="mt-2 flex h-12 items-center justify-center rounded-full border border-border-strong bg-bg-surface font-heading text-base font-semibold text-text-primary transition-colors hover:bg-bg-subtle"
             >
-              เข้าสู่ระบบ
+              {accountLabel}
             </Link>
           </div>
         </div>
