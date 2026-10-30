@@ -79,3 +79,12 @@ npm run dev
 ไฟล์ seed สร้างจาก `npm run geo:build-seed` (โหลดไฟล์ต้นฉบับ ~375 MB ไว้ใน `.cache/geo`) ไม่ต้องรันเองนอกจากจะอัปเดตข้อมูล และห้ามแก้ไฟล์ seed ด้วยมือ
 
 ข้อมูลขอบเขต: [OCHA / Royal Thai Survey Department](https://data.humdata.org/dataset/cod-ab-tha) (CC BY-IGO)
+
+## เข้าสู่ระบบด้วย LINE (TF-17)
+
+1. สร้าง **LINE Login channel** ที่ [LINE Developers Console](https://developers.line.biz/console/) (App type: Web app)
+2. แท็บ **LINE Login** → Callback URL: `http://127.0.0.1:54321/auth/v1/callback` (เว็บจริงใช้ `https://<project>.supabase.co/auth/v1/callback`)
+3. ใส่ `LINE_CHANNEL_ID`, `LINE_CHANNEL_SECRET` และ `SUPER_ADMIN_LINE_IDS` ใน `.env.local` (ดู `.env.example`)
+4. รัน `npm run auth:setup-line` — **ต้องรันใหม่ทุกครั้งหลัง `npm run db:reset`** เพราะ Supabase เก็บค่านี้ในฐานข้อมูล
+
+หลังล็อกอินพาไปหน้าตามบทบาท: ผู้ใช้ `/my-cases` · กู้ภัย `/rescue` · หัวหน้าหน่วย `/unit` · แอดมิน `/admin` (กติกาอยู่ใน `src/lib/domain/roles.ts`)

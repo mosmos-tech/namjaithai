@@ -1,13 +1,13 @@
 import { Footer } from "@/components/public/Footer";
 import { HotlineBar } from "@/components/public/HotlineBar";
-import { Navbar } from "@/components/public/Navbar";
+import { NavbarWithAccount } from "@/features/auth/components/NavbarWithAccount";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <header className="sticky top-0 z-50">
         <HotlineBar />
-        <Navbar />
+        <NavbarWithAccount />
       </header>
       <main className="flex-1 bg-bg-page">{children}</main>
       <Footer />
