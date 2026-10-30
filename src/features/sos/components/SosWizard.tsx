@@ -10,7 +10,6 @@ import {
 import {
   SOS_STEPS,
   saveSosDraft,
-  clearSosDraft,
   validateStep1Draft,
   subscribeSosDraft,
   getSosDraftSnapshot,
@@ -19,7 +18,10 @@ import {
   type SosStepNumber,
   type Step1ValidationErrors,
 } from "../draft-storage";
-import { SosProgressBar } from "./SosProgressBar";
+import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
+import { SosStepActions } from "./SosStepActions";
+import { SosStepperCard } from "./SosStepperCard";
+import { SosTopBar } from "./SosTopBar";
 import { Step1UrgencyWater } from "./Step1UrgencyWater";
 
 /**
@@ -31,6 +33,9 @@ import { Step1UrgencyWater } from "./Step1UrgencyWater";
  * ขั้นที่ 5: ข้อมูลติดต่อ (TF-11)
  *
  * บันทึกร่างลง localStorage ทุกครั้งที่ผู้ใช้เลือกหรือเปลี่ยนขั้น
+ *
+ * หน้าตาตาม Figma: จอคอม (B1) การ์ดรายการขั้นซ้าย + การ์ดฟอร์มขวา,
+ * มือถือ (MB1) แถบบนของฟอร์ม + แถบความคืบหน้า + ปุ่มถัดไปติดล่างจอ
  */
 export function SosWizard() {
   const draft = useSyncExternalStore(
@@ -56,7 +61,8 @@ export function SosWizard() {
     }
   }
 
-  function handleSelectWaterLevel(waterLevel: WaterLevel) {
+  // ระดับน้ำไม่บังคับ: undefined = ผู้ใช้กดยกเลิกตัวที่เลือกไว้
+  function handleSelectWaterLevel(waterLevel: WaterLevel | undefined) {
     const next = { ...draft, waterLevel };
     saveSosDraft(next);
     if (step1Attempted) {
@@ -96,127 +102,68 @@ export function SosWizard() {
     }));
   }
 
-  function handleResetDraft() {
-    clearSosDraft();
-    setStep1Attempted(false);
-    setStep1Errors({ missingSummary: [] });
-  }
-
   const currentStepDef = SOS_STEPS[draft.currentStep - 1];
 
+  const goToPrevStep =
+    draft.currentStep > 1
+      ? () => handleGoToStep((draft.currentStep - 1) as SosStepNumber)
+      : undefined;
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
-      {/* หัวข้อหน้าฟอร์ม + ปุ่มล้างร่างเมื่อมีการกรอกค้างไว้ */}
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-text-primary sm:text-3xl">
-            แจ้งขอความช่วยเหลือน้ำท่วม
-          </h1>
-          <p className="mt-1 text-base text-text-secondary">
-            กรอกข้อมูลทีละขั้น ระบบบันทึกข้อมูลไว้ในเครื่องให้อัตโนมัติทุกครั้งที่เลือก
-          </p>
+    <div className="lg:mx-auto lg:flex lg:max-w-[1200px] lg:items-start lg:gap-10 lg:px-10 lg:pt-14 lg:pb-24">
+      <SosStepperCard currentStep={draft.currentStep} onSelectStep={handleGoToStep} />
+
+      <div className="min-w-0 flex-1">
+        <SosTopBar onBack={goToPrevStep} />
+        <SosProgressSegments currentStep={draft.currentStep} />
+
+        {/* การ์ดฟอร์ม: มือถือเต็มจอ จอคอมเป็นการ์ดขาวมีขอบ */}
+        <div className="flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:border-border-default lg:bg-bg-surface lg:px-14 lg:py-12">
+          <SosProgressBar currentStep={draft.currentStep} />
+
+          {draft.currentStep === 1 ? (
+            <Step1UrgencyWater
+              urgency={draft.urgency}
+              waterLevel={draft.waterLevel}
+              errors={step1Errors}
+              onSelectUrgency={handleSelectUrgency}
+              onSelectWaterLevel={handleSelectWaterLevel}
+              onNext={handleStep1Next}
+            />
+          ) : (
+            // ขั้น 2–5 ยังไม่ทำ (TF-09, TF-11) แสดงสรุปขั้นที่ 1 และปุ่มไปต่อไว้ก่อน
+            <>
+              <section aria-labelledby="step-placeholder-heading" className="flex flex-col gap-4">
+                <h2
+                  id="step-placeholder-heading"
+                  className="font-heading text-[30px] leading-[1.25] font-bold tracking-[-0.3px] text-text-primary lg:text-[22px] lg:leading-[1.3] lg:font-semibold"
+                >
+                  {currentStepDef.title}
+                </h2>
+                <p className="text-lg leading-[1.65] text-text-secondary">{currentStepDef.description}</p>
+                <div className="rounded-[12px] bg-bg-subtle p-4 text-base text-text-secondary">
+                  ความเร่งด่วน:{" "}
+                  <strong className="text-text-primary">
+                    {draft.urgency ? urgencyLabel[draft.urgency] : "-"}
+                  </strong>{" "}
+                  · ระดับน้ำ:{" "}
+                  <strong className="text-text-primary">
+                    {draft.waterLevel ? waterLevelLabel[draft.waterLevel] : "ไม่ได้ระบุ"}
+                  </strong>
+                </div>
+              </section>
+              {draft.currentStep < 5 && (
+                <SosStepActions
+                  onPrev={goToPrevStep}
+                  onNext={() => handleGoToStep((draft.currentStep + 1) as SosStepNumber)}
+                  mobileLabel="ถัดไป"
+                  desktopLabel={`ถัดไป: ${SOS_STEPS[draft.currentStep].shortLabel}`}
+                />
+              )}
+            </>
+          )}
         </div>
-
-        {(draft.urgency || draft.waterLevel) && (
-          <button
-            type="button"
-            onClick={handleResetDraft}
-            className="inline-flex h-12 items-center rounded-full border border-border-strong bg-bg-surface px-4 font-heading text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-subtle hover:text-text-primary"
-          >
-            เริ่มกรอกใหม่
-          </button>
-        )}
       </div>
-
-      {/* แถบความคืบหน้า 5 ช่อง + ข้อความ "ขั้นที่ X จาก 5" */}
-      <div className="mb-6">
-        <SosProgressBar
-          currentStep={draft.currentStep}
-          onSelectStep={handleGoToStep}
-        />
-      </div>
-
-      {/* เนื้อหาแต่ละขั้น */}
-      {draft.currentStep === 1 ? (
-        <Step1UrgencyWater
-          urgency={draft.urgency}
-          waterLevel={draft.waterLevel}
-          errors={step1Errors}
-          onSelectUrgency={handleSelectUrgency}
-          onSelectWaterLevel={handleSelectWaterLevel}
-          onNext={handleStep1Next}
-        />
-      ) : (
-        <section
-          aria-labelledby="step-placeholder-heading"
-          className="space-y-6 rounded-[14px] border border-border-default bg-bg-surface p-5 sm:p-6"
-        >
-          {/* สรุปค่าที่เลือกไว้จากขั้นที่ 1 */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] bg-bg-subtle p-4">
-            <div className="space-y-1 text-base">
-              <p className="font-heading font-semibold text-text-primary">
-                ข้อมูลจากขั้นที่ 1 (บันทึกไว้แล้ว)
-              </p>
-              <p className="text-text-secondary">
-                ความเร่งด่วน:{" "}
-                <strong className="text-text-primary">
-                  {draft.urgency ? urgencyLabel[draft.urgency] : "-"}
-                </strong>{" "}
-                · ระดับน้ำ:{" "}
-                <strong className="text-text-primary">
-                  {draft.waterLevel ? waterLevelLabel[draft.waterLevel] : "-"}
-                </strong>
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleGoToStep(1)}
-              className="inline-flex h-12 items-center rounded-full border border-border-strong bg-bg-surface px-4 font-heading text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-50"
-            >
-              แก้ไขขั้นที่ 1
-            </button>
-          </div>
-
-          <div>
-            <h2
-              id="step-placeholder-heading"
-              className="font-heading text-xl font-bold text-text-primary sm:text-[22px]"
-            >
-              {currentStepDef.step}. {currentStepDef.title}
-            </h2>
-            <p className="mt-1.5 text-base leading-relaxed text-text-secondary">
-              {currentStepDef.description}
-            </p>
-          </div>
-
-          {/* ปุ่มย้อนกลับ / ถัดไป (สูง >= 48px ตามกติกา) */}
-          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-between">
-            <button
-              type="button"
-              data-testid="wizard-prev-button"
-              onClick={() =>
-                handleGoToStep((draft.currentStep - 1) as SosStepNumber)
-              }
-              className="flex h-14 w-full items-center justify-center rounded-full border border-border-strong bg-bg-surface px-6 font-heading text-[19px] font-semibold text-text-primary transition-colors hover:bg-bg-subtle sm:w-auto sm:min-w-[160px]"
-            >
-              ← ย้อนกลับ
-            </button>
-
-            {draft.currentStep < 5 && (
-              <button
-                type="button"
-                data-testid="wizard-next-button"
-                onClick={() =>
-                  handleGoToStep((draft.currentStep + 1) as SosStepNumber)
-                }
-                className="flex h-14 w-full items-center justify-center rounded-full bg-primary-600 px-8 font-heading text-[19px] font-semibold text-text-on-primary transition-colors hover:bg-primary-700 active:bg-primary-700 sm:w-auto sm:min-w-[200px]"
-              >
-                ถัดไป: {SOS_STEPS[draft.currentStep].shortLabel} →
-              </button>
-            )}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { Urgency, WaterLevel, Need, CaseStatus } from "../../../lib/domain";
 
 const validPayload = {
   urgency: Urgency.RED,
-  waterLevel: WaterLevel.CHEST,
+  waterLevel: WaterLevel.WAIST_CHEST,
   lat: 13.7563,
   lng: 100.5018,
   accuracyM: 15,
@@ -85,8 +85,8 @@ describe("handleCreateSosCase (TF-12)", () => {
     expect(result.body.trackingToken).toBe("tok_0000000000000000000000000001");
     expect(result.body.status).toBe(CaseStatus.NEW);
     expect(result.body.replayed).toBe(false);
-    // คะแนนความเร่งด่วน: RED (10000) + CHEST (3*5=15) + bedridden (1*5=5) + elderly (1*2=2) = 10022
-    expect(result.body.priorityScore).toBe(10022);
+    // คะแนนความเร่งด่วน: RED (10000) + WAIST_CHEST (2*5=10) + bedridden (1*5=5) + elderly (1*2=2) = 10017
+    expect(result.body.priorityScore).toBe(10017);
 
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc.mock.calls[0]?.[1].p_payload.phone).toBe("0812345678");
@@ -127,7 +127,7 @@ describe("handleCreateSosCase (TF-12)", () => {
     const result = await handleCreateSosCase({
       rawBody: {
         urgency: Urgency.RED,
-        // ขาด waterLevel, lat, lng, landmark, จำนวนคน, ชื่อ, เบอร์โทร
+        // ขาด lat, lng, landmark, จำนวนคน, ชื่อ, เบอร์โทร (waterLevel ไม่บังคับ)
       },
       headers: new Headers({ "Idempotency-Key": "idem-invalid-001" }),
       supabase,
@@ -137,9 +137,9 @@ describe("handleCreateSosCase (TF-12)", () => {
     if (result.status !== 400) throw new Error("Expected 400");
 
     expect(result.body.fields).toEqual(
-      expect.arrayContaining(["waterLevel", "lat", "lng", "landmark", "name", "phone"]),
+      expect.arrayContaining(["lat", "lng", "landmark", "name", "phone"]),
     );
-    expect(result.body.fieldErrors.waterLevel).toBeDefined();
+    expect(result.body.fieldErrors.waterLevel).toBeUndefined();
     expect(result.body.fieldErrors.landmark).toBeDefined();
     expect(result.body.fieldErrors.phone).toBeDefined();
     expect(rpc).not.toHaveBeenCalled();

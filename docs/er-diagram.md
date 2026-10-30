@@ -100,7 +100,7 @@ erDiagram
         uuid reporter_user_id FK
         case_status status "NEW..RESOLVED / CANCELLED / DUPLICATE / UNREACHABLE"
         urgency_level urgency "RED | YELLOW | GREEN"
-        water_level water_level "ANKLE | KNEE | WAIST | CHEST | ROOF"
+        water_level water_level "ROOF | FIRST_FLOOR | WAIST_CHEST | ANKLE_KNEE | SURROUNDED (ไม่บังคับ)"
         integer priority_score
         geography_Point location "PostGIS Point (4326) + GIST Index"
         float8 lat

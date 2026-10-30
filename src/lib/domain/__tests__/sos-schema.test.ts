@@ -4,7 +4,7 @@ import { Urgency, WaterLevel, Need } from "../enums";
 
 const validBase = {
   urgency: Urgency.RED,
-  waterLevel: WaterLevel.WAIST,
+  waterLevel: WaterLevel.WAIST_CHEST,
   lat: 13.75,
   lng: 100.52,
   accuracyM: 15,
