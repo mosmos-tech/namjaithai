@@ -294,12 +294,14 @@ export function parseGoogleMapsUrl(rawInput: string): GmapsParseResult {
  * แปลงลิงก์ Google Maps ทั้งแบบลิงก์เต็มและลิงก์ย่อ (maps.app.goo.gl / goo.gl/maps) เป็นพิกัด lat/lng
  * - ถ้าเป็นลิงก์เต็ม จะแยกพิกัดทันทีโดยไม่ต้องยิงเครือข่าย
  * - ถ้าเป็นลิงก์ย่อ จะตาม HTTP redirect (สูงสุด 5 ขั้น) เฉพาะโดเมนของ Google Maps เท่านั้นเพื่อความปลอดภัย
+ * - แต่ละขั้นรอ Google ตอบไม่เกิน 5 วินาที ถ้าช้ากว่านั้นถือว่าเปิดลิงก์ไม่ได้ ไม่ให้ผู้แจ้งรอค้าง
  */
 export async function resolveGoogleMapsLink(
   rawInput: string,
   options?: {
     fetchFn?: typeof fetch;
     maxRedirects?: number;
+    timeoutMs?: number;
   },
 ): Promise<GmapsResolveResult> {
   const direct = parseGoogleMapsUrl(rawInput);
@@ -318,6 +320,7 @@ export async function resolveGoogleMapsLink(
 
   const fetchFn = options?.fetchFn ?? fetch;
   const maxRedirects = options?.maxRedirects ?? 5;
+  const timeoutMs = options?.timeoutMs ?? 5000;
   let currentUrl = extractUrlFromInput(rawInput);
 
   try {
@@ -335,6 +338,7 @@ export async function resolveGoogleMapsLink(
       const response = await fetchFn(currentUrl, {
         method: "GET",
         redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
         headers: {
           "User-Agent": "Mozilla/5.0 (compatible; NamjaithaiSOS/1.0)",
         },

@@ -94,6 +94,25 @@ describe("TF-10: แปลงลิงก์ Google Maps เป็นพิก�
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("ลิงก์ย่อที่ Google ตอบช้าเกินกำหนด: เลิกรอ ตอบ RESOLVE_FAILED ไม่ค้าง", async () => {
+    // fetch ที่ไม่ตอบเลยจนกว่าจะถูกยกเลิกด้วย signal
+    const hangingFetch = vi.fn<typeof fetch>(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    );
+
+    const res = await resolveGoogleMapsLink("https://maps.app.goo.gl/AbCdEfGh12345", {
+      fetchFn: hangingFetch,
+      timeoutMs: 50,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("Expected error");
+    expect(res.code).toBe("RESOLVE_FAILED");
+    expect(hangingFetch.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("เกณฑ์ข้อ 2: ลิงก์ที่ไม่ใช่ Google Maps ตอบ error ภาษาไทยที่อ่านเข้าใจ", async () => {
     const nonGmapsUrls = [
       "https://www.facebook.com/share/p/123456",
