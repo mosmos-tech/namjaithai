@@ -390,7 +390,7 @@ export function Step5Contact({
           >
             <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
             <div>
-              <p className="font-heading font-bold">ตรวจสอบและบันทึกข้อมูลครบถ้วน</p>
+              <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
               <p className="mt-0.5">{submitSuccessMessage}</p>
             </div>
           </div>

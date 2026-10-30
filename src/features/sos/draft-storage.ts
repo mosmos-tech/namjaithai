@@ -1,5 +1,6 @@
 import {
   step1Schema,
+  step2Schema,
   step3Schema,
   step4Schema,
   step5Schema,
@@ -105,6 +106,8 @@ export interface SosDraft {
   lineId: string;
   notes: string;
   photos: SosDraftPhoto[];
+  // คีย์กันส่งซ้ำประจำร่างนี้ (ใช้ซ้ำถ้ากดส่งซ้ำหรือลองส่งใหม่ และถูกล้างเมื่อส่งสำเร็จ)
+  idempotencyKey?: string;
   // เวลาที่บันทึกร่างล่าสุด (ISO string)
   updatedAt?: string;
 }
@@ -171,6 +174,66 @@ export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel
   if (!draft.waterLevel || !validWaterLevels.includes(draft.waterLevel)) {
     errors.waterLevel = "กรุณาเลือกระดับน้ำปัจจุบัน";
     errors.missingSummary.push("ระดับน้ำปัจจุบัน");
+  }
+
+  return {
+    valid: false,
+    errors,
+  };
+}
+
+export interface Step2ValidationErrors {
+  location?: string;
+  landmark?: string;
+  missingSummary: string[];
+}
+
+/**
+ * ตรวจสอบข้อมูลขั้นที่ 2 (พิกัดตำแหน่งและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
+ * ป้องกันการกดส่งในขั้นที่ 5 โดยยังไม่มีพิกัดหรือจุดสังเกต
+ */
+export function validateStep2Draft(
+  draft: Pick<
+    SosDraft,
+    "lat" | "lng" | "accuracyM" | "province" | "district" | "subdistrict" | "landmark"
+  >,
+): {
+  valid: boolean;
+  errors: Step2ValidationErrors;
+} {
+  const result = step2Schema.safeParse({
+    lat: draft.lat,
+    lng: draft.lng,
+    accuracyM: draft.accuracyM,
+    province: draft.province,
+    district: draft.district,
+    subdistrict: draft.subdistrict,
+    landmark: draft.landmark,
+  });
+
+  if (result.success) {
+    return {
+      valid: true,
+      errors: { missingSummary: [] },
+    };
+  }
+
+  const errors: Step2ValidationErrors = {
+    missingSummary: [],
+  };
+
+  const hasCoordError = result.error.issues.some(
+    (issue) => issue.path[0] === "lat" || issue.path[0] === "lng",
+  );
+  if (typeof draft.lat !== "number" || typeof draft.lng !== "number" || hasCoordError) {
+    errors.location = "กรุณาระบุตำแหน่งที่เกิดเหตุในขั้นที่ 2";
+    errors.missingSummary.push("ตำแหน่งที่เกิดเหตุ (ขั้นที่ 2)");
+  }
+
+  const trimmedLandmark = draft.landmark?.trim() ?? "";
+  if (trimmedLandmark.length === 0) {
+    errors.landmark = "กรุณาระบุจุดสังเกตในขั้นที่ 2";
+    errors.missingSummary.push("จุดสังเกต (ขั้นที่ 2)");
   }
 
   return {
@@ -442,6 +505,12 @@ export function loadSosDraft(
       ? parsed.photos.slice(0, MAX_SOS_PHOTOS)
       : initial.photos;
 
+    const idempotencyKey =
+      typeof parsed.idempotencyKey === "string" &&
+      parsed.idempotencyKey.trim().length > 0
+        ? parsed.idempotencyKey.trim()
+        : undefined;
+
     // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ ให้กลับมาเริ่มที่ขั้นที่ 1
     const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
     const currentStep: SosStepNumber =
@@ -455,6 +524,7 @@ export function loadSosDraft(
       waterLevel,
       needs,
       photos,
+      idempotencyKey,
     };
   } catch {
     return initial;
@@ -547,4 +617,221 @@ export function subscribeSosDraft(listener: () => void): () => void {
  */
 export function formatStepProgressText(step: SosStepNumber): string {
   return `ขั้นที่ ${step} จาก ${SOS_STEPS.length}`;
+}
+
+export type SubmitSosDraftResult =
+  | { status: "duplicate_in_flight" }
+  | {
+      status: "invalid_step";
+      step: 1;
+      step1Errors: Step1ValidationErrors;
+      error: string;
+    }
+  | {
+      status: "invalid_step";
+      step: 2;
+      step2Errors: Step2ValidationErrors;
+      error: string;
+    }
+  | {
+      status: "invalid_step";
+      step: 3;
+      step3Errors: Step3ValidationErrors;
+      error: string;
+    }
+  | {
+      status: "invalid_step";
+      step: 4;
+      step4Errors: Step4ValidationErrors;
+      error: string;
+    }
+  | {
+      status: "invalid_step";
+      step: 5;
+      step5Errors: Step5ValidationErrors;
+      error: string;
+    }
+  | {
+      status: "api_error" | "network_error";
+      error: string;
+      idempotencyKey: string;
+    }
+  | {
+      status: "submitted";
+      caseCode: string;
+      trackingToken?: string;
+      idempotencyKey: string;
+      successMessage: string;
+    };
+
+export interface SubmitSosDraftOptions {
+  draft: SosDraft;
+  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+  inFlightRef?: { current: boolean };
+  fetchImpl?: typeof fetch;
+  generateIdempotencyKey?: () => string;
+}
+
+const _defaultInFlightRef = { current: false };
+
+/**
+ * ส่งคำขอความช่วยเหลือ SOS ไปยัง POST /api/cases:
+ * 1. ป้องกันการกดส่งซ้ำขณะกำลังส่ง (inFlightRef lock) และผูก Idempotency-Key ประจำร่าง
+ * 2. ตรวจความครบถ้วนทุกขั้น (รวมถึงพิกัดและจุดสังเกตในขั้นที่ 2 — ถ้าไม่มีตำแหน่งจะตอบ error ไม่ขึ้นกล่องสีเขียว)
+ * 3. เมื่อส่งสำเร็จ (response.ok) จะล้างร่างออกจาก localStorage ทันทีด้วย clearSosDraft()
+ */
+export async function submitSosDraft(
+  options: SubmitSosDraftOptions,
+): Promise<SubmitSosDraftResult> {
+  const inFlightRef = options.inFlightRef ?? _defaultInFlightRef;
+  if (inFlightRef.current) {
+    return { status: "duplicate_in_flight" };
+  }
+
+  inFlightRef.current = true;
+  try {
+    const {
+      draft,
+      storage = typeof window !== "undefined" ? window.localStorage : undefined,
+      fetchImpl = fetch,
+      generateIdempotencyKey = () => crypto.randomUUID(),
+    } = options;
+
+    const check5 = validateStep5Draft(draft);
+    if (!check5.valid) {
+      return {
+        status: "invalid_step",
+        step: 5,
+        step5Errors: check5.errors,
+        error: `ยังส่งคำขอไม่ได้ กรุณาตรวจสอบ: ${check5.errors.missingSummary.join(", ")}`,
+      };
+    }
+
+    const check1 = validateStep1Draft(draft);
+    if (!check1.valid || !draft.urgency || !draft.waterLevel) {
+      return {
+        status: "invalid_step",
+        step: 1,
+        step1Errors: check1.errors,
+        error: "ยังส่งคำขอไม่ได้ กรุณาเลือกระดับความเร่งด่วนและระดับน้ำในขั้นที่ 1",
+      };
+    }
+
+    const check3 = validateStep3Draft(draft);
+    if (!check3.valid) {
+      return {
+        status: "invalid_step",
+        step: 3,
+        step3Errors: check3.errors,
+        error: "ยังส่งคำขอไม่ได้ กรุณาระบุจำนวนผู้ติดค้างอย่างน้อย 1 คนในขั้นที่ 3",
+      };
+    }
+
+    const check4 = validateStep4Draft(draft);
+    if (!check4.valid) {
+      return {
+        status: "invalid_step",
+        step: 4,
+        step4Errors: check4.errors,
+        error: "ยังส่งคำขอไม่ได้ กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ในขั้นที่ 4",
+      };
+    }
+
+    const check2 = validateStep2Draft(draft);
+    if (!check2.valid || typeof draft.lat !== "number" || typeof draft.lng !== "number") {
+      return {
+        status: "invalid_step",
+        step: 2,
+        step2Errors: check2.errors,
+        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check2.errors.missingSummary.join("และ")}ก่อนส่งคำขอ`,
+      };
+    }
+
+    const normalizedPhone =
+      check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
+    const idempotencyKey =
+      draft.idempotencyKey && draft.idempotencyKey.trim().length > 0
+        ? draft.idempotencyKey.trim()
+        : generateIdempotencyKey();
+
+    const nextDraft: SosDraft = {
+      ...draft,
+      name: draft.name.trim(),
+      phone: normalizedPhone,
+      landmark: draft.landmark.trim(),
+      idempotencyKey,
+    };
+
+    saveSosDraft(nextDraft, storage);
+
+    try {
+      const response = await fetchImpl("/api/cases", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          urgency: nextDraft.urgency,
+          waterLevel: nextDraft.waterLevel,
+          lat: nextDraft.lat,
+          lng: nextDraft.lng,
+          accuracyM: nextDraft.accuracyM,
+          province: nextDraft.province,
+          district: nextDraft.district,
+          subdistrict: nextDraft.subdistrict,
+          landmark: nextDraft.landmark,
+          adults: nextDraft.adults,
+          elderly: nextDraft.elderly,
+          bedridden: nextDraft.bedridden,
+          children: nextDraft.children,
+          pets: nextDraft.pets,
+          needs: nextDraft.needs,
+          otherDetail: nextDraft.needs.includes(Need.OTHER)
+            ? nextDraft.otherDetail
+            : undefined,
+          name: nextDraft.name,
+          phone: nextDraft.phone,
+          lineId: nextDraft.lineId || undefined,
+          notes: nextDraft.notes || undefined,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        caseCode?: string;
+        trackingToken?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        return {
+          status: "api_error",
+          error:
+            data.error ??
+            "ไม่สามารถส่งคำขอได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทรสายด่วน 1669 / 1784",
+          idempotencyKey,
+        };
+      }
+
+      // ส่งสำเร็จแล้วต้องล้างข้อมูลร่างในเครื่องทันทีเพื่อไม่ให้ค้างหรือส่งซ้ำ
+      clearSosDraft(storage);
+
+      const caseCode = data.caseCode ?? "";
+      return {
+        status: "submitted",
+        caseCode,
+        trackingToken: data.trackingToken,
+        idempotencyKey,
+        successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${caseCode}`,
+      };
+    } catch {
+      return {
+        status: "network_error",
+        error: "ไม่สามารถเชื่อมต่อเครือข่ายได้ ระบบบันทึกข้อมูลร่างไว้ในเครื่องแล้ว",
+        idempotencyKey,
+      };
+    }
+  } finally {
+    inFlightRef.current = false;
+  }
 }

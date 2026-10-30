@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
+import { CheckCircle2 } from "lucide-react";
 import {
   Need,
   urgencyLabel,
@@ -12,6 +13,7 @@ import {
   SOS_STEPS,
   saveSosDraft,
   clearSosDraft,
+  submitSosDraft,
   validateStep1Draft,
   validateStep3Draft,
   validateStep4Draft,
@@ -74,6 +76,7 @@ export function SosWizard() {
   const [step5Errors, setStep5Errors] = useState<Step5ValidationErrors>({
     missingSummary: [],
   });
+  const isSubmittingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
@@ -86,6 +89,8 @@ export function SosWizard() {
 
   // ── ขั้นที่ 1 ───────────────────────────────────────────────────────────────
   function handleSelectUrgency(urgency: Urgency) {
+    setSubmitSuccessMessage(null);
+    setSubmitError(null);
     const next = updateDraft((prev) => ({ ...prev, urgency }));
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
@@ -93,6 +98,8 @@ export function SosWizard() {
   }
 
   function handleSelectWaterLevel(waterLevel: WaterLevel) {
+    setSubmitSuccessMessage(null);
+    setSubmitError(null);
     const next = updateDraft((prev) => ({ ...prev, waterLevel }));
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
@@ -230,111 +237,73 @@ export function SosWizard() {
   }
 
   async function handleStep5Submit() {
+    if (isSubmittingRef.current) {
+      return;
+    }
+
     setStep5Attempted(true);
     setSubmitError(null);
     setSubmitSuccessMessage(null);
+    setIsSubmitting(true);
 
-    const check5 = validateStep5Draft(draft);
-    setStep5Errors(check5.errors);
-    if (!check5.valid) {
-      return;
-    }
+    try {
+      const result = await submitSosDraft({
+        draft,
+        inFlightRef: isSubmittingRef,
+      });
 
-    const check3 = validateStep3Draft(draft);
-    if (!check3.valid) {
-      setStep3Attempted(true);
-      setStep3Errors(check3.errors);
-      updateDraft((prev) => ({ ...prev, currentStep: 3 }));
-      return;
-    }
+      if (result.status === "duplicate_in_flight") {
+        return;
+      }
 
-    const check4 = validateStep4Draft(draft);
-    if (!check4.valid) {
-      setStep4Attempted(true);
-      setStep4Errors(check4.errors);
-      updateDraft((prev) => ({ ...prev, currentStep: 4 }));
-      return;
-    }
-
-    // บันทึกเบอร์โทรที่ตัดขีดและช่องว่างเรียบร้อยลงในร่าง
-    const normalizedPhone = check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
-    const nextDraft = updateDraft((prev) => ({
-      ...prev,
-      name: prev.name.trim(),
-      phone: normalizedPhone,
-    }));
-
-    // ถ้ามีพิกัดและจุดสังเกตจากขั้นที่ 2 ครบแล้ว ให้ส่งเข้า POST /api/cases ทันที
-    if (
-      typeof nextDraft.lat === "number" &&
-      typeof nextDraft.lng === "number" &&
-      nextDraft.landmark.trim().length > 0 &&
-      nextDraft.urgency &&
-      nextDraft.waterLevel
-    ) {
-      setIsSubmitting(true);
-      try {
-        const response = await fetch("/api/cases", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": crypto.randomUUID(),
-          },
-          body: JSON.stringify({
-            urgency: nextDraft.urgency,
-            waterLevel: nextDraft.waterLevel,
-            lat: nextDraft.lat,
-            lng: nextDraft.lng,
-            accuracyM: nextDraft.accuracyM,
-            province: nextDraft.province,
-            district: nextDraft.district,
-            subdistrict: nextDraft.subdistrict,
-            landmark: nextDraft.landmark,
-            adults: nextDraft.adults,
-            elderly: nextDraft.elderly,
-            bedridden: nextDraft.bedridden,
-            children: nextDraft.children,
-            pets: nextDraft.pets,
-            needs: nextDraft.needs,
-            otherDetail: nextDraft.needs.includes(Need.OTHER)
-              ? nextDraft.otherDetail
-              : undefined,
-            name: nextDraft.name,
-            phone: nextDraft.phone,
-            lineId: nextDraft.lineId || undefined,
-            notes: nextDraft.notes || undefined,
-          }),
-        });
-
-        const data = (await response.json()) as {
-          caseCode?: string;
-          error?: string;
-        };
-
-        if (!response.ok) {
-          setSubmitError(
-            data.error ??
-              "ไม่สามารถส่งคำขอได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทรสายด่วน 1669 / 1784",
-          );
+      if (result.status === "invalid_step") {
+        if (result.step === 5) {
+          setStep5Errors(result.step5Errors);
           return;
         }
-
-        setSubmitSuccessMessage(
-          `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${data.caseCode ?? ""}`,
-        );
-      } catch {
-        setSubmitError(
-          "ไม่สามารถเชื่อมต่อเครือข่ายได้ ระบบบันทึกข้อมูลร่างไว้ในเครื่องแล้ว",
-        );
-      } finally {
-        setIsSubmitting(false);
+        if (result.step === 1) {
+          setStep1Attempted(true);
+          setStep1Errors(result.step1Errors);
+          updateDraft((prev) => ({ ...prev, currentStep: 1 }));
+          return;
+        }
+        if (result.step === 3) {
+          setStep3Attempted(true);
+          setStep3Errors(result.step3Errors);
+          updateDraft((prev) => ({ ...prev, currentStep: 3 }));
+          return;
+        }
+        if (result.step === 4) {
+          setStep4Attempted(true);
+          setStep4Errors(result.step4Errors);
+          updateDraft((prev) => ({ ...prev, currentStep: 4 }));
+          return;
+        }
+        if (result.step === 2) {
+          setSubmitError(result.error);
+          return;
+        }
       }
-      return;
-    }
 
-    setSubmitSuccessMessage(
-      `บันทึกข้อมูลผู้ติดค้าง สิ่งที่ต้องการ และข้อมูลติดต่อ (${normalizedPhone}) เรียบร้อยแล้ว`,
-    );
+      if (result.status === "api_error" || result.status === "network_error") {
+        setSubmitError(result.error);
+        return;
+      }
+
+      if (result.status === "submitted") {
+        setStep1Attempted(false);
+        setStep1Errors({ missingSummary: [] });
+        setStep3Attempted(false);
+        setStep3Errors({ missingSummary: [] });
+        setStep4Attempted(false);
+        setStep4Errors({ missingSummary: [] });
+        setStep5Attempted(false);
+        setStep5Errors({ missingSummary: [] });
+        setSubmitSuccessMessage(result.successMessage);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function handleGoToStep(targetStep: SosStepNumber) {
@@ -419,6 +388,21 @@ export function SosWizard() {
           onSelectStep={handleGoToStep}
         />
       </div>
+
+      {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
+      {submitSuccessMessage && draft.currentStep !== 5 && (
+        <div
+          role="status"
+          data-testid="step5-submit-success"
+          className="mb-6 flex items-start gap-3 rounded-[12px] border border-green-700/30 bg-green-50 p-4 text-base text-green-700"
+        >
+          <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
+            <p className="mt-0.5">{submitSuccessMessage}</p>
+          </div>
+        </div>
+      )}
 
       {/* เนื้อหาแต่ละขั้น */}
       {draft.currentStep === 1 && (
