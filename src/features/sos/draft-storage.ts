@@ -167,13 +167,14 @@ export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel
   const validWaterLevels = Object.values(WaterLevel) as string[];
 
   if (!draft.urgency || !validUrgencies.includes(draft.urgency)) {
-    errors.urgency = "กรุณาเลือกระดับความเร่งด่วน (วิกฤต / เร่งด่วน / ทั่วไป)";
+    errors.urgency = "กรุณาเลือกความเร่งด่วน 1 ข้อ";
     errors.missingSummary.push("ระดับความเร่งด่วน");
   }
 
-  if (!draft.waterLevel || !validWaterLevels.includes(draft.waterLevel)) {
-    errors.waterLevel = "กรุณาเลือกระดับน้ำปัจจุบัน";
-    errors.missingSummary.push("ระดับน้ำปัจจุบัน");
+  // ระดับน้ำไม่บังคับ (Figma มือถือไม่ถาม) ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
+  if (draft.waterLevel && !validWaterLevels.includes(draft.waterLevel)) {
+    errors.waterLevel = "ไม่มีตัวเลือกระดับน้ำนี้";
+    errors.missingSummary.push("ระดับน้ำ");
   }
 
   return {

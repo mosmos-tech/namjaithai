@@ -28,7 +28,7 @@ describe("TF-08: ฟอร์ม SOS ขั้น 1 ความเร่งด�
   it("เกณฑ์ข้อ 1: เลือกความเร่งด่วนและระดับน้ำครบถ้วนแล้วผ่านการตรวจสอบเพื่อไปขั้นถัดไปได้", () => {
     const check = validateStep1Draft({
       urgency: Urgency.RED,
-      waterLevel: WaterLevel.CHEST,
+      waterLevel: WaterLevel.WAIST_CHEST,
     });
 
     expect(check.valid).toBe(true);
@@ -37,37 +37,32 @@ describe("TF-08: ฟอร์ม SOS ขั้น 1 ความเร่งด�
     expect(check.errors.missingSummary).toEqual([]);
   });
 
-  it("เกณฑ์ข้อ 2: ไม่เลือกแล้วกดถัดไป มีข้อความบอกว่าขาดอะไรอย่างชัดเจน", () => {
-    // ไม่เลือกทั้ง 2 อย่าง
+  it("เกณฑ์ข้อ 2: ไม่เลือกความเร่งด่วนแล้วกดถัดไป มีข้อความบอกว่าขาดอะไรอย่างชัดเจน", () => {
+    // ไม่เลือกทั้ง 2 อย่าง: ขาดแค่ความเร่งด่วน (ระดับน้ำไม่บังคับ — Figma มือถือไม่ถาม)
     const bothMissing = validateStep1Draft({
       urgency: undefined,
       waterLevel: undefined,
     });
     expect(bothMissing.valid).toBe(false);
-    expect(bothMissing.errors.urgency).toContain("กรุณาเลือกระดับความเร่งด่วน");
-    expect(bothMissing.errors.waterLevel).toContain("กรุณาเลือกระดับน้ำปัจจุบัน");
-    expect(bothMissing.errors.missingSummary).toEqual([
-      "ระดับความเร่งด่วน",
-      "ระดับน้ำปัจจุบัน",
-    ]);
+    expect(bothMissing.errors.urgency).toBe("กรุณาเลือกความเร่งด่วน 1 ข้อ");
+    expect(bothMissing.errors.waterLevel).toBeUndefined();
+    expect(bothMissing.errors.missingSummary).toEqual(["ระดับความเร่งด่วน"]);
 
-    // เลือกแต่ความเร่งด่วน ขาดระดับน้ำ
+    // เลือกแต่ความเร่งด่วน ไม่เลือกระดับน้ำ: ผ่าน
     const waterMissing = validateStep1Draft({
       urgency: Urgency.YELLOW,
       waterLevel: undefined,
     });
-    expect(waterMissing.valid).toBe(false);
-    expect(waterMissing.errors.urgency).toBeUndefined();
-    expect(waterMissing.errors.waterLevel).toContain("กรุณาเลือกระดับน้ำปัจจุบัน");
-    expect(waterMissing.errors.missingSummary).toEqual(["ระดับน้ำปัจจุบัน"]);
+    expect(waterMissing.valid).toBe(true);
+    expect(waterMissing.errors.missingSummary).toEqual([]);
 
     // เลือกแต่ระดับน้ำ ขาดความเร่งด่วน
     const urgencyMissing = validateStep1Draft({
       urgency: undefined,
-      waterLevel: WaterLevel.WAIST,
+      waterLevel: WaterLevel.WAIST_CHEST,
     });
     expect(urgencyMissing.valid).toBe(false);
-    expect(urgencyMissing.errors.urgency).toContain("กรุณาเลือกระดับความเร่งด่วน");
+    expect(urgencyMissing.errors.urgency).toBe("กรุณาเลือกความเร่งด่วน 1 ข้อ");
     expect(urgencyMissing.errors.waterLevel).toBeUndefined();
     expect(urgencyMissing.errors.missingSummary).toEqual(["ระดับความเร่งด่วน"]);
   });
@@ -98,14 +93,14 @@ describe("TF-08: ฟอร์ม SOS ขั้น 1 ความเร่งด�
       ...createInitialSosDraft(),
       currentStep: 2 as SosStepNumber,
       urgency: Urgency.GREEN,
-      waterLevel: WaterLevel.KNEE,
+      waterLevel: WaterLevel.ANKLE_KNEE,
     };
 
     saveSosDraft(draft, storage);
 
     const restored = loadSosDraft(storage);
     expect(restored.urgency).toBe(Urgency.GREEN);
-    expect(restored.waterLevel).toBe(WaterLevel.KNEE);
+    expect(restored.waterLevel).toBe(WaterLevel.ANKLE_KNEE);
     expect(restored.currentStep).toBe(2);
     expect(restored.updatedAt).toBeDefined();
 

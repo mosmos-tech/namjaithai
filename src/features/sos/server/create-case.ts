@@ -2,9 +2,19 @@ import { z } from "zod";
 import {
   sosSchema,
   priorityScore,
+  duplicateResolutionSchema,
+  duplicateActionLabels,
+  formatAdminDuplicateNotice,
   type SosFormData,
   type CaseStatus,
+  type DuplicateAction,
+  type DuplicateCandidateMatch,
 } from "../../../lib/domain";
+
+export type CreateSosCasePayload = SosFormData & {
+  duplicateAction?: DuplicateAction;
+  targetCaseId?: string;
+};
 
 export interface CreateSosCaseRpcRow {
   case_id: string;
@@ -13,6 +23,11 @@ export interface CreateSosCaseRpcRow {
   status: CaseStatus;
   created_at: string;
   replayed: boolean;
+  updated_existing?: boolean;
+  is_potential_duplicate?: boolean;
+  duplicate_of_case_id?: string | null;
+  duplicate_of_case_code?: string | null;
+  duplicate_distance_m?: number | null;
 }
 
 export interface CreateSosCaseRpcError {
@@ -31,7 +46,7 @@ export interface SosCaseRpcClient {
     fn: "create_sos_case",
     args: {
       p_idempotency_key: string;
-      p_payload: SosFormData;
+      p_payload: CreateSosCasePayload;
       p_priority_score: number;
       p_client_ip: string | null;
       p_reporter_user_id: string | null;
@@ -50,6 +65,12 @@ export interface CreateSosCaseSuccessResponse {
   priorityScore: number;
   createdAt: string;
   replayed: boolean;
+  updatedExisting?: boolean;
+  isPotentialDuplicate?: boolean;
+  duplicateOfCaseId?: string | null;
+  duplicateOfCaseCode?: string | null;
+  duplicateDistanceM?: number | null;
+  adminDuplicateNotice?: string | null;
 }
 
 export interface CreateSosCaseValidationErrorResponse {
@@ -57,6 +78,17 @@ export interface CreateSosCaseValidationErrorResponse {
   fieldErrors: Record<string, string[] | undefined>;
   formErrors: string[];
   fields: string[];
+}
+
+export interface CreateSosCaseDuplicatePromptResponse {
+  code: "DUPLICATE_CANDIDATE";
+  error: string;
+  candidate: DuplicateCandidateMatch;
+  options: ["UPDATE_EXISTING", "CREATE_NEW"];
+  optionLabels: {
+    UPDATE_EXISTING: string;
+    CREATE_NEW: string;
+  };
 }
 
 export interface CreateSosCaseRateLimitErrorResponse {
@@ -73,6 +105,11 @@ export type CreateSosCaseResult =
   | {
       status: 400;
       body: CreateSosCaseValidationErrorResponse;
+      headers?: Record<string, string>;
+    }
+  | {
+      status: 409;
+      body: CreateSosCaseDuplicatePromptResponse;
       headers?: Record<string, string>;
     }
   | {
@@ -137,6 +174,7 @@ export function resolveIdempotencyKey(
 
 /**
  * ฟังก์ชันหลักสำหรับตรวจสอบข้อมูลฟอร์ม SOS คำนวณคะแนนความเร่งด่วน
+ * ตรวจเคสซ้ำ (เบอร์เดียวกันหรือห่างไม่ถึง 50 ม. ภายใน 24 ชม.)
  * และเรียกฟังก์ชัน create_sos_case() ในฐานข้อมูลเพื่อบันทึกทุกตารางในครั้งเดียว
  */
 export async function handleCreateSosCase(params: {
@@ -176,6 +214,21 @@ export async function handleCreateSosCase(params: {
     };
   }
 
+  const dupResolution = duplicateResolutionSchema.safeParse(rawBody);
+  if (!dupResolution.success) {
+    const flattened = z.flattenError(dupResolution.error);
+    const fields = Object.keys(flattened.fieldErrors);
+    return {
+      status: 400,
+      body: {
+        error: "ตัวเลือกจัดการเคสซ้ำไม่ถูกต้อง",
+        fieldErrors: flattened.fieldErrors,
+        formErrors: flattened.formErrors,
+        fields,
+      },
+    };
+  }
+
   // 2. ตรวจหัว Idempotency-Key สำหรับกันการกดส่งซ้ำหรือส่งซ้ำตอนเน็ตหลุด
   const idempotency = resolveIdempotencyKey(headers);
   if (!idempotency.ok) {
@@ -192,7 +245,15 @@ export async function handleCreateSosCase(params: {
     };
   }
 
-  const formData = parsed.data;
+  const formData: CreateSosCasePayload = {
+    ...parsed.data,
+    ...(dupResolution.data.duplicateAction
+      ? { duplicateAction: dupResolution.data.duplicateAction }
+      : {}),
+    ...(dupResolution.data.targetCaseId
+      ? { targetCaseId: dupResolution.data.targetCaseId }
+      : {}),
+  };
 
   // 3. คำนวณคะแนนความเร่งด่วนด้วยฟังก์ชันกลาง priorityScore() จาก src/lib/domain
   const score = priorityScore(
@@ -219,6 +280,30 @@ export async function handleCreateSosCase(params: {
   });
 
   if (error) {
+    // กรณีพบเคสเปิดอยู่จากเบอร์เดียวกัน หรือห่างไม่ถึง 50 ม. ภายใน 24 ชม. (รหัส SOS49 จาก TF-16)
+    if (error.code === "SOS49" && error.details) {
+      try {
+        const candidate = JSON.parse(error.details) as DuplicateCandidateMatch;
+        const promptMessage =
+          candidate.matchReason === "SAME_PHONE" || candidate.matchReason === "BOTH"
+            ? `เบอร์โทรศัพท์นี้มีเคสที่ยังเปิดอยู่ (${candidate.caseCode}) คุณต้องการอัปเดตเคสเดิมหรือสร้างเคสใหม่?`
+            : `พบเคสที่ยังเปิดอยู่ใกล้ตำแหน่งของคุณในระยะ ${Math.round(candidate.distanceM)} เมตร (${candidate.caseCode}) เป็นการอัปเดตเคสเดิมหรือไม่?`;
+
+        return {
+          status: 409,
+          body: {
+            code: "DUPLICATE_CANDIDATE",
+            error: promptMessage,
+            candidate,
+            options: ["UPDATE_EXISTING", "CREATE_NEW"],
+            optionLabels: duplicateActionLabels,
+          },
+        };
+      } catch {
+        // กรณีแปลง JSON ไม่ได้ ให้ตกไปตอบ 500 ด้านล่าง
+      }
+    }
+
     // กรณีส่งถี่เกินกำหนด (รหัส SOS29 จากฟังก์ชัน create_sos_case)
     if (error.code === "SOS29") {
       const retryAfterSeconds = Math.max(1, Number.parseInt(error.hint ?? "60", 10) || 60);
@@ -255,8 +340,13 @@ export async function handleCreateSosCase(params: {
     };
   }
 
+  const isPotentialDuplicate = Boolean(row.is_potential_duplicate);
+  const duplicateOfCaseCode = row.duplicate_of_case_code ?? null;
+  const duplicateDistanceM =
+    typeof row.duplicate_distance_m === "number" ? row.duplicate_distance_m : null;
+
   return {
-    status: row.replayed ? 200 : 201,
+    status: row.replayed || row.updated_existing ? 200 : 201,
     body: {
       caseId: row.case_id,
       caseCode: row.case_code,
@@ -265,6 +355,21 @@ export async function handleCreateSosCase(params: {
       priorityScore: score,
       createdAt: row.created_at,
       replayed: row.replayed,
+      ...(row.updated_existing !== undefined
+        ? { updatedExisting: row.updated_existing }
+        : {}),
+      ...(row.is_potential_duplicate !== undefined
+        ? {
+            isPotentialDuplicate,
+            duplicateOfCaseId: row.duplicate_of_case_id ?? null,
+            duplicateOfCaseCode,
+            duplicateDistanceM,
+            adminDuplicateNotice:
+              isPotentialDuplicate && duplicateOfCaseCode
+                ? formatAdminDuplicateNotice(duplicateOfCaseCode, duplicateDistanceM)
+                : null,
+          }
+        : {}),
     },
   };
 }
