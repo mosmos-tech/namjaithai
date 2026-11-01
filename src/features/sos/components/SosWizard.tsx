@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
+import { CheckCircle2 } from "lucide-react";
 import {
+  Need,
   urgencyLabel,
   waterLevelLabel,
   type Urgency,
@@ -10,19 +12,31 @@ import {
 import {
   SOS_STEPS,
   saveSosDraft,
+  submitSosDraft,
   validateStep1Draft,
+  validateStep3Draft,
+  validateStep4Draft,
+  validateStep5Draft,
   subscribeSosDraft,
   getSosDraftSnapshot,
   getSosDraftServerSnapshot,
   type SosDraft,
+  type SosDraftPhoto,
   type SosStepNumber,
   type Step1ValidationErrors,
+  type Step3ValidationErrors,
+  type Step4ValidationErrors,
+  type Step5ValidationErrors,
 } from "../draft-storage";
+import { MAX_SOS_PHOTOS } from "../image-compression";
 import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
 import { SosStepActions } from "./SosStepActions";
 import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
 import { Step1UrgencyWater } from "./Step1UrgencyWater";
+import { Step3People, type PeopleGroupKey } from "./Step3People";
+import { Step4Needs } from "./Step4Needs";
+import { Step5Contact } from "./Step5Contact";
 
 /**
  * โครงฟอร์มขอความช่วยเหลือ SOS 5 ขั้น:
@@ -30,7 +44,7 @@ import { Step1UrgencyWater } from "./Step1UrgencyWater";
  * ขั้นที่ 2: ตำแหน่งที่เกิดเหตุ (TF-09)
  * ขั้นที่ 3: จำนวนผู้ติดค้าง (TF-11)
  * ขั้นที่ 4: สิ่งที่ต้องการ (TF-11)
- * ขั้นที่ 5: ข้อมูลติดต่อ (TF-11)
+ * ขั้นที่ 5: ข้อมูลติดต่อและแนบรูป (TF-11)
  *
  * บันทึกร่างลง localStorage ทุกครั้งที่ผู้ใช้เลือกหรือเปลี่ยนขั้น
  *
@@ -43,19 +57,46 @@ export function SosWizard() {
     getSosDraftSnapshot,
     getSosDraftServerSnapshot,
   );
+
+  // สถานะตรวจข้อมูลขั้นที่ 1
   const [step1Attempted, setStep1Attempted] = useState(false);
   const [step1Errors, setStep1Errors] = useState<Step1ValidationErrors>({
     missingSummary: [],
   });
 
-  function updateDraft(updater: (prev: SosDraft) => SosDraft) {
+  // สถานะตรวจข้อมูลขั้นที่ 3
+  const [step3Attempted, setStep3Attempted] = useState(false);
+  const [step3Errors, setStep3Errors] = useState<Step3ValidationErrors>({
+    missingSummary: [],
+  });
+
+  // สถานะตรวจข้อมูลขั้นที่ 4
+  const [step4Attempted, setStep4Attempted] = useState(false);
+  const [step4Errors, setStep4Errors] = useState<Step4ValidationErrors>({
+    missingSummary: [],
+  });
+
+  // สถานะตรวจข้อมูลขั้นที่ 5 และการส่งฟอร์ม
+  const [step5Attempted, setStep5Attempted] = useState(false);
+  const [step5Errors, setStep5Errors] = useState<Step5ValidationErrors>({
+    missingSummary: [],
+  });
+  const isSubmittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
+
+  function updateDraft(updater: (prev: SosDraft) => SosDraft): SosDraft {
     const next = updater(draft);
     saveSosDraft(next);
+    return next;
   }
 
+  // ── ขั้นที่ 1 ───────────────────────────────────────────────────────────────
   function handleSelectUrgency(urgency: Urgency) {
-    const next = { ...draft, urgency };
-    saveSosDraft(next);
+    setSubmitSuccessMessage(null);
+    setSubmitError(null);
+    const next = updateDraft((prev) => ({ ...prev, urgency }));
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -63,8 +104,9 @@ export function SosWizard() {
 
   // ระดับน้ำไม่บังคับ: undefined = ผู้ใช้กดยกเลิกตัวที่เลือกไว้
   function handleSelectWaterLevel(waterLevel: WaterLevel | undefined) {
-    const next = { ...draft, waterLevel };
-    saveSosDraft(next);
+    setSubmitSuccessMessage(null);
+    setSubmitError(null);
+    const next = updateDraft((prev) => ({ ...prev, waterLevel }));
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -85,13 +127,216 @@ export function SosWizard() {
     }));
   }
 
+  // ── ขั้นที่ 3: ผู้ติดค้าง ──────────────────────────────────────────────────
+  function handleChangePeopleCount(group: PeopleGroupKey, nextValue: number) {
+    const next = updateDraft((prev) => ({
+      ...prev,
+      [group]: nextValue,
+    }));
+    if (step3Attempted) {
+      setStep3Errors(validateStep3Draft(next).errors);
+    }
+  }
+
+  function handleStep3Next() {
+    setStep3Attempted(true);
+    const check = validateStep3Draft(draft);
+    setStep3Errors(check.errors);
+
+    if (!check.valid) {
+      return;
+    }
+
+    updateDraft((prev) => ({
+      ...prev,
+      currentStep: 4,
+    }));
+  }
+
+  // ── ขั้นที่ 4: สิ่งที่ต้องการ ──────────────────────────────────────────────
+  function handleToggleNeed(need: Need) {
+    const exists = draft.needs.includes(need);
+    const nextNeeds = exists
+      ? draft.needs.filter((item) => item !== need)
+      : [...draft.needs, need];
+
+    const next = updateDraft((prev) => ({
+      ...prev,
+      needs: nextNeeds,
+    }));
+
+    if (step4Attempted) {
+      setStep4Errors(validateStep4Draft(next).errors);
+    }
+  }
+
+  function handleChangeOtherDetail(otherDetail: string) {
+    const next = updateDraft((prev) => ({
+      ...prev,
+      otherDetail,
+    }));
+
+    if (step4Attempted) {
+      setStep4Errors(validateStep4Draft(next).errors);
+    }
+  }
+
+  function handleStep4Next() {
+    setStep4Attempted(true);
+    const check = validateStep4Draft(draft);
+    setStep4Errors(check.errors);
+
+    if (!check.valid) {
+      return;
+    }
+
+    updateDraft((prev) => ({
+      ...prev,
+      currentStep: 5,
+    }));
+  }
+
+  // ── ขั้นที่ 5: ข้อมูลติดต่อและแนบรูป ───────────────────────────────────────
+  function handleChangeContactField(
+    field: "name" | "phone" | "lineId" | "notes",
+    value: string,
+  ) {
+    setSubmitError(null);
+    setSubmitSuccessMessage(null);
+
+    const next = updateDraft((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    if (step5Attempted) {
+      setStep5Errors(validateStep5Draft(next).errors);
+    }
+  }
+
+  function handleAddPhoto(photo: SosDraftPhoto) {
+    setSubmitError(null);
+    setSubmitSuccessMessage(null);
+
+    const next = updateDraft((prev) => ({
+      ...prev,
+      photos: [...prev.photos, photo].slice(0, MAX_SOS_PHOTOS),
+    }));
+
+    if (step5Attempted) {
+      setStep5Errors(validateStep5Draft(next).errors);
+    }
+  }
+
+  function handleRemovePhoto(photoId: string) {
+    setSubmitError(null);
+    setSubmitSuccessMessage(null);
+
+    const next = updateDraft((prev) => ({
+      ...prev,
+      photos: prev.photos.filter((p) => p.id !== photoId),
+    }));
+
+    if (step5Attempted) {
+      setStep5Errors(validateStep5Draft(next).errors);
+    }
+  }
+
+  async function handleStep5Submit() {
+    if (isSubmittingRef.current) {
+      return;
+    }
+
+    setStep5Attempted(true);
+    setSubmitError(null);
+    setSubmitSuccessMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const result = await submitSosDraft({
+        draft,
+        inFlightRef: isSubmittingRef,
+      });
+
+      if (result.status === "duplicate_in_flight") {
+        return;
+      }
+
+      if (result.status === "invalid_step") {
+        if (result.step === 5) {
+          setStep5Errors(result.step5Errors);
+          return;
+        }
+        if (result.step === 1) {
+          setStep1Attempted(true);
+          setStep1Errors(result.step1Errors);
+          updateDraft((prev) => ({ ...prev, currentStep: 1 }));
+          return;
+        }
+        if (result.step === 3) {
+          setStep3Attempted(true);
+          setStep3Errors(result.step3Errors);
+          updateDraft((prev) => ({ ...prev, currentStep: 3 }));
+          return;
+        }
+        if (result.step === 4) {
+          setStep4Attempted(true);
+          setStep4Errors(result.step4Errors);
+          updateDraft((prev) => ({ ...prev, currentStep: 4 }));
+          return;
+        }
+        if (result.step === 2) {
+          setSubmitError(result.error);
+          return;
+        }
+      }
+
+      if (result.status === "api_error" || result.status === "network_error") {
+        setSubmitError(result.error);
+        return;
+      }
+
+      if (result.status === "submitted") {
+        setStep1Attempted(false);
+        setStep1Errors({ missingSummary: [] });
+        setStep3Attempted(false);
+        setStep3Errors({ missingSummary: [] });
+        setStep4Attempted(false);
+        setStep4Errors({ missingSummary: [] });
+        setStep5Attempted(false);
+        setStep5Errors({ missingSummary: [] });
+        setSubmitSuccessMessage(result.successMessage);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   function handleGoToStep(targetStep: SosStepNumber) {
-    // ถ้าจะข้ามจากขั้นที่ 1 ไปขั้นอื่น ต้องผ่านการตรวจขั้นที่ 1 ก่อน
+    // ตรวจความครบถ้วนของขั้นก่อนหน้าเมื่อผู้ใช้กดข้ามไปขั้นถัดไป
     if (targetStep > 1) {
-      const check = validateStep1Draft(draft);
-      if (!check.valid) {
+      const check1 = validateStep1Draft(draft);
+      if (!check1.valid) {
         setStep1Attempted(true);
-        setStep1Errors(check.errors);
+        setStep1Errors(check1.errors);
+        return;
+      }
+    }
+
+    if (targetStep > 3 && draft.currentStep === 3) {
+      const check3 = validateStep3Draft(draft);
+      if (!check3.valid) {
+        setStep3Attempted(true);
+        setStep3Errors(check3.errors);
+        return;
+      }
+    }
+
+    if (targetStep > 4 && draft.currentStep === 4) {
+      const check4 = validateStep4Draft(draft);
+      if (!check4.valid) {
+        setStep4Attempted(true);
+        setStep4Errors(check4.errors);
         return;
       }
     }
@@ -121,7 +366,22 @@ export function SosWizard() {
         <div className="flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:border-border-default lg:bg-bg-surface lg:px-14 lg:py-12">
           <SosProgressBar currentStep={draft.currentStep} />
 
-          {draft.currentStep === 1 ? (
+          {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
+          {submitSuccessMessage && draft.currentStep !== 5 && (
+            <div
+              role="status"
+              data-testid="step5-submit-success"
+              className="flex items-start gap-3 rounded-[12px] border border-green-700/30 bg-green-50 p-4 text-base text-green-700"
+            >
+              <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
+              <div>
+                <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
+                <p className="mt-0.5">{submitSuccessMessage}</p>
+              </div>
+            </div>
+          )}
+
+          {draft.currentStep === 1 && (
             <Step1UrgencyWater
               urgency={draft.urgency}
               waterLevel={draft.waterLevel}
@@ -130,8 +390,9 @@ export function SosWizard() {
               onSelectWaterLevel={handleSelectWaterLevel}
               onNext={handleStep1Next}
             />
-          ) : (
-            // ขั้น 2–5 ยังไม่ทำ (TF-09, TF-11) แสดงสรุปขั้นที่ 1 และปุ่มไปต่อไว้ก่อน
+          )}
+
+          {draft.currentStep === 2 && (
             <>
               <section aria-labelledby="step-placeholder-heading" className="flex flex-col gap-4">
                 <h2
@@ -140,7 +401,9 @@ export function SosWizard() {
                 >
                   {currentStepDef.title}
                 </h2>
-                <p className="text-lg leading-[1.65] text-text-secondary">{currentStepDef.description}</p>
+                <p className="text-lg leading-[1.65] text-text-secondary">
+                  {currentStepDef.description}
+                </p>
                 <div className="rounded-[12px] bg-bg-subtle p-4 text-base text-text-secondary">
                   ความเร่งด่วน:{" "}
                   <strong className="text-text-primary">
@@ -152,15 +415,58 @@ export function SosWizard() {
                   </strong>
                 </div>
               </section>
-              {draft.currentStep < 5 && (
-                <SosStepActions
-                  onPrev={goToPrevStep}
-                  onNext={() => handleGoToStep((draft.currentStep + 1) as SosStepNumber)}
-                  mobileLabel="ถัดไป"
-                  desktopLabel={`ถัดไป: ${SOS_STEPS[draft.currentStep].shortLabel}`}
-                />
-              )}
+              <SosStepActions
+                onPrev={goToPrevStep}
+                onNext={() => handleGoToStep(3)}
+                mobileLabel="ถัดไป"
+                desktopLabel={`ถัดไป: ${SOS_STEPS[2].shortLabel}`}
+              />
             </>
+          )}
+
+          {draft.currentStep === 3 && (
+            <Step3People
+              adults={draft.adults}
+              elderly={draft.elderly}
+              bedridden={draft.bedridden}
+              childrenCount={draft.children}
+              pets={draft.pets}
+              errors={step3Errors}
+              onChangeCount={handleChangePeopleCount}
+              onPrev={() => handleGoToStep(2)}
+              onNext={handleStep3Next}
+            />
+          )}
+
+          {draft.currentStep === 4 && (
+            <Step4Needs
+              needs={draft.needs}
+              otherDetail={draft.otherDetail}
+              errors={step4Errors}
+              onToggleNeed={handleToggleNeed}
+              onChangeOtherDetail={handleChangeOtherDetail}
+              onPrev={() => handleGoToStep(3)}
+              onNext={handleStep4Next}
+            />
+          )}
+
+          {draft.currentStep === 5 && (
+            <Step5Contact
+              name={draft.name}
+              phone={draft.phone}
+              lineId={draft.lineId}
+              notes={draft.notes}
+              photos={draft.photos}
+              errors={step5Errors}
+              isSubmitting={isSubmitting}
+              submitError={submitError}
+              submitSuccessMessage={submitSuccessMessage}
+              onChangeField={handleChangeContactField}
+              onAddPhoto={handleAddPhoto}
+              onRemovePhoto={handleRemovePhoto}
+              onPrev={() => handleGoToStep(4)}
+              onSubmit={handleStep5Submit}
+            />
           )}
         </div>
       </div>
