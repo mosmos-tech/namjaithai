@@ -514,8 +514,7 @@ export function loadSosDraft(
 
     // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ ให้กลับมาเริ่มที่ขั้นที่ 1
     const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
-    const currentStep: SosStepNumber =
-      rawStep > 1 && (!urgency || !waterLevel) ? 1 : rawStep;
+    const currentStep: SosStepNumber = rawStep > 1 && !urgency ? 1 : rawStep;
 
     return {
       ...initial,
@@ -709,12 +708,12 @@ export async function submitSosDraft(
     }
 
     const check1 = validateStep1Draft(draft);
-    if (!check1.valid || !draft.urgency || !draft.waterLevel) {
+    if (!check1.valid || !draft.urgency) {
       return {
         status: "invalid_step",
         step: 1,
         step1Errors: check1.errors,
-        error: "ยังส่งคำขอไม่ได้ กรุณาเลือกระดับความเร่งด่วนและระดับน้ำในขั้นที่ 1",
+        error: "ยังส่งคำขอไม่ได้ กรุณาเลือกระดับความเร่งด่วนในขั้นที่ 1",
       };
     }
 

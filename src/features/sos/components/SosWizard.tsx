@@ -12,7 +12,6 @@ import {
 import {
   SOS_STEPS,
   saveSosDraft,
-  clearSosDraft,
   submitSosDraft,
   validateStep1Draft,
   validateStep3Draft,
@@ -30,7 +29,10 @@ import {
   type Step5ValidationErrors,
 } from "../draft-storage";
 import { MAX_SOS_PHOTOS } from "../image-compression";
-import { SosProgressBar } from "./SosProgressBar";
+import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
+import { SosStepActions } from "./SosStepActions";
+import { SosStepperCard } from "./SosStepperCard";
+import { SosTopBar } from "./SosTopBar";
 import { Step1UrgencyWater } from "./Step1UrgencyWater";
 import { Step3People, type PeopleGroupKey } from "./Step3People";
 import { Step4Needs } from "./Step4Needs";
@@ -100,7 +102,8 @@ export function SosWizard() {
     }
   }
 
-  function handleSelectWaterLevel(waterLevel: WaterLevel) {
+  // ระดับน้ำไม่บังคับ: undefined = ผู้ใช้กดยกเลิกตัวที่เลือกไว้
+  function handleSelectWaterLevel(waterLevel: WaterLevel | undefined) {
     setSubmitSuccessMessage(null);
     setSubmitError(null);
     const next = updateDraft((prev) => ({ ...prev, waterLevel }));
@@ -344,20 +347,6 @@ export function SosWizard() {
     }));
   }
 
-  function handleResetDraft() {
-    clearSosDraft();
-    setStep1Attempted(false);
-    setStep1Errors({ missingSummary: [] });
-    setStep3Attempted(false);
-    setStep3Errors({ missingSummary: [] });
-    setStep4Attempted(false);
-    setStep4Errors({ missingSummary: [] });
-    setStep5Attempted(false);
-    setStep5Errors({ missingSummary: [] });
-    setSubmitError(null);
-    setSubmitSuccessMessage(null);
-  }
-
   const currentStepDef = SOS_STEPS[draft.currentStep - 1];
 
   const goToPrevStep =
@@ -377,7 +366,22 @@ export function SosWizard() {
         <div className="flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:border-border-default lg:bg-bg-surface lg:px-14 lg:py-12">
           <SosProgressBar currentStep={draft.currentStep} />
 
-          {draft.currentStep === 1 ? (
+          {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
+          {submitSuccessMessage && draft.currentStep !== 5 && (
+            <div
+              role="status"
+              data-testid="step5-submit-success"
+              className="flex items-start gap-3 rounded-[12px] border border-green-700/30 bg-green-50 p-4 text-base text-green-700"
+            >
+              <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
+              <div>
+                <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
+                <p className="mt-0.5">{submitSuccessMessage}</p>
+              </div>
+            </div>
+          )}
+
+          {draft.currentStep === 1 && (
             <Step1UrgencyWater
               urgency={draft.urgency}
               waterLevel={draft.waterLevel}
@@ -386,8 +390,9 @@ export function SosWizard() {
               onSelectWaterLevel={handleSelectWaterLevel}
               onNext={handleStep1Next}
             />
-          ) : (
-            // ขั้น 2–5 ยังไม่ทำ (TF-09, TF-11) แสดงสรุปขั้นที่ 1 และปุ่มไปต่อไว้ก่อน
+          )}
+
+          {draft.currentStep === 2 && (
             <>
               <section aria-labelledby="step-placeholder-heading" className="flex flex-col gap-4">
                 <h2
@@ -396,7 +401,9 @@ export function SosWizard() {
                 >
                   {currentStepDef.title}
                 </h2>
-                <p className="text-lg leading-[1.65] text-text-secondary">{currentStepDef.description}</p>
+                <p className="text-lg leading-[1.65] text-text-secondary">
+                  {currentStepDef.description}
+                </p>
                 <div className="rounded-[12px] bg-bg-subtle p-4 text-base text-text-secondary">
                   ความเร่งด่วน:{" "}
                   <strong className="text-text-primary">
@@ -408,174 +415,61 @@ export function SosWizard() {
                   </strong>
                 </div>
               </section>
-              {draft.currentStep < 5 && (
-                <SosStepActions
-                  onPrev={goToPrevStep}
-                  onNext={() => handleGoToStep((draft.currentStep + 1) as SosStepNumber)}
-                  mobileLabel="ถัดไป"
-                  desktopLabel={`ถัดไป: ${SOS_STEPS[draft.currentStep].shortLabel}`}
-                />
-              )}
+              <SosStepActions
+                onPrev={goToPrevStep}
+                onNext={() => handleGoToStep(3)}
+                mobileLabel="ถัดไป"
+                desktopLabel={`ถัดไป: ${SOS_STEPS[2].shortLabel}`}
+              />
             </>
           )}
+
+          {draft.currentStep === 3 && (
+            <Step3People
+              adults={draft.adults}
+              elderly={draft.elderly}
+              bedridden={draft.bedridden}
+              childrenCount={draft.children}
+              pets={draft.pets}
+              errors={step3Errors}
+              onChangeCount={handleChangePeopleCount}
+              onPrev={() => handleGoToStep(2)}
+              onNext={handleStep3Next}
+            />
+          )}
+
+          {draft.currentStep === 4 && (
+            <Step4Needs
+              needs={draft.needs}
+              otherDetail={draft.otherDetail}
+              errors={step4Errors}
+              onToggleNeed={handleToggleNeed}
+              onChangeOtherDetail={handleChangeOtherDetail}
+              onPrev={() => handleGoToStep(3)}
+              onNext={handleStep4Next}
+            />
+          )}
+
+          {draft.currentStep === 5 && (
+            <Step5Contact
+              name={draft.name}
+              phone={draft.phone}
+              lineId={draft.lineId}
+              notes={draft.notes}
+              photos={draft.photos}
+              errors={step5Errors}
+              isSubmitting={isSubmitting}
+              submitError={submitError}
+              submitSuccessMessage={submitSuccessMessage}
+              onChangeField={handleChangeContactField}
+              onAddPhoto={handleAddPhoto}
+              onRemovePhoto={handleRemovePhoto}
+              onPrev={() => handleGoToStep(4)}
+              onSubmit={handleStep5Submit}
+            />
+          )}
         </div>
-
-        {(draft.urgency || draft.waterLevel || draft.name || draft.phone) && (
-          <button
-            type="button"
-            onClick={handleResetDraft}
-            className="inline-flex h-12 items-center rounded-full border border-border-strong bg-bg-surface px-4 font-heading text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-subtle hover:text-text-primary"
-          >
-            เริ่มกรอกใหม่
-          </button>
-        )}
       </div>
-
-      {/* แถบความคืบหน้า 5 ช่อง + ข้อความ "ขั้นที่ X จาก 5" */}
-      <div className="mb-6">
-        <SosProgressBar
-          currentStep={draft.currentStep}
-          onSelectStep={handleGoToStep}
-        />
-      </div>
-
-      {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
-      {submitSuccessMessage && draft.currentStep !== 5 && (
-        <div
-          role="status"
-          data-testid="step5-submit-success"
-          className="mb-6 flex items-start gap-3 rounded-[12px] border border-green-700/30 bg-green-50 p-4 text-base text-green-700"
-        >
-          <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
-          <div>
-            <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
-            <p className="mt-0.5">{submitSuccessMessage}</p>
-          </div>
-        </div>
-      )}
-
-      {/* เนื้อหาแต่ละขั้น */}
-      {draft.currentStep === 1 && (
-        <Step1UrgencyWater
-          urgency={draft.urgency}
-          waterLevel={draft.waterLevel}
-          errors={step1Errors}
-          onSelectUrgency={handleSelectUrgency}
-          onSelectWaterLevel={handleSelectWaterLevel}
-          onNext={handleStep1Next}
-        />
-      )}
-
-      {draft.currentStep === 2 && (
-        <section
-          aria-labelledby="step-placeholder-heading"
-          className="space-y-6 rounded-[14px] border border-border-default bg-bg-surface p-5 sm:p-6"
-        >
-          {/* สรุปค่าที่เลือกไว้จากขั้นที่ 1 */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] bg-bg-subtle p-4">
-            <div className="space-y-1 text-base">
-              <p className="font-heading font-semibold text-text-primary">
-                ข้อมูลจากขั้นที่ 1 (บันทึกไว้แล้ว)
-              </p>
-              <p className="text-text-secondary">
-                ความเร่งด่วน:{" "}
-                <strong className="text-text-primary">
-                  {draft.urgency ? urgencyLabel[draft.urgency] : "-"}
-                </strong>{" "}
-                · ระดับน้ำ:{" "}
-                <strong className="text-text-primary">
-                  {draft.waterLevel ? waterLevelLabel[draft.waterLevel] : "-"}
-                </strong>
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleGoToStep(1)}
-              className="inline-flex h-12 items-center rounded-full border border-border-strong bg-bg-surface px-4 font-heading text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-50"
-            >
-              แก้ไขขั้นที่ 1
-            </button>
-          </div>
-
-          <div>
-            <h2
-              id="step-placeholder-heading"
-              className="font-heading text-xl font-bold text-text-primary sm:text-[22px]"
-            >
-              {currentStepDef.step}. {currentStepDef.title}
-            </h2>
-            <p className="mt-1.5 text-base leading-relaxed text-text-secondary">
-              {currentStepDef.description}
-            </p>
-          </div>
-
-          {/* ปุ่มย้อนกลับ / ถัดไป (สูง >= 48px ตามกติกา) */}
-          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-between">
-            <button
-              type="button"
-              data-testid="wizard-prev-button"
-              onClick={() => handleGoToStep(1)}
-              className="flex h-14 w-full items-center justify-center rounded-full border border-border-strong bg-bg-surface px-6 font-heading text-[19px] font-semibold text-text-primary transition-colors hover:bg-bg-subtle sm:w-auto sm:min-w-[160px]"
-            >
-              ← ย้อนกลับ
-            </button>
-
-            <button
-              type="button"
-              data-testid="wizard-next-button"
-              onClick={() => handleGoToStep(3)}
-              className="flex h-14 w-full items-center justify-center rounded-full bg-primary-600 px-8 font-heading text-[19px] font-semibold text-text-on-primary transition-colors hover:bg-primary-700 active:bg-primary-700 sm:w-auto sm:min-w-[200px]"
-            >
-              ถัดไป: {SOS_STEPS[2].shortLabel} →
-            </button>
-          </div>
-        </section>
-      )}
-
-      {draft.currentStep === 3 && (
-        <Step3People
-          adults={draft.adults}
-          elderly={draft.elderly}
-          bedridden={draft.bedridden}
-          childrenCount={draft.children}
-          pets={draft.pets}
-          errors={step3Errors}
-          onChangeCount={handleChangePeopleCount}
-          onPrev={() => handleGoToStep(2)}
-          onNext={handleStep3Next}
-        />
-      )}
-
-      {draft.currentStep === 4 && (
-        <Step4Needs
-          needs={draft.needs}
-          otherDetail={draft.otherDetail}
-          errors={step4Errors}
-          onToggleNeed={handleToggleNeed}
-          onChangeOtherDetail={handleChangeOtherDetail}
-          onPrev={() => handleGoToStep(3)}
-          onNext={handleStep4Next}
-        />
-      )}
-
-      {draft.currentStep === 5 && (
-        <Step5Contact
-          name={draft.name}
-          phone={draft.phone}
-          lineId={draft.lineId}
-          notes={draft.notes}
-          photos={draft.photos}
-          errors={step5Errors}
-          isSubmitting={isSubmitting}
-          submitError={submitError}
-          submitSuccessMessage={submitSuccessMessage}
-          onChangeField={handleChangeContactField}
-          onAddPhoto={handleAddPhoto}
-          onRemovePhoto={handleRemovePhoto}
-          onPrev={() => handleGoToStep(4)}
-          onSubmit={handleStep5Submit}
-        />
-      )}
     </div>
   );
 }
