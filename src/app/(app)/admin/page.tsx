@@ -8,17 +8,16 @@ export const metadata: Metadata = { title: "ห้องสั่งการ �
 export default function Page({ searchParams }: PageProps<"/admin">) {
   return (
     <Suspense fallback={<p className="text-text-secondary p-8 text-center text-lg">กำลังโหลด…</p>}>
-      <>
-        <SignedInShell
-          pathname="/admin"
-          title="ห้องสั่งการ"
-          comingIn="TF-33"
-          denied={searchParams.then((p) => p.denied === "1")}
-        />
+      <SignedInShell
+        pathname="/admin"
+        title="ห้องสั่งการ"
+        comingIn="TF-33"
+        denied={searchParams.then((p) => p.denied === "1")}
+      >
         <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
           <UnitInvitePanel />
         </div>
-      </>
+      </SignedInShell>
     </Suspense>
   );
 }
