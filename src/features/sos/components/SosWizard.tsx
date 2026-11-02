@@ -4,14 +4,11 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import {
   Need,
-  urgencyLabel,
-  waterLevelLabel,
   type LocatedArea,
   type Urgency,
   type WaterLevel,
 } from "../../../lib/domain";
 import {
-  SOS_STEPS,
   applyGpsPositionToDraft,
   applyLocatedAreaToDraft,
   applyManualPinToDraft,
@@ -36,7 +33,6 @@ import {
 } from "../draft-storage";
 import { MAX_SOS_PHOTOS } from "../image-compression";
 import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
-import { SosStepActions } from "./SosStepActions";
 import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
 import { Step1UrgencyWater } from "./Step1UrgencyWater";
@@ -372,7 +368,6 @@ export function SosWizard() {
     }
   }
 
->>>>>>> origin/develop
   function handleGoToStep(targetStep: SosStepNumber) {
     // ตรวจความครบถ้วนของขั้นก่อนหน้าเมื่อผู้ใช้กดข้ามไปขั้นถัดไป
     if (targetStep > 1) {
@@ -420,8 +415,6 @@ export function SosWizard() {
       currentStep: targetStep,
     }));
   }
-
-  const currentStepDef = SOS_STEPS[draft.currentStep - 1];
 
   const goToPrevStep =
     draft.currentStep > 1

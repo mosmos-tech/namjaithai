@@ -425,6 +425,8 @@ export function getTotalPeopleCount(
     Math.max(0, draft.children)
   );
 }
+
+/**
  * ตรวจสอบข้อมูลขั้นที่ 3 (ผู้ติดค้าง) ด้วย step3Schema จาก src/lib/domain
  * เกณฑ์ผ่าน: จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน
  */
@@ -607,7 +609,6 @@ export function validateStep5Draft(
     normalizedPhone: parsed.success ? parsed.data.phone : undefined,
     errors,
   };
->>>>>>> origin/develop
 }
 
 function isValidStepNumber(value: unknown): value is SosStepNumber {
@@ -906,7 +907,7 @@ export async function submitSosDraft(
         status: "invalid_step",
         step: 2,
         step2Errors: check2.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check2.errors.missingSummary.join("และ")}ก่อนส่งคำขอ`,
+        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check2.errors.missingSummary.join("และ")} ในขั้นที่ 2 ก่อนส่งคำขอ`,
       };
     }
 
