@@ -18,7 +18,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "geo:build-seed": "node scripts/geo/build-seed.mjs",
-    "auth:setup-line": "node --env-file=.env.local scripts/auth/setup-line-provider.mjs"
+    "auth:setup-line": "node --env-file=.env.local scripts/auth/setup-line-provider.mjs",
+    "notifications:line": "node --env-file=.env.local scripts/notifications/run-line.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
