@@ -61,6 +61,7 @@ export async function goToStep5(page: Page) {
   await chooseUrgency(page, "เร่งด่วน");
   await nextButton(page).click();
   await expectStep(page, 2);
+  await seedLocationIntoDraft(page);
   await nextButton(page).click();
   await expectStep(page, 3);
   await nextButton(page).click();

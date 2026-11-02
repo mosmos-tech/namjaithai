@@ -681,6 +681,21 @@ export function Step2Location({
         </div>
       </section>
 
+      {errors.missingSummary && errors.missingSummary.length > 0 && (
+        <div
+          role="alert"
+          data-testid="step2-missing-alert"
+          className="rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
+        >
+          <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
+          <ul className="mt-1 list-disc pl-5 font-medium">
+            {errors.missingSummary.map((item) => (
+              <li key={item}>กรุณาระบุ{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <SosStepActions
         onPrev={onPrev}
         onNext={onNext}
