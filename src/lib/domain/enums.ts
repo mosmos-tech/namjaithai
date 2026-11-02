@@ -11,30 +11,40 @@ export const urgencyLabel: Record<Urgency, string> = {
   GREEN: "ทั่วไป",
 };
 
-// ระดับน้ำ 5 แบบ (เรียงจากน้อยไปมาก)
+// ระดับน้ำรอบตัวผู้แจ้ง 5 แบบ ตาม Figma (B1 · SOS step 1) — ไม่บังคับกรอก (หน้าจอมือถือไม่ได้ถาม)
 export const WaterLevel = {
-  ANKLE: "ANKLE",
-  KNEE: "KNEE",
-  WAIST: "WAIST",
-  CHEST: "CHEST",
   ROOF: "ROOF",
+  FIRST_FLOOR: "FIRST_FLOOR",
+  WAIST_CHEST: "WAIST_CHEST",
+  ANKLE_KNEE: "ANKLE_KNEE",
+  SURROUNDED: "SURROUNDED",
 } as const;
 export type WaterLevel = (typeof WaterLevel)[keyof typeof WaterLevel];
 
 export const waterLevelLabel: Record<WaterLevel, string> = {
-  ANKLE: "ถึงข้อเท้า",
-  KNEE: "ถึงเข่า",
-  WAIST: "ถึงเอว",
-  CHEST: "ถึงอก",
-  ROOF: "ท่วมถึงหลังคา",
+  ROOF: "บนหลังคา / ดาดฟ้า",
+  FIRST_FLOOR: "ท่วมชั้น 1 (อยู่ชั้น 2)",
+  WAIST_CHEST: "ระดับเอว–หน้าอก",
+  ANKLE_KNEE: "ระดับข้อเท้า–เข่า",
+  SURROUNDED: "ถูกน้ำล้อม / ตัดขาด",
 };
 
-// ลำดับระดับน้ำจากน้อยไปมาก — ใช้ใน priorityScore
+// ลำดับที่แสดงบนหน้าจอ (ตาม Figma)
+export const WATER_LEVEL_DISPLAY_ORDER: WaterLevel[] = [
+  WaterLevel.ROOF,
+  WaterLevel.FIRST_FLOOR,
+  WaterLevel.WAIST_CHEST,
+  WaterLevel.ANKLE_KNEE,
+  WaterLevel.SURROUNDED,
+];
+
+// ลำดับความรุนแรงจากน้อยไปมาก — ใช้ใน priorityScore
+// ถูกน้ำล้อม/ตัดขาด: น้ำอาจยังไม่สูง แต่ออกเองไม่ได้ จึงหนักกว่าข้อเท้า–เข่า แต่เบากว่าเอว–หน้าอก
 export const WATER_LEVEL_ORDER: WaterLevel[] = [
-  WaterLevel.ANKLE,
-  WaterLevel.KNEE,
-  WaterLevel.WAIST,
-  WaterLevel.CHEST,
+  WaterLevel.ANKLE_KNEE,
+  WaterLevel.SURROUNDED,
+  WaterLevel.WAIST_CHEST,
+  WaterLevel.FIRST_FLOOR,
   WaterLevel.ROOF,
 ];
 

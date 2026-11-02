@@ -18,27 +18,41 @@ function WaterDropHeart(props: SVGProps<SVGSVGElement>) {
 }
 
 interface LogoProps {
-  /** sm = footer; default = navbar */
-  size?: "default" | "sm";
+  /** sm = footer; default = navbar; lg = แผงน้ำเงินหน้าเข้าใช้งาน (Figma: Logo/Lockup-OnBlue 44px) */
+  size?: "default" | "sm" | "lg";
+  /** onBlue = วางบนพื้นน้ำเงิน: หยดน้ำและตัวหนังสือสีขาว */
+  tone?: "default" | "onBlue";
 }
 
-export function Logo({ size = "default" }: LogoProps) {
-  const iconSize = size === "sm" ? "h-8 w-8" : "h-10 w-10";
-  const nameSize = size === "sm" ? "text-base" : "text-xl";
+export function Logo({ size = "default", tone = "default" }: LogoProps) {
+  const iconSize = size === "sm" ? "h-8 w-8" : size === "lg" ? "size-11" : "h-10 w-10";
+  const nameSize = size === "sm" ? "text-base" : size === "lg" ? "text-[28px]" : "text-xl";
+  const onBlue = tone === "onBlue";
 
   return (
-    <div className="flex items-center gap-2.5">
-      <WaterDropHeart className={`shrink-0 ${iconSize}`} />
+    <div className={`flex items-center ${size === "lg" ? "gap-3" : "gap-2.5"}`}>
+      {onBlue ? (
+        // eslint-disable-next-line @next/next/no-img-element -- SVG จาก Figma (Logo/Mark-White)
+        <img src="/brand/logo-mark-white.svg" alt="" className={`shrink-0 ${iconSize}`} />
+      ) : (
+        <WaterDropHeart className={`shrink-0 ${iconSize}`} />
+      )}
       <div>
         <div className="flex items-center gap-1.5">
-          <span className={`font-heading font-bold leading-tight text-text-primary ${nameSize}`}>
+          <span
+            className={`font-heading font-bold leading-tight ${onBlue ? "text-text-on-primary" : "text-text-primary"} ${nameSize}`}
+          >
             น้ำใจไทย
           </span>
-          <span className="rounded bg-red-600 px-1.5 py-0.5 font-heading text-xs font-bold leading-none text-white">
+          <span
+            className={`rounded bg-red-600 px-1.5 py-0.5 font-heading font-bold leading-none text-white ${size === "lg" ? "text-base" : "text-xs"}`}
+          >
             SOS
           </span>
         </div>
-        <p className="mt-px text-xs leading-tight text-text-secondary">
+        <p
+          className={`mt-px leading-tight ${onBlue ? "text-text-on-primary" : "text-text-secondary"} ${size === "lg" ? "text-sm" : "text-xs"}`}
+        >
           ศูนย์ประสานงานช่วยเหลือน้ำท่วม
         </p>
       </div>
