@@ -10,6 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:db": "supabase test db",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed --workers=1",
     "e2e:ui": "playwright test --ui",
