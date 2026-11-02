@@ -1,9 +1,28 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export default async function JoinPendingPage() {
+export default function JoinPendingPage() {
+  return (
+    <Suspense fallback={<JoinPendingFallback />}>
+      <JoinPendingContent />
+    </Suspense>
+  );
+}
+
+function JoinPendingFallback() {
+  return (
+    <main className="bg-bg-page flex flex-1 items-center justify-center px-4 py-10">
+      <section className="bg-bg-surface border-border-default w-full max-w-xl rounded-2xl border p-6 text-center shadow-sm sm:p-10">
+        <p className="text-text-secondary">กำลังตรวจสอบสถานะการสมัคร...</p>
+      </section>
+    </main>
+  );
+}
+
+async function JoinPendingContent() {
   const user = await getCurrentAppUser();
   if (!user || user.status !== "ACTIVE") redirect("/login");
   const { data } = await createAdminClient()
