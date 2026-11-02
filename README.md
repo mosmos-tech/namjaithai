@@ -88,3 +88,29 @@ npm run dev
 4. รัน `npm run auth:setup-line` — **ต้องรันใหม่ทุกครั้งหลัง `npm run db:reset`** เพราะ Supabase เก็บค่านี้ในฐานข้อมูล
 
 หลังล็อกอินพาไปหน้าตามบทบาท: ผู้ใช้ `/my-cases` · กู้ภัย `/rescue` · หัวหน้าหน่วย `/unit` · แอดมิน `/admin` (กติกาอยู่ใน `src/lib/domain/roles.ts`)
+
+## E2E test (Playwright · TF-48)
+
+เปิดเว็บจริงใน Chrome แล้วกดแบบผู้ใช้ รันทุก test 2 ขนาดจอ: **mobile** (iPhone SE 375×667) และ **desktop** (1280×800)
+
+```bash
+npm run db:start        # ต้องเปิด Supabase ในเครื่องก่อน (test ใช้ฐานข้อมูลในเครื่องเท่านั้น)
+npm run e2e             # รันทั้งหมดแบบไม่เห็นจอ (เปิด npm run dev ให้เอง ถ้าเปิดค้างไว้จะใช้ตัวนั้น)
+npm run e2e:headed      # เห็นเบราว์เซอร์กดทีละขั้น
+npm run e2e:ui          # UI mode: เลือก test, ดูทีละขั้น, ย้อนดูหน้าจอ
+npx playwright test e2e/auth.spec.ts --project=mobile   # รันเฉพาะไฟล์/ขนาดจอ
+```
+
+- ต้องมี Google Chrome ในเครื่อง ครั้งแรกรัน `npx playwright install ffmpeg` (ใช้อัดวิดีโอตอน test ล้ม)
+- test ล้มแล้วดูวิดีโอ/ภาพหน้าจอได้ใน `test-results/` (ใน CI โหลดได้จาก Artifacts ของ job **e2e**)
+- ก่อนรัน ระบบล้างตัวนับ rate limit ในฐานข้อมูลในเครื่องให้ (`e2e/global-setup.ts`) และจะไม่ยอมรันถ้าชี้ไป Supabase ที่ไม่ใช่ในเครื่อง
+
+**เพิ่ม test ใหม่**
+
+1. สร้างไฟล์ `e2e/<ชื่อหน้า>.spec.ts` หรือเพิ่มในไฟล์ของหน้านั้น ตั้งชื่อ test เป็นภาษาไทยตามเกณฑ์ผ่านของการ์ด
+2. หาปุ่ม/ช่องจากสิ่งที่ผู้ใช้เห็น: `page.getByRole("button", { name: "ดูสถานะเคส" })`, `getByText`, `getByPlaceholder` — **ห้ามใช้ class CSS**
+3. ต่างกันระหว่างมือถือ/จอคอม ใช้ `isMobile` และ `test.skip(...)` เฉพาะข้อนั้น
+4. ต้องการเคสตั้งต้นใช้ `createCaseViaApi()` ใน `e2e/helpers/db.ts` (สุ่มเบอร์/พิกัดให้ ไม่ชนการตรวจเคสซ้ำ)
+5. เจอบั๊กห้ามแก้ test ให้ผ่าน — ใส่ `test.fail(true, "บั๊ก E2E-n: ...")` แล้วแจ้งทีม พอแก้บั๊กแล้ว test จะล้มเตือนให้เอา `test.fail` ออก
+
+บั๊กที่ test เจออยู่ตอนนี้: **E2E-1** ลิงก์ "นโยบายความเป็นส่วนตัว" ใน footer ไปหน้า `/privacy` ที่ยังไม่มี · **E2E-2** ส่ง SOS ด้วยเบอร์ซ้ำ ไม่มีปุ่ม "อัปเดตเคสเดิม / สร้างใหม่" (TF-16)
