@@ -3,6 +3,8 @@ import { postLoginPath } from "@/lib/domain";
 import { createClient } from "@/lib/supabase/server";
 import { upsertAppUserOnLogin } from "@/features/auth/server/app-user";
 import { LOGIN_NEXT_COOKIE } from "@/features/auth/login-next-cookie";
+import { INVITE_COOKIE } from "@/features/auth/invite-cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * GET /auth/callback?code=... — LINE → Supabase → กลับมาที่นี่หลังผู้ใช้กดยืนยัน
@@ -15,6 +17,7 @@ export async function GET(request: NextRequest) {
   const fail = (reason: string) => {
     const res = NextResponse.redirect(new URL(`/login?error=${reason}`, origin));
     res.cookies.delete(LOGIN_NEXT_COOKIE);
+    res.cookies.delete(INVITE_COOKIE);
     return res;
   };
 
@@ -32,6 +35,14 @@ export async function GET(request: NextRequest) {
   let appUser;
   try {
     appUser = await upsertAppUserOnLogin(data.user);
+    const inviteToken = request.cookies.get(INVITE_COOKIE)?.value;
+    if (inviteToken) {
+      const { data: joined, error: joinError } = await createAdminClient().rpc("join_unit_with_invite", {
+        p_token: inviteToken,
+        p_user_id: appUser.id,
+      });
+      if (joinError || !joined) throw joinError ?? new Error("ไม่สามารถใช้ลิงก์สมัครได้");
+    }
   } catch {
     await supabase.auth.signOut();
     return fail("profile");
@@ -45,5 +56,6 @@ export async function GET(request: NextRequest) {
   const next = request.cookies.get(LOGIN_NEXT_COOKIE)?.value;
   const res = NextResponse.redirect(new URL(postLoginPath(appUser, next), origin));
   res.cookies.delete(LOGIN_NEXT_COOKIE);
+  res.cookies.delete(INVITE_COOKIE);
   return res;
 }
