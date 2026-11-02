@@ -76,7 +76,7 @@ test.describe("TF-19 ลิงก์สมัครกู้ภัย", () => {
   test("ลิงก์ใช้ได้พาไปยืนยันตัวตนด้วย LINE อัตโนมัติ", async ({ request }) => {
     const entry = await request.get(`/join/${inviteToken}`, { maxRedirects: 0 });
     expect(entry.status()).toBe(307);
-    expect(entry.headers().location).toBe(`/auth/line?invite=${inviteToken}`);
+    expect(entry.headers().location).toBe(new URL(`/auth/line?invite=${inviteToken}`, "http://localhost:3000").href);
 
     const oauth = await request.get(entry.headers().location, { maxRedirects: 0 });
     expect(oauth.status()).toBe(307);
