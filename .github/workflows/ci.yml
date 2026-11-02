@@ -36,3 +36,48 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
           SUPABASE_SECRET_KEY: ci-placeholder
+
+  # E2E (TF-48): เปิดเว็บจริงด้วย Playwright บน Chrome ทั้งขนาดมือถือ (iPhone SE) และจอคอม
+  # แยก job รันคู่ขนานกับ ci ข้างบน ใช้ Supabase ในเครื่อง CI (Docker) ไม่แตะฐานข้อมูลจริง
+  # test ล้มแล้วเก็บวิดีโอ/ภาพหน้าจอ/trace ไว้ดาวน์โหลดได้ที่หน้า Actions (Artifacts)
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # ข้าม service ที่เว็บยังไม่ใช้ ให้เปิดเร็วขึ้น (migration + seed จังหวัดรันเองตอน start)
+      - name: Start Supabase
+        run: npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor,realtime,storage-api
+
+      # เขียน .env.local จากคีย์ของ Supabase ใน CI (คีย์ทดสอบที่สร้างใหม่ทุกครั้ง ไม่ใช่ความลับ)
+      - name: Write .env.local
+        run: |
+          eval "$(npx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+          } > .env.local
+
+      # ใช้ Google Chrome ที่มีในเครื่อง CI อยู่แล้ว โหลดเพิ่มแค่ ffmpeg สำหรับอัดวิดีโอ
+      - run: npx playwright install ffmpeg
+
+      - run: npm run e2e
+
+      - name: Upload videos and report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
