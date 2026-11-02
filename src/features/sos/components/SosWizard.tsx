@@ -4,25 +4,32 @@ import { useState, useSyncExternalStore } from "react";
 import {
   urgencyLabel,
   waterLevelLabel,
+  type LocatedArea,
   type Urgency,
   type WaterLevel,
 } from "../../../lib/domain";
 import {
   SOS_STEPS,
+  applyGpsPositionToDraft,
+  applyLocatedAreaToDraft,
+  applyManualPinToDraft,
   saveSosDraft,
   validateStep1Draft,
+  validateStep2Draft,
   subscribeSosDraft,
   getSosDraftSnapshot,
   getSosDraftServerSnapshot,
   type SosDraft,
   type SosStepNumber,
   type Step1ValidationErrors,
+  type Step2ValidationErrors,
 } from "../draft-storage";
 import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
 import { SosStepActions } from "./SosStepActions";
 import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
 import { Step1UrgencyWater } from "./Step1UrgencyWater";
+import { Step2Location } from "./Step2Location";
 
 /**
  * โครงฟอร์มขอความช่วยเหลือ SOS 5 ขั้น:
@@ -47,15 +54,20 @@ export function SosWizard() {
   const [step1Errors, setStep1Errors] = useState<Step1ValidationErrors>({
     missingSummary: [],
   });
+  const [step2Attempted, setStep2Attempted] = useState(false);
+  const [step2Errors, setStep2Errors] = useState<Step2ValidationErrors>({
+    missingSummary: [],
+  });
 
   function updateDraft(updater: (prev: SosDraft) => SosDraft) {
-    const next = updater(draft);
+    const latest = getSosDraftSnapshot();
+    const next = updater(latest);
     saveSosDraft(next);
+    return next;
   }
 
   function handleSelectUrgency(urgency: Urgency) {
-    const next = { ...draft, urgency };
-    saveSosDraft(next);
+    const next = updateDraft((prev) => ({ ...prev, urgency }));
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -63,8 +75,7 @@ export function SosWizard() {
 
   // ระดับน้ำไม่บังคับ: undefined = ผู้ใช้กดยกเลิกตัวที่เลือกไว้
   function handleSelectWaterLevel(waterLevel: WaterLevel | undefined) {
-    const next = { ...draft, waterLevel };
-    saveSosDraft(next);
+    const next = updateDraft((prev) => ({ ...prev, waterLevel }));
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -85,13 +96,73 @@ export function SosWizard() {
     }));
   }
 
+  function handleGpsPosition(coords: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  }) {
+    const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleManualPin(coords: { lat: number; lng: number }) {
+    const next = updateDraft((prev) => applyManualPinToDraft(prev, coords));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleAutoFillArea(area: LocatedArea) {
+    const next = updateDraft((prev) => applyLocatedAreaToDraft(prev, area));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleUpdateStep2Field(patch: Partial<SosDraft>) {
+    const next = updateDraft((prev) => ({ ...prev, ...patch }));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleStep2Next() {
+    setStep2Attempted(true);
+    const check = validateStep2Draft(draft);
+    setStep2Errors(check.errors);
+
+    if (!check.valid) {
+      return;
+    }
+
+    updateDraft((prev) => ({
+      ...prev,
+      currentStep: 3,
+    }));
+  }
+
   function handleGoToStep(targetStep: SosStepNumber) {
     // ถ้าจะข้ามจากขั้นที่ 1 ไปขั้นอื่น ต้องผ่านการตรวจขั้นที่ 1 ก่อน
     if (targetStep > 1) {
-      const check = validateStep1Draft(draft);
-      if (!check.valid) {
+      const check1 = validateStep1Draft(draft);
+      if (!check1.valid) {
         setStep1Attempted(true);
-        setStep1Errors(check.errors);
+        setStep1Errors(check1.errors);
+        return;
+      }
+    }
+
+    // ถ้าจะข้ามไปขั้นที่ 3–5 ต้องผ่านการตรวจขั้นที่ 2 ก่อน
+    if (targetStep > 2) {
+      const check2 = validateStep2Draft(draft);
+      if (!check2.valid) {
+        setStep2Attempted(true);
+        setStep2Errors(check2.errors);
+        if (draft.currentStep !== 2) {
+          updateDraft((prev) => ({ ...prev, currentStep: 2 }));
+        }
         return;
       }
     }
@@ -130,8 +201,19 @@ export function SosWizard() {
               onSelectWaterLevel={handleSelectWaterLevel}
               onNext={handleStep1Next}
             />
+          ) : draft.currentStep === 2 ? (
+            <Step2Location
+              draft={draft}
+              errors={step2Errors}
+              onGpsPosition={handleGpsPosition}
+              onManualPin={handleManualPin}
+              onAutoFillArea={handleAutoFillArea}
+              onUpdateField={handleUpdateStep2Field}
+              onPrev={() => handleGoToStep(1)}
+              onNext={handleStep2Next}
+            />
           ) : (
-            // ขั้น 2–5 ยังไม่ทำ (TF-09, TF-11) แสดงสรุปขั้นที่ 1 และปุ่มไปต่อไว้ก่อน
+            // ขั้น 3–5 (TF-11) แสดงสรุปขั้นที่ 1–2 และปุ่มไปต่อไว้ก่อน
             <>
               <section aria-labelledby="step-placeholder-heading" className="flex flex-col gap-4">
                 <h2
@@ -150,6 +232,13 @@ export function SosWizard() {
                   <strong className="text-text-primary">
                     {draft.waterLevel ? waterLevelLabel[draft.waterLevel] : "ไม่ได้ระบุ"}
                   </strong>
+                  {draft.landmark && (
+                    <>
+                      {" "}
+                      · จุดสังเกต:{" "}
+                      <strong className="text-text-primary">{draft.landmark}</strong>
+                    </>
+                  )}
                 </div>
               </section>
               {draft.currentStep < 5 && (

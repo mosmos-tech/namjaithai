@@ -1,11 +1,35 @@
 import {
+  latSchema,
+  lngSchema,
   step1Schema,
+  step2Schema,
   Urgency,
   WaterLevel,
+  type LocatedArea,
   type Need,
 } from "../../lib/domain";
 
 export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v1";
+
+/**
+ * เกณฑ์ความคลาดเคลื่อนของ GPS (เมตร): ถ้าเกิน 100 เมตร ต้องแจ้งให้ผู้ใช้ปักหมุดเพิ่มบนแผนที่ (TF-09)
+ */
+export const GPS_LOW_ACCURACY_THRESHOLD_M = 100;
+
+/**
+ * พิกัดเริ่มต้นของแผนที่เมื่อยังไม่ได้ดึง GPS (ใจกลางประเทศไทย/กรุงเทพฯ)
+ * เพื่อให้ผู้ใช้ที่ไม่อนุญาต GPS ยังเลื่อนและแตะปักหมุดเองได้ทันที
+ */
+export const DEFAULT_THAILAND_CENTER = {
+  lat: 13.7563,
+  lng: 100.5018,
+} as const;
+
+export type GpsErrorCode =
+  | "PERMISSION_DENIED"
+  | "POSITION_UNAVAILABLE"
+  | "TIMEOUT"
+  | "UNSUPPORTED";
 
 export type SosStepNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -71,6 +95,8 @@ export interface SosDraft {
   province?: string;
   district?: string;
   subdistrict?: string;
+  addressLine?: string;
+  gmapsUrl?: string;
   landmark: string;
   // ขั้นที่ 3: ผู้ติดค้าง (TF-11)
   adults: number;
@@ -95,6 +121,8 @@ export function createInitialSosDraft(): SosDraft {
     currentStep: 1,
     urgency: undefined,
     waterLevel: undefined,
+    addressLine: "",
+    gmapsUrl: "",
     landmark: "",
     adults: 1,
     elderly: 0,
@@ -113,6 +141,12 @@ export function createInitialSosDraft(): SosDraft {
 export interface Step1ValidationErrors {
   urgency?: string;
   waterLevel?: string;
+  missingSummary: string[];
+}
+
+export interface Step2ValidationErrors {
+  location?: string;
+  landmark?: string;
   missingSummary: string[];
 }
 
@@ -158,6 +192,191 @@ export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel
     valid: false,
     errors,
   };
+}
+
+/**
+ * ตรวจสอบข้อมูลขั้นที่ 2 (พิกัดและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
+ * - พิกัด (lat, lng) ต้องอยู่ในขอบเขตประเทศไทย
+ * - จุดสังเกต (landmark) บังคับต้องระบุเพื่อให้ทีมกู้ภัยสังเกตเห็นได้เมื่อป้ายบ้านจมน้ำ
+ */
+export function validateStep2Draft(
+  draft: Pick<
+    SosDraft,
+    "lat" | "lng" | "accuracyM" | "province" | "district" | "subdistrict" | "landmark"
+  >,
+): {
+  valid: boolean;
+  errors: Step2ValidationErrors;
+} {
+  const result = step2Schema.safeParse({
+    lat: draft.lat,
+    lng: draft.lng,
+    accuracyM: draft.accuracyM,
+    province: draft.province,
+    district: draft.district,
+    subdistrict: draft.subdistrict,
+    landmark: draft.landmark,
+  });
+
+  if (result.success) {
+    return {
+      valid: true,
+      errors: { missingSummary: [] },
+    };
+  }
+
+  const errors: Step2ValidationErrors = {
+    missingSummary: [],
+  };
+
+  if (typeof draft.lat !== "number" || typeof draft.lng !== "number") {
+    errors.location = "กรุณาดึงพิกัด GPS หรือแตะปักหมุดตำแหน่งบนแผนที่";
+    errors.missingSummary.push("พิกัดตำแหน่ง");
+  } else {
+    const latCheck = latSchema.safeParse(draft.lat);
+    const lngCheck = lngSchema.safeParse(draft.lng);
+    if (!latCheck.success || !lngCheck.success) {
+      errors.location =
+        latCheck.error?.issues[0]?.message ??
+        lngCheck.error?.issues[0]?.message ??
+        "พิกัดอยู่นอกประเทศไทย";
+      errors.missingSummary.push("พิกัดตำแหน่ง");
+    }
+  }
+
+  if (!draft.landmark || draft.landmark.trim().length === 0) {
+    errors.landmark = "กรุณาระบุจุดสังเกต เช่น สีหลังคา จำนวนชั้น หรือสถานที่ใกล้เคียง";
+    errors.missingSummary.push("จุดสังเกต");
+  }
+
+  return {
+    valid: false,
+    errors,
+  };
+}
+
+/**
+ * ตรวจว่าความคลาดเคลื่อนของ GPS เกิน 100 เมตรหรือไม่ (เกณฑ์ผ่านข้อ 2 ของ TF-09)
+ */
+export function isLowGpsAccuracy(accuracyM?: number): boolean {
+  return (
+    typeof accuracyM === "number" &&
+    Number.isFinite(accuracyM) &&
+    accuracyM > GPS_LOW_ACCURACY_THRESHOLD_M
+  );
+}
+
+/**
+ * นำพิกัดจาก GPS ของอุปกรณ์มาอัปเดตลงร่างฟอร์ม พร้อมบันทึกค่าความแม่นยำ (accuracyM)
+ */
+export function applyGpsPositionToDraft(
+  draft: SosDraft,
+  coords: { latitude: number; longitude: number; accuracy?: number },
+): SosDraft {
+  return {
+    ...draft,
+    lat: Number(coords.latitude.toFixed(6)),
+    lng: Number(coords.longitude.toFixed(6)),
+    accuracyM:
+      typeof coords.accuracy === "number" && Number.isFinite(coords.accuracy)
+        ? Math.round(coords.accuracy)
+        : undefined,
+  };
+}
+
+/**
+ * นำพิกัดจากการปักหมุดเองบนแผนที่หรือลิงก์ Google Maps มาอัปเดตลงร่างฟอร์ม
+ * ล้างค่า accuracyM ออกเพราะเป็นจุดที่ผู้ใช้ปักยืนยันด้วยตัวเองแล้ว
+ */
+export function applyManualPinToDraft(
+  draft: SosDraft,
+  coords: { lat: number; lng: number },
+): SosDraft {
+  return {
+    ...draft,
+    lat: Number(coords.lat.toFixed(6)),
+    lng: Number(coords.lng.toFixed(6)),
+    accuracyM: undefined,
+  };
+}
+
+/**
+ * นำผลลัพธ์จาก API แปลงพิกัดเป็นที่อยู่ (/api/geo/reverse) มาเติมจังหวัด/อำเภอ/ตำบลในร่างฟอร์มอัตโนมัติ
+ */
+export function applyLocatedAreaToDraft(draft: SosDraft, area: LocatedArea): SosDraft {
+  return {
+    ...draft,
+    provinceCode: String(area.province.code),
+    province: area.province.nameTh,
+    districtCode: String(area.district.code),
+    district: area.district.nameTh,
+    subdistrictCode: String(area.subdistrict.code),
+    subdistrict: area.subdistrict.nameTh,
+  };
+}
+
+export interface GpsStatusBanner {
+  tone: "success" | "warning";
+  desktopText: string;
+  mobileText: string;
+}
+
+/**
+ * สร้างข้อความแจ้งสถานะพิกัดและการปักหมุดสำหรับแสดงใต้ปุ่ม GPS / แผนที่
+ * - ถ้าความแม่นยำเกิน 100 ม. จะแสดงข้อความเตือนให้ปักหมุดเพิ่มบนแผนที่
+ * - ถ้าไม่อนุญาต GPS จะแสดงข้อความว่ายังสามารถแตะ/ลากหมุดปักเองบนแผนที่ได้
+ */
+export function getGpsStatusMessage(params: {
+  lat?: number;
+  lng?: number;
+  accuracyM?: number;
+  gpsError?: GpsErrorCode | null;
+}): GpsStatusBanner | null {
+  if (params.gpsError === "PERMISSION_DENIED") {
+    return {
+      tone: "warning",
+      desktopText:
+        "ไม่ได้รับอนุญาตให้ใช้ GPS · คุณยังสามารถแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเองได้",
+      mobileText: "ไม่อนุญาต GPS · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+    };
+  }
+
+  if (params.gpsError) {
+    return {
+      tone: "warning",
+      desktopText:
+        "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
+      mobileText: "ดึง GPS ไม่สำเร็จ · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+    };
+  }
+
+  if (typeof params.lat === "number" && typeof params.lng === "number") {
+    if (isLowGpsAccuracy(params.accuracyM)) {
+      const rounded = Math.round(params.accuracyM!);
+      return {
+        tone: "warning",
+        desktopText: `ความแม่นยำ ±${rounded} เมตร (คลาดเคลื่อนเกิน 100 ม.) · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเพิ่มให้ตรงจุด`,
+        mobileText: `ความแม่นยำ ±${rounded} ม. (เกิน 100 ม.) กรุณาเลื่อนหมุดปักหมุดเพิ่มบนแผนที่`,
+      };
+    }
+
+    if (typeof params.accuracyM === "number" && Number.isFinite(params.accuracyM)) {
+      const rounded = Math.round(params.accuracyM);
+      return {
+        tone: "success",
+        desktopText: `ได้ตำแหน่งแล้ว · แม่นยำ ±${rounded} เมตร · ลากหมุดบนแผนที่เพื่อปรับได้`,
+        mobileText: `ได้ตำแหน่งแล้ว (แม่นยำ ±${rounded} ม.)`,
+      };
+    }
+
+    return {
+      tone: "success",
+      desktopText: "ปักหมุดตำแหน่งแล้ว · ลากหมุดบนแผนที่เพื่อปรับได้",
+      mobileText: "ปักหมุดตำแหน่งแล้ว",
+    };
+  }
+
+  return null;
 }
 
 function isValidStepNumber(value: unknown): value is SosStepNumber {

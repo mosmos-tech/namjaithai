@@ -37,6 +37,7 @@ export function SosStepperCard({
       <ol className="flex flex-col gap-1 pt-5">
         {SOS_STEPS.map(({ step, shortLabel }) => {
           const current = step === currentStep;
+          const completed = step < currentStep;
           return (
             <li key={step}>
               <button
@@ -51,10 +52,22 @@ export function SosStepperCard({
                   className={`flex size-10 shrink-0 items-center justify-center rounded-full text-lg leading-[1.55] font-semibold ${
                     current
                       ? "bg-primary-600 text-text-on-primary"
-                      : "bg-bg-page text-text-secondary"
+                      : completed
+                        ? "bg-green-50 text-green-700"
+                        : "bg-bg-page text-text-secondary"
                   }`}
                 >
-                  {step}
+                  {completed ? (
+                    <img
+                      src="/brand/icon-check-green.svg"
+                      alt=""
+                      width={18}
+                      height={18}
+                      className="size-[18px] shrink-0"
+                    />
+                  ) : (
+                    step
+                  )}
                 </span>
                 <span className="flex min-w-0 flex-col leading-[1.55]">
                   <span
