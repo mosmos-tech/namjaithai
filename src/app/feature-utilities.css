@@ -1,0 +1,11 @@
+@reference "./globals.css";
+@import "tailwindcss/utilities" source(none);
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@source "../features";
+@source "../components/ui";
+@source "./(app)";
+@source "./(auth)";
+@source "./(sos)";
+@source "./join";
+@source "./dev";

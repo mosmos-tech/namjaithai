@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/pwa/build.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:db": "supabase test db",
     "e2e": "playwright test",
+    "e2e:pwa": "playwright test --config playwright.pwa.config.ts",
     "e2e:headed": "playwright test --headed --workers=1",
     "e2e:ui": "playwright test --ui",
     "db:start": "supabase start",

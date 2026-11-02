@@ -60,6 +60,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   // ไม่ต้องทำงานกับไฟล์ static, รูป, API (API เช็กสิทธิ์เอง)
   matcher: [
-    "/((?!_next/static|_next/image|api/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|api/|pwa/|sw.js|manifest.webmanifest|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

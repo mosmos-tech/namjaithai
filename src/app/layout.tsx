@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { PwaSupport } from "@/features/pwa/PwaSupport";
 import { Bai_Jamjuree, IBM_Plex_Mono, IBM_Plex_Sans_Thai_Looped } from "next/font/google";
 import "./globals.css";
 
@@ -23,7 +24,11 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "น้ำใจไทย SOS",
   description: "ระบบขอและประสานความช่วยเหลือในภาวะวิกฤต",
+  appleWebApp: { capable: true, title: "น้ำใจไทย SOS", statusBarStyle: "default" },
+  icons: { apple: "/pwa/apple-touch-icon.png" },
 };
+
+export const viewport: Viewport = { themeColor: "#1F6FD1" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -31,7 +36,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="th"
       className={`${ibmPlexSansThaiLooped.variable} ${baiJamjuree.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        {children}
+        <PwaSupport />
+      </body>
     </html>
   );
 }

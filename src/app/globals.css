@@ -1,45 +1,47 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "tailwindcss" source(none);
+/* Keep the first public page free of form/dashboard-only utilities. */
+@source "./(public)";
+@source "../components/public";
+@source "../features/pwa";
 
 @custom-variant dark (&:is(.dark *));
 
 /* Design tokens จาก Figma — แก้ที่นี่ที่เดียว */
 @theme {
   /* พื้นหลัง */
-  --color-bg-page: #F5F8FC;
-  --color-bg-surface: #FFFFFF;
-  --color-bg-subtle: #E8F1FB;
-  --color-bg-nav: #F1F3F5;
+  --color-bg-page: #f5f8fc;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #e8f1fb;
+  --color-bg-nav: #f1f3f5;
 
   /* Primary blue */
-  --color-primary-50: #EEF5FE;
-  --color-primary-100: #D6E7FB;
-  --color-primary-500: #3B86E0;
-  --color-primary-600: #1F6FD1;
-  --color-primary-700: #1757A6;
+  --color-primary-50: #eef5fe;
+  --color-primary-100: #d6e7fb;
+  --color-primary-500: #3b86e0;
+  --color-primary-600: #1f6fd1;
+  --color-primary-700: #1757a6;
 
   /* ข้อความ */
   --color-text-primary: #111827;
-  --color-text-secondary: #4B5565;
-  --color-text-on-primary: #FFFFFF;
+  --color-text-secondary: #4b5565;
+  --color-text-on-primary: #ffffff;
 
   /* เส้นขอบ */
-  --color-border-default: #D9E3EF;
-  --color-border-strong: #A7BEDA;
+  --color-border-default: #d9e3ef;
+  --color-border-strong: #a7beda;
 
   /* สถานะ */
-  --color-red-600: #C62828;
-  --color-red-50: #FDECEC;
-  --color-amber-500: #F2A516;
-  --color-amber-700: #9A5B00;
-  --color-amber-50: #FFF5DC;
-  --color-green-700: #1B7A3A;
-  --color-green-50: #E5F5EA;
+  --color-red-600: #c62828;
+  --color-red-50: #fdecec;
+  --color-amber-500: #f2a516;
+  --color-amber-700: #9a5b00;
+  --color-amber-50: #fff5dc;
+  --color-green-700: #1b7a3a;
+  --color-green-50: #e5f5ea;
   --color-gray-700: #475467;
 
   /* LINE brand */
-  --color-line-green: #06C755;
+  --color-line-green: #06c755;
 }
 
 @theme inline {

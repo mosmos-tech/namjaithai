@@ -25,3 +25,4 @@ export default function DbCheckPage() {
     </main>
   );
 }
+import "../../feature-utilities.css";
