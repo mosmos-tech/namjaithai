@@ -47,3 +47,9 @@ supabase/.temp
 
 # ไฟล์ต้นฉบับขอบเขตที่ scripts/geo/build-seed.mjs โหลดมา (ใหญ่ ไม่ขึ้น git)
 /.cache
+
+# Playwright (TF-48): ผลทดสอบ วิดีโอ และรายงาน สร้างใหม่ทุกครั้งที่รัน
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
