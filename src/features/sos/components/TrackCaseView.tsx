@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -25,11 +25,12 @@ import {
 } from "@/lib/domain";
 import { useTrackedCase } from "../use-tracked-case";
 import { TrackLookupForm } from "./TrackLookupForm";
+import { ReporterCaseActions } from "./ReporterCaseActions";
 
 /**
  * หน้าติดตามเคส /track/รหัสเคส?t=token (TF-13)
  * แสดงสถานะ แถบขั้นตอน ทีมที่รับเคส และไทม์ไลน์ ดึงข้อมูลใหม่ทุก 20 วินาที
- * (แผนที่สดอยู่ใน TF-42 ปุ่มยกเลิก/ปลอดภัยแล้วอยู่ใน TF-14)
+ * (แผนที่สดอยู่ใน TF-42)
  */
 export function TrackCaseView({
   params,
@@ -60,7 +61,8 @@ export function TrackCaseView({
 }
 
 function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string }) {
-  const state = useTrackedCase(caseCode, token);
+  const [revision, setRevision] = useState(0);
+  const state = useTrackedCase(caseCode, token, revision);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-10">
@@ -94,7 +96,15 @@ function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string 
       )}
 
       {state.kind === "ready" && (
-        <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
+        <>
+          <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
+          <ReporterCaseActions
+            caseCode={caseCode}
+            token={token}
+            status={state.data.status}
+            onChanged={() => setRevision((value) => value + 1)}
+          />
+        </>
       )}
     </div>
   );
