@@ -82,17 +82,36 @@ test.describe("/sos/sent หน้าส่งสำเร็จ", () => {
     baseURL,
   }) => {
     const sent = await createCaseViaApi(baseURL!);
-    const animations = () =>
-      page.evaluate(() => document.getAnimations().filter((a) => a.playState !== "idle").length);
+    // ดักนับว่าหน้าเว็บสั่ง element.animate() กี่ครั้ง ตั้งแต่ก่อนหน้าโหลด
+    // (ไม่เช็กว่ากำลังเล่นอยู่ไหม เพราะแอนิเมชันยาวแค่ ~0.7 วิ เครื่องช้าจะจบก่อนเช็กทัน)
+    await page.addInitScript(() => {
+      const w = window as unknown as { __animateCalls: number };
+      w.__animateCalls = 0;
+      const original = Element.prototype.animate;
+      Element.prototype.animate = function (...args: Parameters<Element["animate"]>) {
+        w.__animateCalls++;
+        return original.apply(this, args);
+      };
+    });
+    const animateCalls = () =>
+      page.evaluate(() => (window as unknown as { __animateCalls: number }).__animateCalls);
 
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await rememberSent(page, sent);
-    expect(await animations(), "ปกติต้องมีแอนิเมชันติ๊กถูก").toBeGreaterThan(0);
+    await expect(page.getByText(sent.caseCode, { exact: true })).toBeVisible();
+    // เล่นครั้งเดียว = หลังเล่นแล้วไม่มีการสั่งเล่นเพิ่ม (ไม่วนซ้ำ)
+    // ตอน dev จะนับได้ 4 เพราะ React StrictMode รัน effect 2 รอบ (รอบแรกถูกยกเลิกทันที) production ได้ 2
+    await expect.poll(animateCalls, { message: "ปกติต้องเล่นแอนิเมชันติ๊กถูก" }).toBeGreaterThan(0);
+    await page.waitForTimeout(1000);
+    const afterFirstPlay = await animateCalls();
+    await page.waitForTimeout(1500);
+    expect(await animateCalls(), "เล่นครั้งเดียว ไม่วนซ้ำ").toBe(afterFirstPlay);
 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.reload();
     await expect(page.getByText(sent.caseCode, { exact: true })).toBeVisible();
-    expect(await animations(), "ตั้ง reduce motion แล้วต้องไม่มีแอนิเมชัน").toBe(0);
+    await page.waitForTimeout(1000);
+    expect(await animateCalls(), "ตั้ง reduce motion แล้วต้องไม่เล่นแอนิเมชัน").toBe(0);
   });
 });
 
