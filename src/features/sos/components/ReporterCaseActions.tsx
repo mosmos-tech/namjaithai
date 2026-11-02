@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   isClosedStatus,
   waterLevelLabel,
@@ -36,26 +36,27 @@ export function ReporterCaseActions({
   const [mode, setMode] = useState<"idle" | "edit" | "cancel">("idle");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [phone, setPhone] = useState("");
   const endpoint = `/api/track/${encodeURIComponent(caseCode)}/reporter`;
 
-  useEffect(() => {
-    if (mode === "idle") return;
-    const controller = new AbortController();
-    fetch(endpoint, {
-      headers: { "X-Tracking-Token": token },
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error ?? "โหลดข้อมูลไม่สำเร็จ");
-        setDetails(body);
-      })
-      .catch((error: Error) => {
-        if (!controller.signal.aborted) setMessage(error.message);
+  async function verifyPhone() {
+    if (busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const res = await fetch(endpoint, {
+        headers: { "X-Tracking-Token": token, "X-Reporter-Phone": phone },
+        cache: "no-store",
       });
-    return () => controller.abort();
-  }, [endpoint, token, mode]);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "โหลดข้อมูลไม่สำเร็จ");
+      setDetails(body);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "เชื่อมต่อไม่ได้ กรุณาลองใหม่");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save(action: "update" | "cancel") {
     if (!details || busy) return;
@@ -64,7 +65,11 @@ export function ReporterCaseActions({
     try {
       const res = await fetch(endpoint, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-Tracking-Token": token },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tracking-Token": token,
+          "X-Reporter-Phone": phone,
+        },
         body: JSON.stringify(
           action === "cancel" ? { action, version: details.version } : { ...details, action },
         ),
@@ -73,6 +78,7 @@ export function ReporterCaseActions({
       if (!res.ok) throw new Error(body.error ?? "บันทึกไม่สำเร็จ");
       setMode("idle");
       setDetails(null);
+      setPhone("");
       setMessage(action === "cancel" ? "ยกเลิกคำขอแล้ว ขอให้ปลอดภัย" : "บันทึกข้อมูลแล้ว");
       onChanged();
     } catch (error) {
@@ -117,8 +123,44 @@ export function ReporterCaseActions({
             </div>
           ) : (
             <div className="mt-4">
-              {!details && <p className="text-text-secondary">กำลังโหลดข้อมูล...</p>}
-              {mode === "cancel" && (
+              {!details && (
+                <form
+                  className="flex flex-col gap-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    verifyPhone();
+                  }}
+                >
+                  <p className="text-text-secondary text-lg">
+                    ยืนยันเบอร์โทรเต็มที่ใช้แจ้งเคสก่อนแก้ไขหรือยกเลิกคำขอ
+                  </p>
+                  <label className="text-text-primary text-lg" htmlFor="reporter-phone">
+                    เบอร์โทรที่ใช้แจ้งเคส
+                  </label>
+                  <input
+                    id="reporter-phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    required
+                    maxLength={10}
+                    disabled={busy}
+                    value={phone}
+                    onChange={(event) =>
+                      setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))
+                    }
+                    className={inputClass}
+                  />
+                  <button
+                    className={`${buttonClass} bg-primary-600 text-white`}
+                    disabled={busy}
+                    type="submit"
+                  >
+                    {busy ? "กำลังตรวจสอบ..." : "ยืนยันเบอร์โทร"}
+                  </button>
+                </form>
+              )}
+              {mode === "cancel" && details && (
                 <>
                   <h3 className="text-text-primary text-xl font-semibold">ยืนยันว่าปลอดภัยแล้ว?</h3>
                   <p className="text-text-secondary mt-2 text-lg">
@@ -216,6 +258,7 @@ export function ReporterCaseActions({
                 onClick={() => {
                   setMode("idle");
                   setDetails(null);
+                  setPhone("");
                   setMessage("");
                 }}
               >

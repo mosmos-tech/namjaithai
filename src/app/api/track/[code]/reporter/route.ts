@@ -10,6 +10,8 @@ async function respond(
   const result = await handleReporterCase({
     caseCode: (await ctx.params).code,
     token: request.headers.get("X-Tracking-Token") ?? "",
+    phone: request.headers.get("X-Reporter-Phone") ?? "",
+    headers: request.headers,
     mutation,
     supabase: createAdminClient() as unknown as ReporterRpcClient,
   });

@@ -19,7 +19,14 @@ function client(data: unknown = { version: 2 }, code?: string) {
   return { rpc } as unknown as ReporterRpcClient;
 }
 function call(supabase: ReporterRpcClient, mutation: unknown = update, token = "a".repeat(32)) {
-  return handleReporterCase({ caseCode: "fl-2611-0001", token, mutation, supabase });
+  return handleReporterCase({
+    caseCode: "fl-2611-0001",
+    token,
+    phone: "0812345678",
+    headers: new Headers(),
+    mutation,
+    supabase,
+  });
 }
 describe("TF-14 reporter mutations", () => {
   it("validates ownership proof before calling RPC", async () => {
@@ -47,9 +54,11 @@ describe("TF-14 reporter mutations", () => {
     const result = await call(db);
     expect(result.status).toBe(200);
     expect(result.headers["Cache-Control"]).toBe("no-store");
-    expect(db.rpc).toHaveBeenCalledWith("reporter_case", {
+    expect(db.rpc).toHaveBeenCalledWith("reporter_case_verified", {
       p_case_code: "FL-2611-0001",
       p_token: "a".repeat(32),
+      p_phone: "0812345678",
+      p_client_ip: null,
       p_action: "update",
       p_payload: update,
     });
@@ -67,10 +76,34 @@ describe("TF-14 reporter mutations", () => {
   });
   it("loads editable details without a mutation", async () => {
     const db = client();
-    await handleReporterCase({ caseCode: "FL-2611-0001", token: "a".repeat(32), supabase: db });
+    await handleReporterCase({
+      caseCode: "FL-2611-0001",
+      token: "a".repeat(32),
+      phone: "0812345678",
+      headers: new Headers(),
+      supabase: db,
+    });
     expect(db.rpc).toHaveBeenCalledWith(
-      "reporter_case",
+      "reporter_case_verified",
       expect.objectContaining({ p_action: "read", p_payload: {} }),
     );
+  });
+  it("requires the full reporter phone even with a valid shared token", async () => {
+    const db = client();
+    const result = await handleReporterCase({
+      caseCode: "FL-2611-0001",
+      token: "a".repeat(32),
+      phone: "",
+      headers: new Headers(),
+      mutation: update,
+      supabase: db,
+    });
+    expect(result.status).toBe(400);
+    expect(db.rpc).not.toHaveBeenCalled();
+  });
+  it("returns retry headers for repeated failed verifications", async () => {
+    const result = await call(client(null, "SOS29"));
+    expect(result.status).toBe(429);
+    expect(result.headers["Retry-After"]).toBe("900");
   });
 });

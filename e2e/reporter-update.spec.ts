@@ -1,12 +1,18 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { adminDb, createCaseViaApi } from "./helpers/db";
 import { priorityScore } from "../src/lib/domain/priority";
+
+async function verifyReporter(page: Page, phone: string) {
+  await page.getByLabel("เบอร์โทรที่ใช้แจ้งเคส", { exact: true }).fill(phone);
+  await page.getByRole("button", { name: "ยืนยันเบอร์โทร", exact: true }).click();
+}
 
 test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
   test("แก้ระดับน้ำ จำนวนคน โน้ต แล้วคำนวณคะแนนและบันทึกเหตุการณ์", async ({ page, baseURL }) => {
     const sent = await createCaseViaApi(baseURL!, { urgency: "YELLOW", waterLevel: "ANKLE_KNEE" });
     await page.goto(`/track/${sent.caseCode}?t=${sent.trackingToken}`);
     await page.getByRole("button", { name: "อัปเดตข้อมูลเคส" }).click();
+    await verifyReporter(page, sent.phone);
     await page.getByLabel("ระดับน้ำ", { exact: true }).selectOption("ROOF");
     await page.getByLabel("ผู้ใหญ่", { exact: true }).fill("3");
     await page.getByLabel("ผู้ป่วยติดเตียง", { exact: true }).fill("2");
@@ -47,6 +53,7 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
     expect(events![0].metadata.before.adults).toBe(1);
     expect(events![0].metadata.after.adults).toBe(3);
     await page.getByRole("button", { name: "อัปเดตข้อมูลเคส" }).click();
+    await verifyReporter(page, sent.phone);
     await expect(page.getByLabel("ผู้ใหญ่", { exact: true })).toHaveValue("3");
     await expect(page.getByLabel("โน้ตเพิ่มเติม")).toHaveValue("น้ำขึ้นเร็ว รออยู่ชั้นสอง");
     await page.screenshot({ path: test.info().outputPath("reporter-edit.png"), fullPage: true });
@@ -66,6 +73,7 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
     await page.getByRole("button", { name: "กลับไปติดตามเคส" }).click();
     await expect(page.getByText("รอทีมรับเคส", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "ปลอดภัยแล้ว", exact: true }).click();
+    await verifyReporter(page, sent.phone);
     await page.getByRole("button", { name: "ยืนยัน ปลอดภัยแล้ว", exact: true }).click();
     await expect(page.getByRole("heading", { name: "ยกเลิกคำขอแล้ว" })).toBeVisible();
     await expect(page.getByRole("button", { name: "อัปเดตข้อมูลเคส" })).toHaveCount(0);
@@ -90,12 +98,21 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
   }) => {
     const sent = await createCaseViaApi(baseURL!);
     const url = `/api/track/${sent.caseCode}/reporter`;
-    const headers = { "X-Tracking-Token": sent.trackingToken };
+    const headers = { "X-Tracking-Token": sent.trackingToken, "X-Reporter-Phone": sent.phone };
+    expect(
+      (await request.get(url, { headers: { "X-Tracking-Token": sent.trackingToken } })).status(),
+    ).toBe(400);
+    const wrongPhone = sent.phone === "0800000000" ? "0811111111" : "0800000000";
+    expect(
+      (
+        await request.get(url, { headers: { ...headers, "X-Reporter-Phone": wrongPhone } })
+      ).status(),
+    ).toBe(404);
     const details = await (await request.get(url, { headers })).json();
     expect(
       (
         await request.patch(url, {
-          headers: { "X-Tracking-Token": "0".repeat(32) },
+          headers: { ...headers, "X-Tracking-Token": "0".repeat(32) },
           data: { action: "cancel", version: details.version },
         })
       ).status(),
@@ -129,5 +146,43 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
       .eq("case_id", c!.id)
       .eq("event_type", "CANCELLED");
     expect(count).toBe(1);
+  });
+
+  test("ลิงก์แชร์อย่างเดียวแก้ไม่ได้ และจำกัดการเดาเบอร์โทร", async ({
+    page,
+    request,
+    baseURL,
+  }) => {
+    const sent = await createCaseViaApi(baseURL!);
+    await page.goto(`/track/${sent.caseCode}?t=${sent.trackingToken}`);
+    await page.getByRole("button", { name: "อัปเดตข้อมูลเคส" }).click();
+    await expect(page.getByLabel("โน้ตเพิ่มเติม")).toHaveCount(0);
+    const wrongPhone = sent.phone === "0800000000" ? "0811111111" : "0800000000";
+    await verifyReporter(page, wrongPhone);
+    await expect(page.getByRole("status")).toContainText("ข้อมูลยืนยันไม่ถูกต้อง");
+    await expect(page.getByLabel("โน้ตเพิ่มเติม")).toHaveCount(0);
+    const ip = `10.99.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+    for (let i = 0; i < 10; i++) {
+      expect(
+        (
+          await request.get(`/api/track/${sent.caseCode}/reporter`, {
+            headers: {
+              "X-Tracking-Token": sent.trackingToken,
+              "X-Reporter-Phone": wrongPhone,
+              "X-Forwarded-For": ip,
+            },
+          })
+        ).status(),
+      ).toBe(404);
+    }
+    const limited = await request.get(`/api/track/${sent.caseCode}/reporter`, {
+      headers: {
+        "X-Tracking-Token": sent.trackingToken,
+        "X-Reporter-Phone": wrongPhone,
+        "X-Forwarded-For": ip,
+      },
+    });
+    expect(limited.status()).toBe(429);
+    expect(Number(limited.headers()["retry-after"])).toBeGreaterThan(0);
   });
 });

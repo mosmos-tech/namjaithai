@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { extractClientIp } from "./create-case";
 import {
   caseCodeSchema,
   trackingTokenSchema,
@@ -35,42 +36,61 @@ export type ReporterDetails = {
 
 export interface ReporterRpcClient {
   rpc(
-    fn: "reporter_case",
+    fn: "reporter_case_verified",
     args: {
       p_case_code: string;
       p_token: string;
+      p_phone: string;
+      p_client_ip: string | null;
       p_action: string;
       p_payload: unknown;
     },
   ): PromiseLike<{
     data: ReporterDetails | null;
-    error: { code?: string; message: string } | null;
+    error: { code?: string; message: string; hint?: string | null } | null;
   }>;
 }
 
 export async function handleReporterCase(input: {
   caseCode: string;
   token: string;
+  phone: string;
+  headers: Headers;
   mutation?: unknown;
   supabase: ReporterRpcClient;
 }) {
-  const headers = { "Cache-Control": "no-store" };
+  const headers: Record<string, string> = { "Cache-Control": "no-store" };
   const code = caseCodeSchema.safeParse(input.caseCode);
   const token = trackingTokenSchema.safeParse(input.token);
   if (!code.success || !token.success)
     return { status: 400, body: { error: "รหัสเคสหรือลิงก์ติดตามไม่ถูกต้อง" }, headers };
+  const phone = input.phone.replace(/[\s-]/g, "");
+  if (!/^(0[6-9]\d{8}|0[2-5]\d{7,8})$/.test(phone))
+    return { status: 400, body: { error: "กรุณาระบุเบอร์โทรเต็มที่ใช้แจ้งเคส" }, headers };
   const parsed =
     input.mutation === undefined ? null : reporterMutationSchema.safeParse(input.mutation);
   if (parsed && !parsed.success)
     return { status: 400, body: { error: parsed.error.issues[0].message }, headers };
   const payload = parsed?.success ? parsed.data : {};
-  const { data, error } = await input.supabase.rpc("reporter_case", {
+  const { data, error } = await input.supabase.rpc("reporter_case_verified", {
     p_case_code: code.data,
     p_token: token.data,
+    p_phone: phone,
+    p_client_ip: extractClientIp(input.headers),
     p_action: parsed?.success ? parsed.data.action : "read",
     p_payload: payload,
   });
   if (error) {
+    if (error.code === "SOS29") {
+      const seconds = Math.max(1, Number.parseInt(error.hint ?? "900", 10) || 900);
+      return {
+        status: 429,
+        body: {
+          error: `ยืนยันข้อมูลผิดหลายครั้ง กรุณารอ ${Math.ceil(seconds / 60)} นาทีแล้วลองใหม่`,
+        },
+        headers: { ...headers, "Retry-After": String(seconds) },
+      };
+    }
     const conflict = error.code === "SOS40" || error.code === "SOS41";
     return {
       status: conflict ? 409 : 500,
@@ -87,7 +107,7 @@ export async function handleReporterCase(input: {
   }
   return {
     status: data ? 200 : 404,
-    body: data ?? { error: "ไม่พบเคสนี้หรือลิงก์ไม่ถูกต้อง" },
+    body: data ?? { error: "ข้อมูลยืนยันไม่ถูกต้อง กรุณาตรวจสอบเบอร์โทรและลิงก์ติดตาม" },
     headers,
   };
 }
