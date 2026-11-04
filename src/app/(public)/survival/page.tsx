@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { SurvivalChecklist } from "@/components/public/SurvivalChecklist";
+import { FLOOD_DURING_TIPS } from "@/lib/domain";
 
 export const metadata: Metadata = {
   title: "คู่มือเอาตัวรอด — น้ำใจไทย SOS",
@@ -25,13 +26,8 @@ const GUIDES = [
     color: "border-amber-500/30 bg-amber-50",
     headingColor: "text-amber-700",
     markerColor: "bg-amber-700",
-    tips: [
-      "อย่าเดินลุยน้ำที่ไม่รู้ความลึก — น้ำแค่ 15 ซม. อาจพัดให้ล้มได้",
-      "ปิดสวิตช์ไฟฟ้าหลักทันทีที่น้ำเข้าบ้าน แล้วโทรแจ้งการไฟฟ้า 1182",
-      "ห้ามขับรถผ่านถนนที่น้ำท่วม แม้รถจะดูสูงพอ",
-      "ฟังประกาศจากวิทยุพกพาหรือ ปภ. อย่างสม่ำเสมอ",
-      "หากติดอยู่บนหลังคา ให้สัญญาณด้วยนกหวีด 3 ครั้งต่อเนื่อง หรือโบกผ้าสีสด",
-    ],
+    // ใช้ชุดเดียวกับคำแนะนำระหว่างรอทีมในทะเบียนประเภทเหตุ (TF-49)
+    tips: FLOOD_DURING_TIPS,
   },
   {
     phase: "หลังน้ำลด",
