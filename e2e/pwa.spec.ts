@@ -43,9 +43,8 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
     .poll(() => reopened.evaluate(() => localStorage.getItem("namjaithai-sos-draft-v1")))
     .not.toBeNull();
   await reopened.reload();
-  await expect(
-    reopened.getByRole("heading", { name: "ตำแหน่งที่เกิดเหตุ", exact: true }),
-  ).toBeVisible();
+  await expect(reopened.getByRole("heading", { name: "คุณอยู่ที่ไหน?" })).toBeVisible();
+  await expect(reopened.getByText(/แผนที่ต้องใช้อินเทอร์เน็ต/)).toBeVisible();
   await reopened.goto("/");
   const openMenu = reopened.getByRole("button", { name: "เปิดเมนู" });
   if (await openMenu.isVisible()) await openMenu.click();
@@ -180,7 +179,9 @@ test("วัดขนาดหน้าแรกแบบ cold load รวมฟ
   });
   await page.goto("/", { waitUntil: "load" });
   await expect(page.getByTestId("onboarding-popup")).toBeVisible();
-  await page.locator("img").evaluateAll((images) => Promise.all(images.map((img) => img.decode())));
+  await page.locator("img:visible").evaluateAll((images) =>
+    Promise.all(images.map((image) => (image as HTMLImageElement).decode())).then(() => undefined),
+  );
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   const totals: Record<string, number> = {};
   for (const { type, bytes } of await Promise.all(sizes)) {
