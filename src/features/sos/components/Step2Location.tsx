@@ -1,0 +1,707 @@
+"use client";
+
+/* eslint-disable @next/next/no-img-element -- ไอคอน SVG จาก Figma */
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useState } from "react";
+import {
+  parseGoogleMapsUrl,
+  type AdminArea,
+  type LocatedArea,
+} from "../../../lib/domain";
+import {
+  getGpsStatusMessage,
+  type GpsErrorCode,
+  type SosDraft,
+  type Step2ValidationErrors,
+} from "../draft-storage";
+import { SosStepActions } from "./SosStepActions";
+
+/**
+ * โหลดแผนที่ MapLibre เฉพาะตอนที่ผู้ใช้เปิดขั้นที่ 2 เท่านั้น (เกณฑ์ผ่านข้อ 4 ของ TF-09)
+ * ไม่โหลดชุดโค้ดแผนที่ตั้งแต่ขั้นที่ 1 เพื่อให้หน้าแรกเปิดได้เร็วแม้เน็ตช้า
+ */
+const LazyStep2LocationMap = dynamic(() => import("./Step2LocationMap"), {
+  ssr: false,
+  loading: () => (
+    <div
+      data-testid="step2-map-loading"
+      className="border-border-default bg-primary-50 lg:bg-bg-subtle text-text-secondary flex h-[200px] w-full items-center justify-center rounded-[14px] border text-base lg:h-[300px]"
+    >
+      กำลังโหลดแผนที่...
+    </div>
+  ),
+});
+
+export interface Step2LocationProps {
+  draft: SosDraft;
+  errors: Step2ValidationErrors;
+  onGpsPosition: (coords: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  }) => void;
+  onManualPin: (coords: { lat: number; lng: number }) => void;
+  onAutoFillArea: (area: LocatedArea) => void;
+  onUpdateField: (patch: Partial<SosDraft>) => void;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+/**
+ * ขั้นที่ 2 ของฟอร์ม SOS: พิกัดและที่อยู่ (TF-09) ตาม Figma (B2 จอคอม / MB2 มือถือ)
+ * - ปุ่มดึงพิกัด GPS อัตโนมัติ ย้ายหมุดไปตำแหน่งปัจจุบัน
+ * - แจ้งเตือนเมื่อความแม่นยำเกิน 100 ม. ให้ปักหมุดเพิ่มบนแผนที่
+ * - แม้ไม่อนุญาต GPS ก็ยังแตะหรือลากหมุดปักเองบนแผนที่ได้
+ * - กรอกจังหวัด/อำเภอ/ตำบลอัตโนมัติจากพิกัดผ่าน /api/geo/reverse และแก้เองได้
+ * - ช่องจุดสังเกต (บังคับ)
+ */
+export function Step2Location({
+  draft,
+  errors,
+  onGpsPosition,
+  onManualPin,
+  onAutoFillArea,
+  onUpdateField,
+  onPrev,
+  onNext,
+}: Step2LocationProps) {
+  const [isLocating, setIsLocating] = useState(false);
+  const [gpsError, setGpsError] = useState<GpsErrorCode | null>(null);
+  const [gmapsError, setGmapsError] = useState<string | null>(null);
+  const [isResolvingGmaps, setIsResolvingGmaps] = useState(false);
+
+  const [provinces, setProvinces] = useState<AdminArea[]>([]);
+  const [districts, setDistricts] = useState<AdminArea[]>([]);
+  const [subdistricts, setSubdistricts] = useState<AdminArea[]>([]);
+
+  // โหลดรายชื่อจังหวัดเมื่อเปิดขั้นที่ 2
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchProvinces() {
+      try {
+        const res = await fetch("/api/geo/provinces");
+        if (!res.ok) return;
+        const data = (await res.json()) as AdminArea[];
+        if (!cancelled && Array.isArray(data)) {
+          setProvinces(data);
+        }
+      } catch {
+        // กรณีออฟไลน์ ข้ามการโหลดรายชื่อจังหวัด
+      }
+    }
+    void fetchProvinces();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // โหลดรายชื่ออำเภอเมื่อเลือกหรือเติมจังหวัด
+  useEffect(() => {
+    let cancelled = false;
+    const code = draft.provinceCode;
+    if (!code) return;
+
+    async function fetchDistricts() {
+      try {
+        const res = await fetch(`/api/geo/provinces/${code}/districts`);
+        if (!res.ok) return;
+        const data = (await res.json()) as AdminArea[];
+        if (!cancelled && Array.isArray(data)) {
+          setDistricts(data);
+        }
+      } catch {
+        // กรณีออฟไลน์ ข้ามการโหลดรายชื่ออำเภอ
+      }
+    }
+    void fetchDistricts();
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.provinceCode]);
+
+  // โหลดรายชื่อตำบลเมื่อเลือกหรือเติมอำเภอ
+  useEffect(() => {
+    let cancelled = false;
+    const code = draft.districtCode;
+    if (!code) return;
+
+    async function fetchSubdistricts() {
+      try {
+        const res = await fetch(`/api/geo/districts/${code}/subdistricts`);
+        if (!res.ok) return;
+        const data = (await res.json()) as AdminArea[];
+        if (!cancelled && Array.isArray(data)) {
+          setSubdistricts(data);
+        }
+      } catch {
+        // กรณีออฟไลน์ ข้ามการโหลดรายชื่อตำบล
+      }
+    }
+    void fetchSubdistricts();
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.districtCode]);
+
+  // ดึงจังหวัด/อำเภอ/ตำบลอัตโนมัติจากพิกัดผ่าน API ของ TF-05
+  const reverseGeocodeCoordinates = useCallback(
+    async (lat: number, lng: number) => {
+      try {
+        const res = await fetch(
+          `/api/geo/reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
+        );
+        if (!res.ok) return;
+        const area = (await res.json()) as LocatedArea;
+        if (area && area.province && area.district && area.subdistrict) {
+          onAutoFillArea(area);
+        }
+      } catch {
+        // กรณีออฟไลน์หรือเชื่อมต่อไม่ได้ ผู้ใช้ยังเลือกเองหรือข้ามได้ตามกติกา step2Schema
+      }
+    },
+    [onAutoFillArea],
+  );
+
+  // ปุ่มดึงพิกัด GPS อัตโนมัติ
+  function handleRequestGps() {
+    setGpsError(null);
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.geolocation ||
+      typeof navigator.geolocation.getCurrentPosition !== "function"
+    ) {
+      setGpsError("UNSUPPORTED");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsLocating(false);
+        setGpsError(null);
+        const { latitude, longitude, accuracy } = position.coords;
+        onGpsPosition({ latitude, longitude, accuracy });
+        void reverseGeocodeCoordinates(latitude, longitude);
+      },
+      (error) => {
+        setIsLocating(false);
+        if (error.code === 1) {
+          setGpsError("PERMISSION_DENIED");
+        } else if (error.code === 3) {
+          setGpsError("TIMEOUT");
+        } else {
+          setGpsError("POSITION_UNAVAILABLE");
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
+  }
+
+  // เมื่อผู้ใช้แตะหรือลากหมุดบนแผนที่เอง
+  function handleMapPinChange(coords: { lat: number; lng: number }) {
+    setGpsError(null);
+    onManualPin(coords);
+    void reverseGeocodeCoordinates(coords.lat, coords.lng);
+  }
+
+  // เมื่อผู้ใช้พิมพ์หรือวางลิงก์ Google Maps (เชื่อมกับการ์ด TF-10)
+  async function handleResolveGoogleMapsLink(rawUrl: string) {
+    setGmapsError(null);
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return;
+
+    const direct = parseGoogleMapsUrl(trimmed);
+    if (direct.ok) {
+      setGpsError(null);
+      onManualPin({ lat: direct.lat, lng: direct.lng });
+      void reverseGeocodeCoordinates(direct.lat, direct.lng);
+      return;
+    }
+
+    if (direct.code !== "SHORT_LINK_NEEDS_RESOLVE") {
+      setGmapsError(direct.error);
+      return;
+    }
+
+    setIsResolvingGmaps(true);
+    try {
+      const res = await fetch("/api/geo/gmaps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const data = (await res.json()) as {
+        lat?: number;
+        lng?: number;
+        error?: string;
+      };
+      if (!res.ok || typeof data.lat !== "number" || typeof data.lng !== "number") {
+        setGmapsError(data.error ?? "ไม่สามารถแปลงลิงก์ Google Maps นี้ได้");
+        return;
+      }
+      setGpsError(null);
+      onManualPin({ lat: data.lat, lng: data.lng });
+      void reverseGeocodeCoordinates(data.lat, data.lng);
+    } catch {
+      setGmapsError(
+        "ไม่สามารถเปิดลิงก์ย่อ Google Maps ได้ในขณะนี้ กรุณาใช้ปุ่มดึงพิกัด GPS หรือปักหมุดบนแผนที่แทน",
+      );
+    } finally {
+      setIsResolvingGmaps(false);
+    }
+  }
+
+  function handleSelectProvince(event: React.ChangeEvent<HTMLSelectElement>) {
+    const code = event.target.value;
+    const found = provinces.find((item) => String(item.code) === code);
+    onUpdateField({
+      provinceCode: code || undefined,
+      province: found?.nameTh ?? undefined,
+      districtCode: undefined,
+      district: undefined,
+      subdistrictCode: undefined,
+      subdistrict: undefined,
+    });
+  }
+
+  function handleSelectDistrict(event: React.ChangeEvent<HTMLSelectElement>) {
+    const code = event.target.value;
+    const found = districts.find((item) => String(item.code) === code);
+    onUpdateField({
+      districtCode: code || undefined,
+      district: found?.nameTh ?? undefined,
+      subdistrictCode: undefined,
+      subdistrict: undefined,
+    });
+  }
+
+  function handleSelectSubdistrict(event: React.ChangeEvent<HTMLSelectElement>) {
+    const code = event.target.value;
+    const found = subdistricts.find((item) => String(item.code) === code);
+    onUpdateField({
+      subdistrictCode: code || undefined,
+      subdistrict: found?.nameTh ?? undefined,
+    });
+  }
+
+  const statusBanner = getGpsStatusMessage({
+    lat: draft.lat,
+    lng: draft.lng,
+    accuracyM: draft.accuracyM,
+    gpsError,
+  });
+
+  const hasCoordinates = typeof draft.lat === "number" && typeof draft.lng === "number";
+
+  // รวมรายการในตัวเลือกกับค่าที่ได้จาก reverse geocode เพื่อให้แสดงชื่อทันทีแม้รายชื่อเต็มยังโหลดไม่เสร็จ
+  const provinceOptions =
+    draft.provinceCode &&
+    draft.province &&
+    !provinces.some((p) => String(p.code) === draft.provinceCode)
+      ? [
+          { code: Number(draft.provinceCode), nameTh: draft.province, nameEn: "" },
+          ...provinces,
+        ]
+      : provinces;
+
+  const activeDistricts = draft.provinceCode ? districts : [];
+  const activeSubdistricts = draft.districtCode ? subdistricts : [];
+
+  const districtOptions =
+    draft.districtCode &&
+    draft.district &&
+    !activeDistricts.some((d) => String(d.code) === draft.districtCode)
+      ? [
+          { code: Number(draft.districtCode), nameTh: draft.district, nameEn: "" },
+          ...activeDistricts,
+        ]
+      : activeDistricts;
+
+  const subdistrictOptions =
+    draft.subdistrictCode &&
+    draft.subdistrict &&
+    !activeSubdistricts.some((s) => String(s.code) === draft.subdistrictCode)
+      ? [
+          {
+            code: Number(draft.subdistrictCode),
+            nameTh: draft.subdistrict,
+            nameEn: "",
+          },
+          ...activeSubdistricts,
+        ]
+      : activeSubdistricts;
+
+  return (
+    <>
+      {/* ส่วนที่ 1: คุณอยู่ที่ไหน? (ปุ่ม GPS + แถบสถานะความแม่นยำ + แผนที่ MapLibre + ลิงก์ Google Maps) */}
+      <section aria-labelledby="location-heading" className="flex flex-col gap-6 lg:gap-4">
+        <div className="order-0 flex flex-col gap-2 lg:gap-4">
+          <h2
+            id="location-heading"
+            className="font-heading text-text-primary text-[30px] leading-[1.25] font-bold tracking-[-0.3px] lg:text-[22px] lg:leading-[1.3] lg:font-semibold lg:tracking-[-0.11px]"
+          >
+            คุณอยู่ที่ไหน?
+          </h2>
+          <p className="text-text-secondary text-lg leading-[1.65]">
+            <span className="lg:hidden">กดปุ่มด้านล่างเพื่อดึงตำแหน่งอัตโนมัติ</span>
+            <span className="hidden lg:inline">
+              กดปุ่มด้านล่างเพื่อใช้ตำแหน่งปัจจุบัน แม่นยำที่สุดและเร็วที่สุด
+            </span>
+          </p>
+          {errors.location && (
+            <p role="alert" className="text-base font-medium text-red-600">
+              {errors.location}
+            </p>
+          )}
+        </div>
+
+        {/* ปุ่มดึงพิกัด GPS: จอคอมอยู่เหนือแผนที่ (B2), มือถืออยู่ใต้แผนที่และแถบสถานะ (MB2) */}
+        <button
+          type="button"
+          data-testid="gps-locate-button"
+          onClick={handleRequestGps}
+          disabled={isLocating}
+          className="bg-primary-50 text-primary-700 hover:bg-primary-100 lg:bg-primary-600 lg:text-text-on-primary lg:hover:bg-primary-700 order-3 flex min-h-12 w-full items-center justify-center rounded-full px-8 py-[18px] text-left transition-colors disabled:opacity-70 lg:order-1 lg:justify-start lg:gap-5 lg:rounded-[14px] lg:px-7 lg:py-6"
+        >
+          {/* โฉมมือถือ (Figma MB2) */}
+          <span className="font-heading text-[19px] leading-[1.2] font-semibold lg:hidden">
+            {isLocating
+              ? "กำลังดึงพิกัด GPS..."
+              : hasCoordinates
+                ? "ดึงพิกัด GPS อีกครั้ง"
+                : "ดึงพิกัด GPS อัตโนมัติ"}
+          </span>
+
+          {/* โฉมจอคอม (Figma B2) */}
+          <span className="bg-primary-700 hidden size-14 shrink-0 items-center justify-center rounded-full lg:flex">
+            <img
+              src="/brand/icon-locate-white.svg"
+              alt=""
+              width={28}
+              height={28}
+              className="size-7 shrink-0"
+            />
+          </span>
+          <span className="hidden min-w-0 flex-1 flex-col gap-0.5 lg:flex">
+            <span className="font-heading text-[22px] leading-[1.3] font-semibold tracking-[-0.11px]">
+              {isLocating ? "กำลังดึงพิกัด GPS..." : "ดึงพิกัด GPS อัตโนมัติ"}
+            </span>
+            <span className="text-lg leading-[1.65]">
+              {`ระบบจะขออนุญาตใช้ตำแหน่ง ให้กด "อนุญาต"`}
+            </span>
+          </span>
+          <img
+            src="/brand/icon-chevron-right-white.svg"
+            alt=""
+            width={28}
+            height={28}
+            className="hidden size-7 shrink-0 lg:block"
+          />
+        </button>
+
+        {/* แถบสถานะพิกัด / แจ้งเตือนความแม่นยำเกิน 100 ม. / แจ้งเมื่อไม่อนุญาต GPS */}
+        {statusBanner && (
+          <div
+            role="status"
+            data-testid="gps-status-banner"
+            data-tone={statusBanner.tone}
+            className={`order-2 flex w-full items-center gap-3 rounded-[12px] px-4 py-[14px] lg:order-2 lg:px-5 ${
+              statusBanner.tone === "success"
+                ? "bg-green-50 text-green-700"
+                : "border border-amber-500/40 bg-amber-50 text-amber-700"
+            }`}
+          >
+            {statusBanner.tone === "success" && (
+              <img
+                src="/brand/icon-check-green.svg"
+                alt=""
+                width={18}
+                height={18}
+                className="size-[18px] shrink-0"
+              />
+            )}
+            <p className="text-lg leading-[1.55] font-semibold">
+              <span className="lg:hidden">{statusBanner.mobileText}</span>
+              <span className="hidden lg:inline">{statusBanner.desktopText}</span>
+            </p>
+          </div>
+        )}
+
+        {/* แผนที่ MapLibre โหลดเฉพาะเมื่อเปิดขั้นที่ 2 */}
+        <div className="order-1 w-full lg:order-3">
+          <LazyStep2LocationMap
+            lat={draft.lat}
+            lng={draft.lng}
+            onPinChange={handleMapPinChange}
+          />
+        </div>
+
+        {/* ช่องวางลิงก์ Google Maps (Figma B2: หรือวางลิงก์ Google Maps (ถ้ามี)) */}
+        <div className="order-4 flex flex-col gap-2.5">
+          <label
+            htmlFor="sos-gmaps-url"
+            className="text-text-primary text-base leading-[1.4] font-medium"
+          >
+            หรือวางลิงก์ Google Maps (ถ้ามี)
+          </label>
+          <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface flex min-h-[60px] w-full items-center gap-3 rounded-[12px] border px-5 py-4 transition-shadow focus-within:shadow-[0px_0px_0px_5px_rgba(31,112,209,0.18)]">
+            <img
+              src="/brand/icon-link.svg"
+              alt=""
+              width={22}
+              height={22}
+              className="size-[22px] shrink-0"
+            />
+            <input
+              id="sos-gmaps-url"
+              type="url"
+              value={draft.gmapsUrl ?? ""}
+              onChange={(event) => {
+                const nextUrl = event.target.value;
+                onUpdateField({ gmapsUrl: nextUrl });
+                if (gmapsError) setGmapsError(null);
+              }}
+              onBlur={(event) => {
+                if (event.target.value.trim()) {
+                  void handleResolveGoogleMapsLink(event.target.value);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleResolveGoogleMapsLink(draft.gmapsUrl ?? "");
+                }
+              }}
+              placeholder="https://maps.app.goo.gl/…"
+              disabled={isResolvingGmaps}
+              className="text-text-primary placeholder:text-text-secondary min-w-0 flex-1 bg-transparent text-lg leading-[1.65] outline-none"
+            />
+          </div>
+          {gmapsError ? (
+            <p role="alert" className="text-base font-medium text-red-600">
+              {gmapsError}
+            </p>
+          ) : (
+            <p className="text-text-secondary text-base leading-[1.55]">
+              เปิด Google Maps › กดค้างที่บ้าน › แชร์ › คัดลอกลิงก์
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* ส่วนที่ 2: ที่อยู่และจุดสังเกต (กรอกอัตโนมัติจากพิกัด + ช่องจุดสังเกตบังคับ) */}
+      <section aria-labelledby="address-heading" className="flex flex-col gap-6 lg:gap-4">
+        <div className="hidden flex-col gap-4 lg:flex">
+          <h2
+            id="address-heading"
+            className="font-heading text-text-primary text-[22px] leading-[1.3] font-semibold tracking-[-0.11px]"
+          >
+            ที่อยู่และจุดสังเกต
+          </h2>
+          <p className="text-text-secondary text-lg leading-[1.65]">
+            ระบบกรอกจังหวัดและอำเภอให้จากพิกัด ตรวจดูอีกครั้งได้
+          </p>
+        </div>
+
+        {/* แถวที่ 1: จังหวัด + อำเภอ */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="flex flex-col gap-2.5">
+            <label
+              htmlFor="sos-province"
+              className="text-text-primary text-base leading-[1.4] font-medium"
+            >
+              จังหวัด
+            </label>
+            <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface relative flex min-h-[60px] w-full items-center rounded-[12px] border">
+              <select
+                id="sos-province"
+                value={draft.provinceCode ?? ""}
+                onChange={handleSelectProvince}
+                className="text-text-primary min-h-[60px] w-full appearance-none bg-transparent py-4 pr-12 pl-5 text-lg leading-[1.65] outline-none"
+              >
+                <option value="">เลือกจังหวัด</option>
+                {provinceOptions.map((item) => (
+                  <option key={item.code} value={String(item.code)}>
+                    {item.nameTh}
+                  </option>
+                ))}
+              </select>
+              <img
+                src="/brand/icon-chevron-right.svg"
+                alt=""
+                width={22}
+                height={22}
+                className="pointer-events-none absolute right-4 size-[22px] rotate-90"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2.5">
+            <label
+              htmlFor="sos-district"
+              className="text-text-primary text-base leading-[1.4] font-medium"
+            >
+              อำเภอ
+            </label>
+            <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface relative flex min-h-[60px] w-full items-center rounded-[12px] border">
+              <select
+                id="sos-district"
+                value={draft.districtCode ?? ""}
+                onChange={handleSelectDistrict}
+                disabled={!draft.provinceCode && districtOptions.length === 0}
+                className="text-text-primary min-h-[60px] w-full appearance-none bg-transparent py-4 pr-12 pl-5 text-lg leading-[1.65] outline-none disabled:opacity-60"
+              >
+                <option value="">เลือกอำเภอ / เขต</option>
+                {districtOptions.map((item) => (
+                  <option key={item.code} value={String(item.code)}>
+                    {item.nameTh}
+                  </option>
+                ))}
+              </select>
+              <img
+                src="/brand/icon-chevron-right.svg"
+                alt=""
+                width={22}
+                height={22}
+                className="pointer-events-none absolute right-4 size-[22px] rotate-90"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* แถวที่ 2: ตำบล / แขวง + บ้านเลขที่ / หมู่ / ซอย */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="flex flex-col gap-2.5">
+            <label
+              htmlFor="sos-subdistrict"
+              className="text-text-primary text-base leading-[1.4] font-medium"
+            >
+              ตำบล / แขวง
+            </label>
+            <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface relative flex min-h-[60px] w-full items-center rounded-[12px] border">
+              <select
+                id="sos-subdistrict"
+                value={draft.subdistrictCode ?? ""}
+                onChange={handleSelectSubdistrict}
+                disabled={!draft.districtCode && subdistrictOptions.length === 0}
+                className="text-text-primary min-h-[60px] w-full appearance-none bg-transparent py-4 pr-12 pl-5 text-lg leading-[1.65] outline-none disabled:opacity-60"
+              >
+                <option value="">เลือกตำบล / แขวง</option>
+                {subdistrictOptions.map((item) => (
+                  <option key={item.code} value={String(item.code)}>
+                    {item.nameTh}
+                  </option>
+                ))}
+              </select>
+              <img
+                src="/brand/icon-chevron-right.svg"
+                alt=""
+                width={22}
+                height={22}
+                className="pointer-events-none absolute right-4 size-[22px] rotate-90"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2.5">
+            <label
+              htmlFor="sos-address-line"
+              className="text-text-primary text-base leading-[1.4] font-medium"
+            >
+              บ้านเลขที่ / หมู่ / ซอย
+            </label>
+            <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface flex min-h-[60px] w-full items-center gap-3 rounded-[12px] border px-5 py-4 transition-shadow focus-within:shadow-[0px_0px_0px_5px_rgba(31,112,209,0.18)]">
+              <img
+                src="/brand/icon-home.svg"
+                alt=""
+                width={22}
+                height={22}
+                className="size-[22px] shrink-0"
+              />
+              <input
+                id="sos-address-line"
+                type="text"
+                value={draft.addressLine ?? ""}
+                onChange={(event) => onUpdateField({ addressLine: event.target.value })}
+                placeholder="เช่น 99/1 หมู่ 3 ซอยวัดไร่ขิง"
+                className="text-text-primary placeholder:text-text-secondary min-w-0 flex-1 bg-transparent text-lg leading-[1.65] outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ช่องจุดสังเกต (บังคับ) */}
+        <div className="flex flex-col gap-2.5">
+          <label
+            htmlFor="sos-landmark"
+            className="text-text-primary text-base leading-[1.4] font-medium"
+          >
+            <span className="lg:hidden">จุดสังเกต (ช่วยให้ทีมหาเจอเร็วขึ้น)</span>
+            <span className="hidden lg:inline">
+              จุดสังเกต (สำคัญมากเมื่อป้ายบ้านจมน้ำ)
+            </span>
+          </label>
+          <div
+            className={`flex min-h-[120px] w-full items-start gap-3 rounded-[12px] px-5 py-4 transition-shadow lg:min-h-[60px] lg:items-center ${
+              errors.landmark
+                ? "border-2 border-red-600 bg-red-50/40"
+                : "border-primary-600 bg-bg-surface border-2 shadow-[0px_0px_0px_5px_rgba(31,112,209,0.18)]"
+            }`}
+          >
+            <img
+              src="/brand/icon-map-pin-blue.svg"
+              alt=""
+              width={22}
+              height={22}
+              className="mt-1 size-[22px] shrink-0 lg:mt-0"
+            />
+            <textarea
+              id="sos-landmark"
+              rows={2}
+              value={draft.landmark}
+              onChange={(event) => onUpdateField({ landmark: event.target.value })}
+              placeholder="เช่น บ้านหลังคาสีแดง 2 ชั้น ตรงข้ามศาลาวัด"
+              className="text-text-primary placeholder:text-text-secondary min-w-0 flex-1 resize-none bg-transparent text-lg leading-[1.65] outline-none"
+            />
+          </div>
+          {errors.landmark ? (
+            <p role="alert" className="text-base font-medium text-red-600">
+              {errors.landmark}
+            </p>
+          ) : (
+            <p className="text-text-secondary text-base leading-[1.55]">
+              บอกสิ่งที่มองเห็นได้จากเรือ เช่น สีหลังคา ต้นไม้ใหญ่ วัด
+            </p>
+          )}
+        </div>
+      </section>
+
+      {errors.missingSummary && errors.missingSummary.length > 0 && (
+        <div
+          role="alert"
+          data-testid="step2-missing-alert"
+          className="rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
+        >
+          <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
+          <ul className="mt-1 list-disc pl-5 font-medium">
+            {errors.missingSummary.map((item) => (
+              <li key={item}>กรุณาระบุ{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <SosStepActions
+        onPrev={onPrev}
+        onNext={onNext}
+        mobileLabel="ถัดไป"
+        desktopLabel="ถัดไป: ผู้ติดค้าง"
+      />
+    </>
+  );
+}

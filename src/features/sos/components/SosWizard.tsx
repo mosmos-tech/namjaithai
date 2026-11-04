@@ -4,16 +4,18 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import {
   Need,
-  urgencyLabel,
-  waterLevelLabel,
+  type LocatedArea,
   type Urgency,
   type WaterLevel,
 } from "../../../lib/domain";
 import {
-  SOS_STEPS,
+  applyGpsPositionToDraft,
+  applyLocatedAreaToDraft,
+  applyManualPinToDraft,
   saveSosDraft,
   submitSosDraft,
   validateStep1Draft,
+  validateStep2Draft,
   validateStep3Draft,
   validateStep4Draft,
   validateStep5Draft,
@@ -24,16 +26,17 @@ import {
   type SosDraftPhoto,
   type SosStepNumber,
   type Step1ValidationErrors,
+  type Step2ValidationErrors,
   type Step3ValidationErrors,
   type Step4ValidationErrors,
   type Step5ValidationErrors,
 } from "../draft-storage";
 import { MAX_SOS_PHOTOS } from "../image-compression";
 import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
-import { SosStepActions } from "./SosStepActions";
 import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
 import { Step1UrgencyWater } from "./Step1UrgencyWater";
+import { Step2Location } from "./Step2Location";
 import { Step3People, type PeopleGroupKey } from "./Step3People";
 import { Step4Needs } from "./Step4Needs";
 import { Step5Contact } from "./Step5Contact";
@@ -63,6 +66,10 @@ export function SosWizard() {
   const [step1Errors, setStep1Errors] = useState<Step1ValidationErrors>({
     missingSummary: [],
   });
+  const [step2Attempted, setStep2Attempted] = useState(false);
+  const [step2Errors, setStep2Errors] = useState<Step2ValidationErrors>({
+    missingSummary: [],
+  });
 
   // สถานะตรวจข้อมูลขั้นที่ 3
   const [step3Attempted, setStep3Attempted] = useState(false);
@@ -87,7 +94,8 @@ export function SosWizard() {
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
 
   function updateDraft(updater: (prev: SosDraft) => SosDraft): SosDraft {
-    const next = updater(draft);
+    const latest = getSosDraftSnapshot();
+    const next = updater(latest);
     saveSosDraft(next);
     return next;
   }
@@ -124,6 +132,54 @@ export function SosWizard() {
     updateDraft((prev) => ({
       ...prev,
       currentStep: 2,
+    }));
+  }
+
+  // ── ขั้นที่ 2: พิกัดและที่อยู่ ──────────────────────────────────────────────
+  function handleGpsPosition(coords: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  }) {
+    const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleManualPin(coords: { lat: number; lng: number }) {
+    const next = updateDraft((prev) => applyManualPinToDraft(prev, coords));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleAutoFillArea(area: LocatedArea) {
+    const next = updateDraft((prev) => applyLocatedAreaToDraft(prev, area));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleUpdateStep2Field(patch: Partial<SosDraft>) {
+    const next = updateDraft((prev) => ({ ...prev, ...patch }));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleStep2Next() {
+    setStep2Attempted(true);
+    const check = validateStep2Draft(draft);
+    setStep2Errors(check.errors);
+
+    if (!check.valid) {
+      return;
+    }
+
+    updateDraft((prev) => ({
+      ...prev,
+      currentStep: 3,
     }));
   }
 
@@ -323,6 +379,19 @@ export function SosWizard() {
       }
     }
 
+    // ถ้าจะข้ามไปขั้นที่ 3–5 ต้องผ่านการตรวจขั้นที่ 2 ก่อน
+    if (targetStep > 2) {
+      const check2 = validateStep2Draft(draft);
+      if (!check2.valid) {
+        setStep2Attempted(true);
+        setStep2Errors(check2.errors);
+        if (draft.currentStep !== 2) {
+          updateDraft((prev) => ({ ...prev, currentStep: 2 }));
+        }
+        return;
+      }
+    }
+
     if (targetStep > 3 && draft.currentStep === 3) {
       const check3 = validateStep3Draft(draft);
       if (!check3.valid) {
@@ -346,8 +415,6 @@ export function SosWizard() {
       currentStep: targetStep,
     }));
   }
-
-  const currentStepDef = SOS_STEPS[draft.currentStep - 1];
 
   const goToPrevStep =
     draft.currentStep > 1
@@ -393,35 +460,16 @@ export function SosWizard() {
           )}
 
           {draft.currentStep === 2 && (
-            <>
-              <section aria-labelledby="step-placeholder-heading" className="flex flex-col gap-4">
-                <h2
-                  id="step-placeholder-heading"
-                  className="font-heading text-[30px] leading-[1.25] font-bold tracking-[-0.3px] text-text-primary lg:text-[22px] lg:leading-[1.3] lg:font-semibold"
-                >
-                  {currentStepDef.title}
-                </h2>
-                <p className="text-lg leading-[1.65] text-text-secondary">
-                  {currentStepDef.description}
-                </p>
-                <div className="rounded-[12px] bg-bg-subtle p-4 text-base text-text-secondary">
-                  ความเร่งด่วน:{" "}
-                  <strong className="text-text-primary">
-                    {draft.urgency ? urgencyLabel[draft.urgency] : "-"}
-                  </strong>{" "}
-                  · ระดับน้ำ:{" "}
-                  <strong className="text-text-primary">
-                    {draft.waterLevel ? waterLevelLabel[draft.waterLevel] : "ไม่ได้ระบุ"}
-                  </strong>
-                </div>
-              </section>
-              <SosStepActions
-                onPrev={goToPrevStep}
-                onNext={() => handleGoToStep(3)}
-                mobileLabel="ถัดไป"
-                desktopLabel={`ถัดไป: ${SOS_STEPS[2].shortLabel}`}
-              />
-            </>
+            <Step2Location
+              draft={draft}
+              errors={step2Errors}
+              onGpsPosition={handleGpsPosition}
+              onManualPin={handleManualPin}
+              onAutoFillArea={handleAutoFillArea}
+              onUpdateField={handleUpdateStep2Field}
+              onPrev={() => handleGoToStep(1)}
+              onNext={handleStep2Next}
+            />
           )}
 
           {draft.currentStep === 3 && (
