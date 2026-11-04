@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { sosSchema, step2Schema, step3Schema, step4Schema, step5Schema } from "../sos-schema";
-import { Urgency, WaterLevel, Need } from "../enums";
+import { WaterLevel, Need } from "../enums";
 
 const validBase = {
-  urgency: Urgency.RED,
+  dangerSigns: [],
+  canSelfEvacuate: false,
   waterLevel: WaterLevel.WAIST_CHEST,
   lat: 13.75,
   lng: 100.52,

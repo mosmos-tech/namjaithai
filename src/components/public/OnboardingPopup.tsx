@@ -82,8 +82,9 @@ export const ONBOARDING_STEPS: OnboardingStepConfig[] = [
     waterPercentage: 36,
     waterHeightPxDesktop: 201.6,
     waterHeightPxMobile: 72,
-    title: "บอกว่าเร่งด่วนแค่ไหน",
-    description: "เลือกสีให้ตรงกับสถานการณ์ ทีมกู้ภัยจะไปช่วยเคสสีแดงก่อน",
+    // TF-55: ผู้แจ้งไม่เลือกสีเองแล้ว ระบบจัดลำดับจากคำตอบ
+    title: "ตอบคำถามสั้นๆ",
+    description: "บอกว่ามีอันตรายอะไรและน้ำสูงแค่ไหน ระบบจะจัดลำดับให้ทีมกู้ภัยไปช่วยคนที่อันตรายที่สุดก่อน",
     type: "urgency",
   },
   {
@@ -387,35 +388,15 @@ export function OnboardingPopup({ forceOpen, onClose }: OnboardingPopupProps) {
 
               {currentStep.type === "urgency" && (
                 <div className="flex items-center gap-2 md:gap-2.5">
-                  <div className="inline-flex items-center gap-1.5 md:gap-2 px-3 py-1.5 rounded-full bg-bg-page text-xs md:text-base font-medium text-text-primary">
+                  <div className="inline-flex items-center gap-1.5 md:gap-2 px-3 py-1.5 rounded-full bg-red-50 text-xs md:text-base font-medium text-red-600">
                     <Image
-                      src="/brand/urgency-red.svg"
-                      alt="สีแดง"
+                      src="/brand/icon-phone-red.svg"
+                      alt=""
                       width={16}
                       height={16}
                       className="w-3.5 h-3.5 md:w-4 md:h-4"
                     />
-                    <span>วิกฤต</span>
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 md:gap-2 px-3 py-1.5 rounded-full bg-bg-page text-xs md:text-base font-medium text-text-primary">
-                    <Image
-                      src="/brand/urgency-yellow.svg"
-                      alt="สีเหลือง"
-                      width={16}
-                      height={16}
-                      className="w-3.5 h-3.5 md:w-4 md:h-4"
-                    />
-                    <span>เร่งด่วน</span>
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 md:gap-2 px-3 py-1.5 rounded-full bg-bg-page text-xs md:text-base font-medium text-text-primary">
-                    <Image
-                      src="/brand/urgency-green.svg"
-                      alt="สีเขียว"
-                      width={16}
-                      height={16}
-                      className="w-3.5 h-3.5 md:w-4 md:h-4"
-                    />
-                    <span>ทั่วไป</span>
+                    <span>มีคนหมดสติหรือหายใจผิดปกติ โทร 1669 ทันที</span>
                   </div>
                 </div>
               )}

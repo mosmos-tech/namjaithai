@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Urgency, type LocatedArea } from "../../../lib/domain";
+import { type LocatedArea } from "../../../lib/domain";
 import {
   GPS_LOW_ACCURACY_THRESHOLD_M,
   applyGpsPositionToDraft,
@@ -33,7 +33,8 @@ describe("TF-09: ฟอร์ม SOS ขั้น 2 พิกัดและท�
     const initial = {
       ...createInitialSosDraft(),
       currentStep: 2 as const,
-      urgency: Urgency.RED,
+      dangerSigns: [],
+      canSelfEvacuate: false,
     };
 
     // จำลองการกดปุ่มดึง GPS ได้พิกัดวัดไร่ขิง อ.สามพราน จ.นครปฐม (ความแม่นยำ ±12 เมตร)
@@ -118,7 +119,8 @@ describe("TF-09: ฟอร์ม SOS ขั้น 2 พิกัดและท�
     const initial = {
       ...createInitialSosDraft(),
       currentStep: 2 as const,
-      urgency: Urgency.YELLOW,
+      dangerSigns: [],
+      canSelfEvacuate: false,
     };
     const pinnedDraft = applyManualPinToDraft(initial, {
       lat: 14.353219,
@@ -167,7 +169,7 @@ describe("TF-09: ฟอร์ม SOS ขั้น 2 พิกัดและท�
   it("เกณฑ์ข้อ 4: แผนที่ MapLibre โหลดเฉพาะตอนเปิดขั้นที่ 2 เท่านั้น (lazy load ด้วย next/dynamic ssr: false)", () => {
     const componentsDir = resolve(__dirname, "../components");
     const step1Source = readFileSync(
-      resolve(componentsDir, "Step1UrgencyWater.tsx"),
+      resolve(componentsDir, "Step1Situation.tsx"),
       "utf8",
     );
     const wizardSource = readFileSync(

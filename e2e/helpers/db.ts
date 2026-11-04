@@ -46,7 +46,9 @@ export async function createCaseViaApi(
       "X-Forwarded-For": `10.48.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
     },
     body: JSON.stringify({
-      urgency: "RED",
+      // TF-55: ระบบคำนวณระดับจากคำตอบ (ส่ง urgency มาก็ถูกเมิน)
+      dangerSigns: [],
+      canSelfEvacuate: false,
       ...randomBangkokPoint(),
       landmark: "จุดสังเกตทดสอบ E2E",
       adults: 1,

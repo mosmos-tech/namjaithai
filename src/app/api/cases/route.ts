@@ -6,7 +6,7 @@ import { handleCreateSosCase, type SosCaseRpcClient } from "@/features/sos/serve
  * POST /api/cases
  * รับข้อมูลจากฟอร์มแจ้งขอความช่วยเหลือ SOS 5 ขั้น:
  * 1. ตรวจสอบข้อมูลด้วย sosSchema (ตอบ 400 พร้อมรายชื่อช่องที่ผิดเมื่อข้อมูลไม่ครบ/ผิดรูปแบบ)
- * 2. คำนวณคะแนนความเร่งด่วนด้วย priorityScore()
+ * 2. คำนวณระดับด้วย computeTriage() (TF-55) แล้วคำนวณคะแนนจัดลำดับด้วย priorityScore()
  * 3. บันทึกทุกตารางในครั้งเดียวผ่านฟังก์ชันฐานข้อมูล create_sos_case()
  * 4. ป้องกันการส่งซ้ำด้วยหัวข้อมูล Idempotency-Key และจำกัดจำนวนครั้งต่อเบอร์โทร/IP
  */

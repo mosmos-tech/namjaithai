@@ -17,7 +17,8 @@ describe("sosSchema — ข้อความ error เป็นภาษาไ�
 
   it("ช่องสำคัญได้ข้อความที่คนทั่วไปอ่านเข้าใจ", () => {
     const { fieldErrors } = z.flattenError(sosSchema.safeParse({}).error!);
-    expect(fieldErrors.urgency).toEqual(["กรุณาเลือกระดับความเร่งด่วน"]);
+    expect(fieldErrors.dangerSigns).toEqual(["กรุณาตอบว่ามีสัญญาณอันตรายข้อใดไหม"]);
+    expect(fieldErrors.canSelfEvacuate).toEqual(["กรุณาตอบว่าออกจากที่นั่นเองได้ไหม"]);
     expect(fieldErrors.waterLevel).toBeUndefined(); // ไม่บังคับ
     expect(fieldErrors.lat).toEqual(["กรุณาระบุตำแหน่ง (พิกัด)"]);
     expect(fieldErrors.landmark).toEqual(["กรุณาระบุจุดสังเกต"]);
@@ -26,7 +27,8 @@ describe("sosSchema — ข้อความ error เป็นภาษาไ�
 
   it("ค่าผิดชนิด (ไม่ใช่แค่ขาด) ก็เป็นภาษาไทย", () => {
     const r = sosSchema.safeParse({
-      urgency: "PURPLE",
+      dangerSigns: ["PURPLE"],
+      canSelfEvacuate: "yes",
       adults: -1,
       needs: ["X"],
       notes: "ก".repeat(501),

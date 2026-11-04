@@ -1,5 +1,11 @@
 import { Need, WATER_LEVEL_DISPLAY_ORDER, waterLevelLabel } from "../enums";
-import { IncidentType, UnitCapability, type IncidentDefinition } from "./types";
+import {
+  IncidentType,
+  TF55_TRIAGE_TABLE_SOURCE,
+  UNIVERSAL_DANGER_SIGNS,
+  UnitCapability,
+  type IncidentDefinition,
+} from "./types";
 
 /**
  * สิ่งที่ควรทำระหว่างน้ำท่วม — ใช้ทั้งหน้า /survival และคำแนะนำระหว่างรอทีม
@@ -23,16 +29,39 @@ export const flood: IncidentDefinition = {
       key: "waterLevel",
       kind: "choice",
       label: { th: "ระดับน้ำรอบตัวคุณ" },
-      // ไม่บังคับ: ฟอร์มมือถือไม่ได้ถาม (ตาม Figma)
+      // ไม่บังคับ แต่ถ้าไม่ตอบ computeTriage จะไม่ให้ระดับเขียว (ถือว่าไม่ทราบระดับน้ำ)
       required: false,
       options: WATER_LEVEL_DISPLAY_ORDER.map((level) => ({
         value: level,
         label: { th: waterLevelLabel[level] },
       })),
     },
+    {
+      key: "canSelfEvacuate",
+      kind: "boolean",
+      label: { th: "ออกจากที่นั่นเองได้ไหม" },
+      required: true,
+    },
+    {
+      key: "hasDisabled",
+      kind: "boolean",
+      label: { th: "มีผู้พิการ" },
+      required: false,
+      sensitive: true,
+    },
+    {
+      key: "hasInjured",
+      kind: "boolean",
+      label: { th: "มีผู้บาดเจ็บ (ยังรู้สึกตัว)" },
+      required: false,
+      sensitive: true,
+    },
   ],
-  // TODO(TF-54): ยังไม่มีเนื้อหาสัญญาณอันตรายของน้ำท่วมในระบบเดิม รอแหล่งทางการ
-  dangerSigns: [],
+  // TODO(TF-54): ตรวจกับต้นฉบับ CBD สพฉ. อีกรอบ
+  dangerSigns: [
+    ...UNIVERSAL_DANGER_SIGNS,
+    { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ" }, source: TF55_TRIAGE_TABLE_SOURCE },
+  ],
   needs: Object.values(Need),
   waitingAdvice: FLOOD_DURING_TIPS.map((th) => ({
     text: { th },
