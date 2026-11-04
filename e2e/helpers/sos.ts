@@ -33,22 +33,30 @@ export async function chooseUrgency(page: Page, word: "วิกฤต" | "เ�
 }
 
 /**
- * ใส่ตำแหน่งลงร่างฟอร์มโดยตรง แทนการกดขั้นที่ 2 (TF-09 ยังไม่ได้ทำ ยังไม่มีแผนที่ให้ปักหมุด)
- * TODO(TF-09): เปลี่ยนเป็นกดดึง GPS / ปักหมุดจริงเมื่อขั้นตำแหน่งเสร็จ
+ * เตรียมพิกัดสำหรับเทสต์ขั้นอื่นโดยไม่พึ่ง GPS หรือแผนที่ภายนอก
+ * หลัง reload ต้องรอให้ฟอร์มคืนค่าร่าง: HTML แรกแสดงขั้น 1 ก่อน hydration
+ * ไม่เช่นนั้นปุ่ม "ถัดไป" จะกดขั้น 1 แทนขั้นที่บันทึกไว้
  */
 export async function seedLocationIntoDraft(page: Page) {
   const point = randomBangkokPoint();
-  await page.evaluate(
+  const step = await page.evaluate(
     ({ key, point }) => {
       const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
       localStorage.setItem(
         key,
         JSON.stringify({ ...draft, ...point, accuracyM: 10, landmark: "หน้าร้านสะดวกซื้อ (E2E)" }),
       );
+      return draft.currentStep ?? 1;
     },
     { key: DRAFT_KEY, point },
   );
   await page.reload();
+  await expectStep(page, step);
+  if (step === 2) {
+    await expect(page.getByRole("textbox", { name: /จุดสังเกต/ })).toHaveValue(
+      "หน้าร้านสะดวกซื้อ (E2E)",
+    );
+  }
   return point;
 }
 
