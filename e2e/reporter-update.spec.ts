@@ -10,6 +10,11 @@ async function verifyReporter(page: Page, phone: string) {
 test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
   test("แก้ระดับน้ำ จำนวนคน โน้ต แล้วคำนวณคะแนนและบันทึกเหตุการณ์", async ({ page, baseURL }) => {
     const sent = await createCaseViaApi(baseURL!, { urgency: "YELLOW", waterLevel: "ANKLE_KNEE" });
+    const { error: seedError } = await adminDb()
+      .from("cases")
+      .update({ details: { waterLevel: "ANKLE_KNEE", accessBlocked: true } })
+      .eq("case_code", sent.caseCode);
+    expect(seedError).toBeNull();
     await page.goto(`/track/${sent.caseCode}?t=${sent.trackingToken}`);
     await page.getByRole("button", { name: "อัปเดตข้อมูลเคส" }).click();
     await verifyReporter(page, sent.phone);
@@ -22,11 +27,11 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
     await expect(page.getByRole("status")).toContainText("บันทึกข้อมูลแล้ว");
     const { data: c, error } = await adminDb()
       .from("cases")
-      .select("id, urgency, priority_score, created_at, water_level, notes")
+      .select("id, urgency, priority_score, created_at, details, notes")
       .eq("case_code", sent.caseCode)
       .single();
     expect(error).toBeNull();
-    expect(c!.water_level).toBe("ROOF");
+    expect(c!.details).toEqual({ waterLevel: "ROOF", accessBlocked: true });
     expect(c!.notes).toBe("น้ำขึ้นเร็ว รออยู่ชั้นสอง");
     expect(c!.priority_score).toBe(
       priorityScore({
@@ -52,6 +57,8 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
     expect(events).toHaveLength(1);
     expect(events![0].metadata.before.adults).toBe(1);
     expect(events![0].metadata.after.adults).toBe(3);
+    expect(events![0].metadata.before.waterLevel).toBe("ANKLE_KNEE");
+    expect(events![0].metadata.after.waterLevel).toBe("ROOF");
     await page.getByRole("button", { name: "อัปเดตข้อมูลเคส" }).click();
     await verifyReporter(page, sent.phone);
     await expect(page.getByLabel("ผู้ใหญ่", { exact: true })).toHaveValue("3");
