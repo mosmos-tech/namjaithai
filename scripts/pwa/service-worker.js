@@ -47,9 +47,10 @@ self.addEventListener("install", (event) => {
           if (!url.endsWith(".css")) return;
           const css = await response.text();
           await Promise.all(
-            [...css.matchAll(/url\(["']?(\/_next\/static\/media\/[^)"'\s]+)["']?\)/g)].map(
-              (match) => download(match[1]).catch(() => undefined),
-            ),
+            [...css.matchAll(/url\(["']?(\/_next\/static\/media\/[^)"'\s]+)["']?\)/g)]
+              // The offline pages can use fallback fonts without downloading every variant.
+              .filter((match) => !/\.(?:woff2?|ttf|otf)$/i.test(match[1]))
+              .map((match) => download(match[1]).catch(() => undefined)),
           );
         }),
       );

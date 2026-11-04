@@ -79,6 +79,7 @@ test("ไม่แคชข้อมูลบัญชี เคส หรือ
     return result;
   });
   expect(urls).toEqual(expect.arrayContaining(["/request", "/hotlines", "/survival"]));
+  expect(urls.some((url) => /\.(?:woff2?|ttf|otf)$/i.test(url))).toBe(false);
   expect(urls.some((url) => /^\/(api|auth|track|admin|unit|my-cases)(\/|$)/.test(url))).toBe(false);
 });
 
