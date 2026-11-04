@@ -3,6 +3,7 @@ import { gzipSync } from "node:zlib";
 
 async function offlineReady(page: Page) {
   await page.goto("/");
+  await page.getByTestId("onboarding-skip").click();
   await expect(page.getByRole("status").filter({ hasText: "พร้อมเปิดฟอร์ม SOS" })).toBeVisible({
     timeout: 60_000,
   });
@@ -92,6 +93,7 @@ test("Android กดติดตั้งได้ และการปิด�
   });
   const page = await context.newPage();
   await page.goto("/");
+  await page.getByTestId("onboarding-skip").click();
   const prompt = async () => {
     await expect(page.getByRole("status").filter({ hasText: "พร้อมเปิดฟอร์ม SOS" })).toBeVisible({
       timeout: 60_000,
@@ -133,6 +135,7 @@ test("iPhone มีคำแนะนำแชร์ เพิ่มไปยั
   });
   const page = await context.newPage();
   await page.goto("/");
+  await page.getByTestId("onboarding-skip").click();
   await page.getByRole("button", { name: "ดูวิธีเพิ่ม" }).click();
   await expect(page.getByRole("img", { name: /^ภาพปุ่มแชร์/ })).toBeVisible();
   await expect(page.getByText(/กดปุ่มแชร์.*เพิ่มไปยังหน้าจอโฮม/)).toBeVisible();
@@ -176,6 +179,8 @@ test("วัดขนาดหน้าแรกแบบ cold load รวมฟ
     );
   });
   await page.goto("/", { waitUntil: "load" });
+  await expect(page.getByTestId("onboarding-popup")).toBeVisible();
+  await page.locator("img").evaluateAll((images) => Promise.all(images.map((img) => img.decode())));
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   const totals: Record<string, number> = {};
   for (const { type, bytes } of await Promise.all(sizes)) {

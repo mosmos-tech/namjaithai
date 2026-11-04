@@ -112,6 +112,7 @@ test.describe("TF-19 ลิงก์สมัครกู้ภัย", () => {
     })));
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/");
+    await page.getByTestId("onboarding-skip").click();
     await page.getByRole("button", { name: "เปิดเมนู" }).click();
     const account = page.getByRole("link", { name: "หน้าของฉัน" });
     await expect(account).toHaveAttribute("href", "/unit");

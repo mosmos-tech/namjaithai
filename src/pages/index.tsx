@@ -3,6 +3,7 @@ import type { GetServerSideProps } from "next";
 import Head from "next/head";
 import { FooterContent } from "@/components/public/FooterContent";
 import { Navbar } from "@/components/public/Navbar";
+import { OnboardingPopup } from "@/components/public/OnboardingPopup";
 import { HotlineBar } from "@/components/public/HotlineBar";
 import { getSessionUserRow } from "@/features/auth/server/session-user";
 import { PwaSupport } from "@/features/pwa/PwaSupport";
@@ -50,6 +51,7 @@ export default function HomePage({ account, yearBE }: HomeProps) {
       <main className="bg-bg-page flex flex-1 flex-col items-center justify-center px-4 py-24">
         <h1 className="font-heading text-text-primary text-3xl font-bold">น้ำใจไทย SOS</h1>
         <p className="text-text-secondary mt-3 text-base">หน้าแรกอยู่ระหว่างพัฒนา (TF-46)</p>
+        <OnboardingPopup />
       </main>
       <FooterContent yearBE={yearBE} />
       <PwaSupport />

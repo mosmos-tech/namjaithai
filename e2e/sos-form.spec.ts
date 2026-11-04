@@ -114,20 +114,28 @@ test.describe("ขั้นที่ 2–4", () => {
     await expectStep(page, 2);
   });
 
-  test("ขั้น 2 (หน้าชั่วคราวรอ TF-09): สรุปขั้น 1 และปุ่มย้อนกลับ/ถัดไปใช้ได้", async ({
+  test("ขั้น 2: พิกัดและที่อยู่ (TF-09) ตรวจสอบความถูกต้องและไปขั้น 3 ได้", async ({
     page,
     isMobile,
   }) => {
-    await expect(page.getByText(/ความเร่งด่วน:\s*วิกฤต/)).toBeVisible();
+    // กดถัดไปโดยยังไม่ระบุพิกัดหรือจุดสังเกต ต้องแจ้งเตือนและยังอยู่ขั้น 2
+    await nextButton(page).click();
+    await expect(page.getByText("ยังไปขั้นถัดไปไม่ได้:")).toBeVisible();
+    await expectStep(page, 2);
+
     if (isMobile) await page.getByRole("button", { name: "ย้อนกลับ" }).first().click();
     else await backButton(page).click();
     await expectStep(page, 1);
     await nextButton(page).click();
+    await expectStep(page, 2);
+
+    await seedLocationIntoDraft(page);
     await nextButton(page).click();
     await expectStep(page, 3);
   });
 
   test("ขั้น 3: ผู้ติดค้าง 5 กลุ่ม ปุ่ม + − ใหญ่อย่างน้อย 48px (TF-11)", async ({ page }) => {
+    await seedLocationIntoDraft(page);
     await nextButton(page).click();
     await expectStep(page, 3);
     for (const group of [
@@ -146,6 +154,7 @@ test.describe("ขั้นที่ 2–4", () => {
   });
 
   test("ขั้น 3: กด + − แล้วจำนวนเปลี่ยน และไม่ติดลบ", async ({ page }) => {
+    await seedLocationIntoDraft(page);
     await nextButton(page).click();
     const plus = page.getByRole("button", { name: "เพิ่มจำนวนเด็กเล็ก" });
     const minus = page.getByRole("button", { name: "ลดจำนวนเด็กเล็ก" });
@@ -160,6 +169,7 @@ test.describe("ขั้นที่ 2–4", () => {
   });
 
   test("ขั้น 3: เหลือ 0 คนแล้วกดถัดไป ไปต่อไม่ได้ (TF-11)", async ({ page }) => {
+    await seedLocationIntoDraft(page);
     await nextButton(page).click();
     await page.getByRole("button", { name: "ลดจำนวนผู้ใหญ่" }).click();
     await nextButton(page).click();
@@ -168,6 +178,7 @@ test.describe("ขั้นที่ 2–4", () => {
   });
 
   test("ขั้น 4: เลือก/ยกเลิกสิ่งที่ต้องการได้", async ({ page }) => {
+    await seedLocationIntoDraft(page);
     await nextButton(page).click();
     await nextButton(page).click();
     await expectStep(page, 4);
@@ -182,6 +193,7 @@ test.describe("ขั้นที่ 2–4", () => {
   test("ขั้น 4: เลือก อื่นๆ ต้องพิมพ์ก่อนไปต่อ และพิมพ์ได้ไม่เกิน 200 ตัวอักษร (TF-11)", async ({
     page,
   }) => {
+    await seedLocationIntoDraft(page);
     await nextButton(page).click();
     await nextButton(page).click();
     await page.getByRole("button", { name: /อื่นๆ/ }).click();
@@ -275,6 +287,14 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
   });
 
   test("ยังไม่มีตำแหน่งแล้วกดส่ง ต้องบอกว่ายังส่งไม่ได้ และไม่เกิดเคสใหม่", async ({ page }) => {
+    await page.evaluate(() => {
+      const key = "namjaithai-sos-draft-v1";
+      const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
+      delete draft.lat;
+      delete draft.lng;
+      delete draft.landmark;
+      localStorage.setItem(key, JSON.stringify(draft));
+    });
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ ไม่มีตำแหน่ง");
     const phone = randomPhone();
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);

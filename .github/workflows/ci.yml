@@ -67,6 +67,9 @@ jobs:
             echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
           } > .env.local
 
+      # TF-43: verify owner-only reads and notification outbox permissions.
+      - run: npm run test:db
+
       # ใช้ Google Chrome ที่มีในเครื่อง CI อยู่แล้ว โหลดเพิ่มแค่ ffmpeg สำหรับอัดวิดีโอ
       - run: npx playwright install ffmpeg
 
