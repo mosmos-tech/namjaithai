@@ -6,19 +6,19 @@ import "./globals.css";
 const ibmPlexSansThaiLooped = IBM_Plex_Sans_Thai_Looped({
   variable: "--font-sans",
   weight: ["400", "500", "600"],
-  subsets: ["thai", "latin"],
+  preload: false,
 });
 
 const baiJamjuree = Bai_Jamjuree({
   variable: "--font-heading",
   weight: ["400", "600", "700"],
-  subsets: ["thai", "latin"],
+  preload: false,
 });
 
 const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-mono",
   weight: ["600", "700"],
-  subsets: ["latin"],
+  preload: false,
 });
 
 export const metadata: Metadata = {

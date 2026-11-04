@@ -166,3 +166,10 @@
     @apply font-sans;
   }
 }
+
+/* Keep the first public page readable with the fonts already on the device. */
+html:has([data-lightweight-home]) {
+  --font-sans: system-ui, sans-serif;
+  --font-heading: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+}
