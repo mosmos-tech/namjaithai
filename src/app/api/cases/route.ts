@@ -1,8 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  handleCreateSosCase,
-  type SosCaseRpcClient,
-} from "@/features/sos/server/create-case";
+import { getCurrentAppUser } from "@/features/auth/server/app-user";
+import { handleCreateSosCase, type SosCaseRpcClient } from "@/features/sos/server/create-case";
 
 /**
  * POST /api/cases
@@ -45,6 +43,10 @@ export async function POST(request: Request): Promise<Response> {
     rawBody,
     headers: request.headers,
     supabase,
+    // Ownership is derived from the verified session, never from request JSON.
+    reporterUserId: await getCurrentAppUser().then((user) =>
+      user?.status === "ACTIVE" ? user.id : null,
+    ),
   });
 
   return Response.json(result.body, {
