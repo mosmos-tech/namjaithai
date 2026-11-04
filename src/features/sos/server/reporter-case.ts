@@ -4,6 +4,8 @@ import {
   caseCodeSchema,
   trackingTokenSchema,
   step3BaseSchema,
+  priorityScore,
+  type Urgency,
   WaterLevel,
 } from "../../../lib/domain";
 
@@ -34,6 +36,8 @@ export type ReporterDetails = {
   pets: number;
 };
 
+type ReporterScoreContext = { urgency: Urgency; createdAt: string };
+
 export interface ReporterRpcClient {
   rpc(
     fn: "reporter_case_verified",
@@ -46,7 +50,7 @@ export interface ReporterRpcClient {
       p_payload: unknown;
     },
   ): PromiseLike<{
-    data: ReporterDetails | null;
+    data: ReporterDetails | ReporterScoreContext | null;
     error: { code?: string; message: string; hint?: string | null } | null;
   }>;
 }
@@ -71,15 +75,37 @@ export async function handleReporterCase(input: {
     input.mutation === undefined ? null : reporterMutationSchema.safeParse(input.mutation);
   if (parsed && !parsed.success)
     return { status: 400, body: { error: parsed.error.issues[0].message }, headers };
-  const payload = parsed?.success ? parsed.data : {};
-  const { data, error } = await input.supabase.rpc("reporter_case_verified", {
-    p_case_code: code.data,
-    p_token: token.data,
-    p_phone: phone,
-    p_client_ip: extractClientIp(input.headers),
-    p_action: parsed?.success ? parsed.data.action : "read",
-    p_payload: payload,
-  });
+  const mutation = parsed?.success ? parsed.data : null;
+  const clientIp = extractClientIp(input.headers);
+  const call = (action: string, payload: unknown) =>
+    input.supabase.rpc("reporter_case_verified", {
+      p_case_code: code.data,
+      p_token: token.data,
+      p_phone: phone,
+      p_client_ip: clientIp,
+      p_action: action,
+      p_payload: payload,
+    });
+  let { data, error } = await (mutation?.action === "update"
+    ? call("score_context", {})
+    : call(mutation?.action ?? "read", mutation ?? {}));
+  if (mutation?.action === "update" && data && !error) {
+    if (!("urgency" in data))
+      return { status: 500, body: { error: "บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" }, headers };
+    const score = priorityScore({
+      urgency: data.urgency,
+      createdAt: new Date(data.createdAt),
+      waterLevel: mutation.waterLevel ?? undefined,
+      bedridden: mutation.bedridden,
+      elderly: mutation.elderly,
+      children: mutation.children,
+    });
+    ({ data, error } = await call("update", {
+      ...mutation,
+      urgency: data.urgency,
+      priorityScore: score,
+    }));
+  }
   if (error) {
     if (error.code === "SOS29") {
       const seconds = Math.max(1, Number.parseInt(error.hint ?? "900", 10) || 900);
@@ -105,6 +131,8 @@ export async function handleReporterCase(input: {
       headers,
     };
   }
+  if (data && "urgency" in data)
+    return { status: 500, body: { error: "บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" }, headers };
   return {
     status: data ? 200 : 404,
     body: data ?? { error: "ข้อมูลยืนยันไม่ถูกต้อง กรุณาตรวจสอบเบอร์โทรและลิงก์ติดตาม" },

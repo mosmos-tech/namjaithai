@@ -13,9 +13,13 @@ const update = {
   pets: 0,
 };
 function client(data: unknown = { version: 2 }, code?: string) {
-  const rpc = vi
-    .fn()
-    .mockResolvedValue({ data, error: code ? { code, message: "private database detail" } : null });
+  const rpc = vi.fn(async (_fn, { p_action }) => ({
+    data:
+      p_action === "score_context" && data && !code
+        ? { urgency: "RED", createdAt: new Date().toISOString() }
+        : data,
+    error: code ? { code, message: "private database detail" } : null,
+  }));
   return { rpc } as unknown as ReporterRpcClient;
 }
 function call(supabase: ReporterRpcClient, mutation: unknown = update, token = "a".repeat(32)) {
@@ -49,22 +53,32 @@ describe("TF-14 reporter mutations", () => {
     expect((await call(db, mutation)).status).toBe(400);
     expect(db.rpc).not.toHaveBeenCalled();
   });
-  it("passes validated edits and proof to one atomic RPC", async () => {
+  it("computes the score from verified case data and passes it to the atomic update", async () => {
     const db = client();
     const result = await call(db);
     expect(result.status).toBe(200);
     expect(result.headers["Cache-Control"]).toBe("no-store");
-    expect(db.rpc).toHaveBeenCalledWith("reporter_case_verified", {
+    expect(db.rpc).toHaveBeenNthCalledWith(1, "reporter_case_verified", {
+      p_case_code: "FL-2611-0001",
+      p_token: "a".repeat(32),
+      p_phone: "0812345678",
+      p_client_ip: null,
+      p_action: "score_context",
+      p_payload: {},
+    });
+    expect(db.rpc).toHaveBeenNthCalledWith(2, "reporter_case_verified", {
       p_case_code: "FL-2611-0001",
       p_token: "a".repeat(32),
       p_phone: "0812345678",
       p_client_ip: null,
       p_action: "update",
-      p_payload: update,
+      p_payload: { ...update, urgency: "RED", priorityScore: 10030 },
     });
   });
   it("returns not found for wrong proof", async () => {
-    expect((await call(client(null))).status).toBe(404);
+    const db = client(null);
+    expect((await call(db)).status).toBe(404);
+    expect(db.rpc).toHaveBeenCalledTimes(1);
   });
   it.each(["SOS40", "SOS41"])("reports closed/version conflicts (%s)", async (code) => {
     expect((await call(client(null, code))).status).toBe(409);
