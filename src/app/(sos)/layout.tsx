@@ -14,4 +14,3 @@ export default function SosLayout({ children }: { children: React.ReactNode }) {
     </>
   );
 }
-import "../feature-utilities.css";

@@ -45,7 +45,10 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
   await expect(
     reopened.getByRole("heading", { name: "ตำแหน่งที่เกิดเหตุ", exact: true }),
   ).toBeVisible();
-  await reopened.goto("/hotlines");
+  await reopened.goto("/");
+  const openMenu = reopened.getByRole("button", { name: "เปิดเมนู" });
+  if (await openMenu.isVisible()) await openMenu.click();
+  await reopened.getByRole("link", { name: "เบอร์สายด่วน", exact: true }).click();
   await expect(reopened.getByRole("heading", { name: "เบอร์สายด่วนฉุกเฉิน" })).toBeVisible();
   await expect(reopened.getByRole("link", { name: /1669/ }).first()).toHaveAttribute(
     "href",
@@ -130,6 +133,7 @@ test("iPhone มีคำแนะนำแชร์ เพิ่มไปยั
   const page = await context.newPage();
   await page.goto("/");
   await page.getByRole("button", { name: "ดูวิธีเพิ่ม" }).click();
+  await expect(page.getByRole("img", { name: /^ภาพปุ่มแชร์/ })).toBeVisible();
   await expect(page.getByText(/กดปุ่มแชร์.*เพิ่มไปยังหน้าจอโฮม/)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("button", { name: "ปิดคำแนะนำเพิ่มหน้าจอหลัก" }).click();
@@ -155,19 +159,28 @@ test("manifest มีไอคอนและเปิดแบบ standalone �
   );
 });
 
-test("หน้าแรกมี HTML JS CSS เริ่มต้นรวมไม่เกิน 150 KB gzip", async ({ page }) => {
-  const bodies: Promise<Buffer>[] = [];
+test("วัดขนาดหน้าแรกแบบ cold load รวมฟอนต์และรูป", async ({ page }) => {
+  const sizes: Promise<{ type: string; bytes: number }>[] = [];
   page.on("response", (response) => {
-    const request = response.request();
-    if (
-      ["document", "script", "stylesheet"].includes(request.resourceType()) &&
-      !response.url().endsWith("/sw.js")
-    )
-      bodies.push(response.body());
+    const type = response.request().resourceType();
+    if (!["document", "script", "stylesheet", "font", "image"].includes(type)) return;
+    sizes.push(
+      response.body().then((body) => ({
+        type,
+        bytes:
+          type === "font" || (type === "image" && !response.url().endsWith(".svg"))
+            ? body.length
+            : gzipSync(body).length,
+      })),
+    );
   });
   await page.goto("/", { waitUntil: "load" });
-  const buffers = await Promise.all(bodies);
-  const compressed = buffers.reduce((total, body) => total + gzipSync(body).length, 0);
-  console.log(`Initial HTML + JS + CSS: ${compressed} bytes gzip`);
-  expect(compressed).toBeLessThanOrEqual(150 * 1024);
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const totals: Record<string, number> = {};
+  for (const { type, bytes } of await Promise.all(sizes)) {
+    totals[type] = (totals[type] ?? 0) + bytes;
+  }
+  const compressed = Object.values(totals).reduce((total, bytes) => total + bytes, 0);
+  console.log(`Initial load: ${compressed} bytes`, totals);
+  expect(compressed).toBeLessThanOrEqual(150_000);
 });

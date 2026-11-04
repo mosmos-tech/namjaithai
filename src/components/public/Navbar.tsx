@@ -1,6 +1,6 @@
 "use client";
 
-/* eslint-disable @next/next/no-html-link-for-pages -- Public navigation uses full documents so offline links resolve through the service-worker HTML cache without RSC prefetch downloads. */
+import Link from "next/link";
 import { useState } from "react";
 
 import { Logo } from "./Logo";
@@ -23,31 +23,33 @@ export function Navbar({ account }: { account?: { href: string } | null }) {
     <nav className="bg-bg-nav rounded-b-[20px] sm:rounded-b-3xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
         {/* Logo */}
-        <a href="/" onClick={() => setOpen(false)}>
+        <Link prefetch={false} href="/" onClick={() => setOpen(false)}>
           <Logo />
-        </a>
+        </Link>
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-1 md:flex">
           {NAV_LINKS.map(({ label, href }) => (
-            <a
+            <Link
+              prefetch={false}
               key={href}
               href={href}
               className="font-heading text-text-primary hover:bg-primary-50 hover:text-primary-700 rounded-full px-3 py-2 text-sm font-semibold transition-colors"
             >
               {label}
-            </a>
+            </Link>
           ))}
         </div>
 
         {/* Desktop login — outline */}
         <div className="hidden md:block">
-          <a
+          <Link
+            prefetch={false}
             href={accountHref}
             className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle active:bg-bg-subtle inline-flex h-12 items-center rounded-full border px-5 text-sm font-semibold transition-colors"
           >
             {accountLabel}
-          </a>
+          </Link>
         </div>
 
         {/* Mobile hamburger */}
@@ -85,22 +87,24 @@ export function Navbar({ account }: { account?: { href: string } | null }) {
         <div className="border-border-default border-t px-4 pb-4 md:hidden">
           <div className="flex flex-col gap-1 pt-2">
             {NAV_LINKS.map(({ label, href }) => (
-              <a
+              <Link
+                prefetch={false}
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
                 className="font-heading text-text-primary hover:bg-primary-50 hover:text-primary-700 rounded-full px-4 py-3 text-base font-semibold transition-colors"
               >
                 {label}
-              </a>
+              </Link>
             ))}
-            <a
+            <Link
+              prefetch={false}
               href={accountHref}
               onClick={() => setOpen(false)}
               className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle mt-2 flex h-12 items-center justify-center rounded-full border text-base font-semibold transition-colors"
             >
               {accountLabel}
-            </a>
+            </Link>
           </div>
         </div>
       )}

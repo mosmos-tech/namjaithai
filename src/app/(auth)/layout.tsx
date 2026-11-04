@@ -12,4 +12,3 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     </>
   );
 }
-import "../feature-utilities.css";

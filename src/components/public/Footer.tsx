@@ -1,4 +1,5 @@
 import { cacheLife } from "next/cache";
+import Link from "next/link";
 
 import { Logo } from "./Logo";
 
@@ -28,9 +29,13 @@ export async function Footer() {
             <span className="mx-2 opacity-50 select-none">·</span>
             กรณีฉุกเฉินโทร&nbsp;1669 หรือ&nbsp;1784
             <span className="mx-2 opacity-50 select-none">·</span>
-            <a href="/privacy" className="hover:text-primary-600 underline underline-offset-2">
+            <Link
+              prefetch={false}
+              href="/privacy"
+              className="hover:text-primary-600 underline underline-offset-2"
+            >
               นโยบายความเป็นส่วนตัว
-            </a>
+            </Link>
           </p>
         </div>
 

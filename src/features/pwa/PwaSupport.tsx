@@ -152,9 +152,41 @@ export function PwaSupport() {
               </button>
             </div>
             {instructions && (
-              <p className="text-text-primary w-full text-lg">
-                บน iPhone: เปิดด้วย Safari แล้วกดปุ่มแชร์ → “เพิ่มไปยังหน้าจอโฮม” → “เพิ่ม”
-              </p>
+              <figure className="text-text-primary w-full text-lg">
+                <svg
+                  role="img"
+                  aria-label="ภาพปุ่มแชร์ เมนูเพิ่มไปยังหน้าจอโฮม และปุ่มเพิ่มใน Safari"
+                  viewBox="0 0 320 104"
+                  className="bg-bg-subtle mb-2 w-full max-w-sm rounded-xl"
+                >
+                  <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <rect x="12" y="12" width="76" height="80" rx="9" />
+                    <path d="M41 54h-5v20h28V54h-5M50 63V42m-7 7 7-7 7 7M94 52h13m-5-5 5 5-5 5" />
+                    <rect x="114" y="12" width="92" height="80" rx="9" />
+                    <rect x="122" y="42" width="76" height="24" rx="4" />
+                    <path d="M130 54h10m-5-5v10M148 54h42M212 52h13m-5-5 5 5-5 5" />
+                    <rect x="232" y="12" width="76" height="80" rx="9" />
+                    <path d="M238 39h64" />
+                  </g>
+                  <g fill="currentColor" fontSize="13" textAnchor="middle">
+                    <text x="50" y="30">
+                      1
+                    </text>
+                    <text x="160" y="30">
+                      2
+                    </text>
+                    <text x="247" y="30">
+                      3
+                    </text>
+                    <text x="286" y="30">
+                      เพิ่ม
+                    </text>
+                  </g>
+                </svg>
+                <figcaption>
+                  บน iPhone: เปิดด้วย Safari แล้วกดปุ่มแชร์ → “เพิ่มไปยังหน้าจอโฮม” → “เพิ่ม”
+                </figcaption>
+              </figure>
             )}
           </div>
         </aside>

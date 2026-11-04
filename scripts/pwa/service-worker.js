@@ -1,7 +1,7 @@
 /* Build template; emitted to public/sw.js by scripts/pwa/build.mjs. */
-/* global __CACHE_VERSION__, __STATIC_ASSETS__ */
+/* global __CACHE_VERSION__ */
 const CACHE = "namjaithai-public-" + __CACHE_VERSION__;
-const ASSETS = __STATIC_ASSETS__;
+
 const PAGES = ["/", "/request", "/sos", "/hotlines", "/survival"];
 const PUBLIC_ASSETS = [
   "/favicon.ico",
@@ -15,12 +15,46 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE);
-      // Omit session cookies: cached HTML must never contain a signed-in account.
-      for (const url of [...ASSETS, ...PUBLIC_ASSETS, ...PAGES]) {
-        const response = await fetch(new Request(url, { credentials: "omit", cache: "reload" }));
-        if (!response.ok || response.redirected) throw new Error("Offline cache unavailable");
-        await cache.put(url, response);
+      const downloads = new Map();
+      function download(url) {
+        if (!downloads.has(url)) {
+          downloads.set(
+            url,
+            (async () => {
+              const response = await fetch(
+                new Request(url, { credentials: "omit", cache: "reload" }),
+              );
+              if (!response.ok || response.redirected)
+                throw new Error("Offline cache unavailable: " + url);
+              await cache.put(url, response.clone());
+              return response;
+            })(),
+          );
+        }
+        return downloads.get(url);
       }
+
+      const pages = await Promise.all(PAGES.map(async (url) => (await download(url)).text()));
+      const assets = new Set();
+      for (const html of pages) {
+        for (const match of html.matchAll(/(?:src|href)="(\/(?:_next\/static|brand)\/[^"?#]+)"/g)) {
+          assets.add(match[1]);
+        }
+      }
+      await Promise.all(
+        [...assets].map(async (url) => {
+          const response = await download(url);
+          if (!url.endsWith(".css")) return;
+          const css = await response.text();
+          await Promise.all(
+            [...css.matchAll(/url\(["']?(\/_next\/static\/media\/[^)"'\s]+)["']?\)/g)].map(
+              (match) => download(match[1]).catch(() => undefined),
+            ),
+          );
+        }),
+      );
+      await Promise.all(PUBLIC_ASSETS.map((url) => download(url).catch(() => undefined)));
+
       // Do not force an update over open tabs: their JS must match their cached build.
     })(),
   );
@@ -45,7 +79,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   // Never cache API responses, auth routes, tracking tokens, or authenticated pages.
-  if (ASSETS.includes(url.pathname) || PUBLIC_ASSETS.includes(url.pathname)) {
+  if (/^\/(?:_next\/static|brand)\//.test(url.pathname) || PUBLIC_ASSETS.includes(url.pathname)) {
     event.respondWith(
       (async () =>
         (await caches.open(CACHE))
