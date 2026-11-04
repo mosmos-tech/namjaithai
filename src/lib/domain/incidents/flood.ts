@@ -1,0 +1,41 @@
+import { Need, WATER_LEVEL_DISPLAY_ORDER, waterLevelLabel } from "../enums";
+import { IncidentType, UnitCapability, type IncidentDefinition } from "./types";
+
+/**
+ * สิ่งที่ควรทำระหว่างน้ำท่วม — ใช้ทั้งหน้า /survival และคำแนะนำระหว่างรอทีม
+ * TODO(TF-54): ตรวจกับแหล่งทางการ (ปภ.) แล้วเปลี่ยน source เป็นแหล่งนั้น
+ */
+export const FLOOD_DURING_TIPS = [
+  "อย่าเดินลุยน้ำที่ไม่รู้ความลึก — น้ำแค่ 15 ซม. อาจพัดให้ล้มได้",
+  "ปิดสวิตช์ไฟฟ้าหลักทันทีที่น้ำเข้าบ้าน แล้วโทรแจ้งการไฟฟ้า 1182",
+  "ห้ามขับรถผ่านถนนที่น้ำท่วม แม้รถจะดูสูงพอ",
+  "ฟังประกาศจากวิทยุพกพาหรือ ปภ. อย่างสม่ำเสมอ",
+  "หากติดอยู่บนหลังคา ให้สัญญาณด้วยนกหวีด 3 ครั้งต่อเนื่อง หรือโบกผ้าสีสด",
+];
+
+export const flood: IncidentDefinition = {
+  code: IncidentType.FLOOD,
+  label: { th: "น้ำท่วม" },
+  icon: "Waves",
+  capabilities: [UnitCapability.BOAT, UnitCapability.WATER_RESCUE, UnitCapability.EVACUATION],
+  questions: [
+    {
+      key: "waterLevel",
+      kind: "choice",
+      label: { th: "ระดับน้ำรอบตัวคุณ" },
+      // ไม่บังคับ: ฟอร์มมือถือไม่ได้ถาม (ตาม Figma)
+      required: false,
+      options: WATER_LEVEL_DISPLAY_ORDER.map((level) => ({
+        value: level,
+        label: { th: waterLevelLabel[level] },
+      })),
+    },
+  ],
+  // TODO(TF-54): ยังไม่มีเนื้อหาสัญญาณอันตรายของน้ำท่วมในระบบเดิม รอแหล่งทางการ
+  dangerSigns: [],
+  needs: Object.values(Need),
+  waitingAdvice: FLOOD_DURING_TIPS.map((th) => ({
+    text: { th },
+    source: "คู่มือเอาตัวรอดของเว็บ (/survival) — ยังไม่ได้ตรวจกับแหล่งทางการ",
+  })),
+};
