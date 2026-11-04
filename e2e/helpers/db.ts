@@ -56,6 +56,7 @@ export async function createCaseViaApi(
       pets: 0,
       needs: [],
       name: "ทดสอบ E2E",
+      duplicateAction: "CREATE_NEW",
       phone,
       ...overrides,
     }),
