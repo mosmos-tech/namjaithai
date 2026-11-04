@@ -9,7 +9,8 @@ import {
 import { Urgency, WaterLevel, Need, CaseStatus } from "../../../lib/domain";
 
 const validPayload = {
-  urgency: Urgency.RED,
+  dangerSigns: [],
+  canSelfEvacuate: false,
   waterLevel: WaterLevel.WAIST_CHEST,
   lat: 13.7563,
   lng: 100.5018,
@@ -85,8 +86,13 @@ describe("handleCreateSosCase (TF-12)", () => {
     expect(result.body.trackingToken).toBe("tok_0000000000000000000000000001");
     expect(result.body.status).toBe(CaseStatus.NEW);
     expect(result.body.replayed).toBe(false);
-    // คะแนนความเร่งด่วน: RED (10000) + WAIST_CHEST (2*5=10) + bedridden (1*5=5) + elderly (1*2=2) = 10017
-    expect(result.body.priorityScore).toBe(10017);
+    // TF-55: ระดับคำนวณที่เซิร์ฟเวอร์ (น้ำเอว–อก + ออกเองไม่ได้ = แดง) และไม่ส่งระดับ/คะแนนกลับไปให้ผู้แจ้ง
+    expect(result.body).not.toHaveProperty("priorityScore");
+    expect(result.body).not.toHaveProperty("urgency");
+    expect(rpc.mock.calls[0]?.[1].p_payload.urgency).toBe(Urgency.RED);
+    expect(rpc.mock.calls[0]?.[1].p_payload.triageReasons).toEqual(["WATER_CHEST_TRAPPED"]);
+    // คะแนน: RED (10000) + WAIST_CHEST (2*5=10) + bedridden (1*5=5) + elderly (1*2=2) = 10017
+    expect(rpc.mock.calls[0]?.[1].p_priority_score).toBe(10017);
 
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc.mock.calls[0]?.[1].p_payload.phone).toBe("0812345678");
@@ -126,7 +132,7 @@ describe("handleCreateSosCase (TF-12)", () => {
 
     const result = await handleCreateSosCase({
       rawBody: {
-        urgency: Urgency.RED,
+        canSelfEvacuate: false,
         // ขาด lat, lng, landmark, จำนวนคน, ชื่อ, เบอร์โทร (waterLevel ไม่บังคับ)
       },
       headers: new Headers({ "Idempotency-Key": "idem-invalid-001" }),
@@ -233,5 +239,55 @@ describe("extractClientIp & resolveIdempotencyKey helpers", () => {
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       );
     }
+  });
+});
+
+describe("handleCreateSosCase — ระดับความเร่งด่วนคำนวณที่เซิร์ฟเวอร์ (TF-55)", () => {
+  async function send(body: Record<string, unknown>) {
+    const { supabase, rpc } = createInMemoryRpcMock();
+    const result = await handleCreateSosCase({
+      rawBody: body,
+      headers: new Headers({ "Idempotency-Key": `idem-tf55-${Math.random()}` }),
+      supabase,
+    });
+    return { result, payload: rpc.mock.calls[0]?.[1].p_payload };
+  }
+
+  it("เบราว์เซอร์ส่ง urgency มาเอง ถูกเมินทิ้ง ใช้ระดับที่ระบบคำนวณ", async () => {
+    const { result, payload } = await send({
+      ...validPayload,
+      urgency: Urgency.GREEN,
+      dangerSigns: ["UNCONSCIOUS"],
+    });
+    expect(result.status).toBe(201);
+    expect(payload?.urgency).toBe(Urgency.RED);
+    expect(payload?.triageReasons[0]).toBe("DANGER_SIGN");
+  });
+
+  it("คำตอบด้านสุขภาพไปอยู่ใน sensitive ไม่ปนกับข้อมูลเคส", async () => {
+    const { payload } = await send({
+      ...validPayload,
+      dangerSigns: ["CHEST_PAIN"],
+      hasInjured: true,
+    });
+    expect(payload?.sensitive).toEqual({ dangerSigns: ["CHEST_PAIN"], hasInjured: true });
+    expect(payload).not.toHaveProperty("dangerSigns");
+    expect(payload).not.toHaveProperty("hasInjured");
+    expect(payload).not.toHaveProperty("hasDisabled");
+  });
+
+  it("ไม่มีคำตอบด้านสุขภาพที่เป็น 'ใช่' ไม่ส่ง sensitive", async () => {
+    const { payload } = await send({ ...validPayload, dangerSigns: [] });
+    expect(payload).not.toHaveProperty("sensitive");
+  });
+
+  it("ไม่ตอบเรื่องสัญญาณอันตรายหรือออกเองได้ไหม ตอบ 400", async () => {
+    const { dangerSigns: _d, canSelfEvacuate: _c, ...rest } = validPayload;
+    void _d;
+    void _c;
+    const { result } = await send(rest);
+    expect(result.status).toBe(400);
+    if (result.status !== 400) throw new Error("Expected 400");
+    expect(result.body.fields).toEqual(expect.arrayContaining(["dangerSigns", "canSelfEvacuate"]));
   });
 });
