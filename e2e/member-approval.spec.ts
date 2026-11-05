@@ -138,7 +138,7 @@ test.describe("TF-20 คิวอนุมัติและระงับส�
     }
   });
 
-  test("TF-21 แสดงสถานะและเคสเฉพาะหน่วยบนมือถือ", async ({ page, context, baseURL }) => {
+  test("TF-21 แสดงสถานะและเคสเฉพาะหน่วย", async ({ page, context, baseURL, isMobile }) => {
     const db = adminDb();
     const { error: memberError } = await db
       .from("unit_members")
@@ -169,7 +169,7 @@ test.describe("TF-20 คิวอนุมัติและระงับส�
         expect(error).toBeNull();
       }
       await applySession(context, lead);
-      await page.setViewportSize({ width: 375, height: 812 });
+      if (isMobile) await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/unit");
       const row = page
         .getByRole("list", { name: "รายการสมาชิกในหน่วย" })
