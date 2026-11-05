@@ -50,17 +50,24 @@ export async function answerStep1(
  */
 export async function seedLocationIntoDraft(page: Page) {
   const point = randomBangkokPoint();
-  await page.evaluate(
+  const currentStep = await page.evaluate(
     ({ key, point }) => {
       const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
-      localStorage.setItem(
-        key,
-        JSON.stringify({ ...draft, ...point, accuracyM: 10, landmark: "หน้าร้านสะดวกซื้อ (E2E)" }),
-      );
+      const next = {
+        ...draft,
+        ...point,
+        accuracyM: 10,
+        landmark: "หน้าร้านสะดวกซื้อ (E2E)",
+      };
+      localStorage.setItem(key, JSON.stringify(next));
+      window.dispatchEvent(new Event("storage"));
+      return typeof next.currentStep === "number" ? next.currentStep : 1;
     },
     { key: DRAFT_KEY, point },
   );
-  await page.reload();
+  if (currentStep === 2) {
+    await expect(page.locator("#sos-landmark")).toHaveValue("หน้าร้านสะดวกซื้อ (E2E)");
+  }
   return point;
 }
 
