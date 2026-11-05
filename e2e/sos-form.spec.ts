@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { countCasesByPhone, createCaseViaApi, randomPhone } from "./helpers/db";
 import {
   backButton,
-  chooseUrgency,
+  answerStep1,
   expectStep,
   goToStep5,
   nextButton,
@@ -13,67 +13,98 @@ import {
 
 // E. ฟอร์ม SOS 5 ขั้น (TF-08 ขั้น 1, TF-11 ขั้น 3–5, TF-16 เคสซ้ำ)
 
-test.describe("ขั้นที่ 1 ความเร่งด่วน (TF-08)", () => {
+test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-55)", () => {
   test.beforeEach(async ({ page }) => openFreshSosForm(page));
 
-  test("ไม่เลือกแล้วกดถัดไป บอกว่าขาดอะไร และยังอยู่ขั้น 1", async ({ page }) => {
+  test("ไม่ตอบแล้วกดถัดไป บอกว่าขาดอะไร และยังอยู่ขั้น 1", async ({ page }) => {
     await nextButton(page).click();
     await expect(
-      page.getByRole("alert").filter({ hasText: "กรุณาเลือกความเร่งด่วน 1 ข้อ" }),
+      page.getByRole("alert").filter({ hasText: 'กรุณาเลือกข้อที่ตรง หรือกด "ไม่มีข้อใดเลย"' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม" }),
     ).toBeVisible();
     await expectStep(page, 1);
   });
 
-  test("เลือกความเร่งด่วนได้ทีละ 1 ข้อ", async ({ page }) => {
-    await chooseUrgency(page, "วิกฤต");
-    await expect(page.getByRole("radio", { name: /^วิกฤต/ })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    await chooseUrgency(page, "ทั่วไป");
-    await expect(page.getByRole("radio", { name: /^ทั่วไป/ })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    await expect(page.getByRole("radio", { name: /^วิกฤต/ })).toHaveAttribute(
+  test("TF-55: ผู้แจ้งไม่เห็นตัวเลือกสีความเร่งด่วน", async ({ page }) => {
+    for (const word of ["วิกฤต", "เร่งด่วน", "ทั่วไป"]) {
+      await expect(page.getByRole("radio", { name: new RegExp(`^${word}`) })).toHaveCount(0);
+    }
+    await expect(page.getByText(/เคสสีแดง|เลือกสี/)).toHaveCount(0);
+  });
+
+  test("TF-55: ติ๊กสัญญาณอันตรายแล้วแถบโทร 1669 ขึ้นค้างบนสุดทุกขั้น", async ({ page }) => {
+    const bar = page.getByTestId("danger-call-bar");
+    await expect(bar).toHaveCount(0);
+    await answerStep1(page, { dangerSigns: ["มีคนหายใจผิดปกติ"] });
+    await expect(bar).toBeVisible();
+    await expect(bar.getByRole("link", { name: /โทร 1669/ })).toHaveAttribute("href", "tel:1669");
+
+    await nextButton(page).click();
+    await expectStep(page, 2);
+    await expect(bar).toBeVisible();
+    await seedLocationIntoDraft(page);
+    for (const step of [3, 4, 5]) {
+      await nextButton(page).click();
+      await expectStep(page, step);
+      await expect(bar).toBeVisible();
+      // แถบต้องอยู่บนสุดของจอ แม้เลื่อนลงล่างสุด
+      await page.mouse.wheel(0, 4000);
+      expect((await bar.boundingBox())!.y).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("TF-55: กด ไม่มีข้อใดเลย แล้วแถบโทรหาย", async ({ page }) => {
+    await page.getByRole("checkbox", { name: "มีคนหมดสติ", exact: true }).click();
+    await expect(page.getByTestId("danger-call-bar")).toBeVisible();
+    await page.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" }).click();
+    await expect(page.getByTestId("danger-call-bar")).toHaveCount(0);
+    await expect(page.getByRole("checkbox", { name: "มีคนหมดสติ", exact: true })).toHaveAttribute(
       "aria-checked",
       "false",
     );
   });
 
-  test("ระดับน้ำ (จอคอม): เลือกได้ และกดซ้ำเพื่อยกเลิก", async ({ page, isMobile }) => {
-    test.skip(isMobile, "Figma มือถือไม่มีคำถามระดับน้ำ");
+  test("ระดับน้ำ (มือถือและจอคอม): เลือกได้ และกดซ้ำเพื่อยกเลิก", async ({ page }) => {
     const roof = page.getByRole("radio", { name: "บนหลังคา / ดาดฟ้า" });
+    await expect(roof).toBeVisible();
     await roof.click();
     await expect(roof).toHaveAttribute("aria-checked", "true");
     await roof.click();
     await expect(roof).toHaveAttribute("aria-checked", "false");
   });
 
-  test("ระดับน้ำไม่แสดงบนมือถือ", async ({ page, isMobile }) => {
-    test.skip(!isMobile, "มือถือเท่านั้น");
-    await expect(page.getByText("ระดับน้ำรอบตัวคุณตอนนี้")).toBeHidden();
-  });
-
-  test("เลือกแล้วไปขั้น 2 ได้ และแถบความคืบหน้าถูก", async ({ page }) => {
-    await chooseUrgency(page, "วิกฤต");
+  test("ตอบแล้วไปขั้น 2 ได้ (ไม่ต้องตอบระดับน้ำ)", async ({ page }) => {
+    await answerStep1(page);
     await nextButton(page).click();
     await expectStep(page, 2);
   });
 
-  test("ปิดหน้าแล้วเปิดใหม่ ค่าที่เลือกยังอยู่ (TF-08)", async ({ page, isMobile }) => {
-    await chooseUrgency(page, "เร่งด่วน");
-    if (!isMobile) await page.getByRole("radio", { name: "ถูกน้ำล้อม / ตัดขาด" }).click();
+  test("ปิดหน้าแล้วเปิดใหม่ ค่าที่ตอบยังอยู่ (TF-08)", async ({ page }) => {
+    await answerStep1(page, { dangerSigns: ["มีคนเจ็บหน้าอก"], canSelfEvacuate: false });
+    await page.getByRole("radio", { name: "ถูกน้ำล้อม / ตัดขาด" }).click();
     await page.reload();
-    await expect(page.getByRole("radio", { name: /^เร่งด่วน/ })).toHaveAttribute(
+    await expect(page.getByRole("checkbox", { name: "มีคนเจ็บหน้าอก" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    if (!isMobile) {
-      await expect(page.getByRole("radio", { name: "ถูกน้ำล้อม / ตัดขาด" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
+    await expect(page.getByRole("radio", { name: "ไม่ได้ ติดอยู่" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(page.getByRole("radio", { name: "ถูกน้ำล้อม / ตัดขาด" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  test("ปุ่มทุกข้อในขั้น 1 สูงอย่างน้อย 48px", async ({ page }) => {
+    const buttons = page.getByRole("main").locator('[role="checkbox"], [role="radio"]');
+    const count = await buttons.count();
+    expect(count).toBeGreaterThan(5);
+    for (let i = 0; i < count; i++) {
+      expect((await buttons.nth(i).boundingBox())!.height).toBeGreaterThanOrEqual(48);
     }
   });
 
@@ -87,7 +118,7 @@ test.describe("ขั้นที่ 1 ความเร่งด่วน (TF-
     await expect(page).toHaveURL(/\/$/);
   });
 
-  test("จอคอม: การ์ดรายการขั้น กดข้ามไปขั้นอื่นโดยยังไม่เลือก จะถูกกันไว้", async ({
+  test("จอคอม: การ์ดรายการขั้น กดข้ามไปขั้นอื่นโดยยังไม่ตอบ จะถูกกันไว้", async ({
     page,
     isMobile,
   }) => {
@@ -95,21 +126,21 @@ test.describe("ขั้นที่ 1 ความเร่งด่วน (TF-
     await page.getByRole("button", { name: /ผู้ติดค้าง/ }).click();
     await expectStep(page, 1);
     await expect(
-      page.getByRole("alert").filter({ hasText: "กรุณาเลือกความเร่งด่วน" }),
+      page.getByRole("alert").filter({ hasText: "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม" }),
     ).toBeVisible();
   });
 
   test("/sos กับ /request เป็นฟอร์มเดียวกัน", async ({ page }) => {
     await page.goto("/sos");
     await expectStep(page, 1);
-    await expect(page.getByRole("radio", { name: /^วิกฤต/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "ตอนนี้มีข้อใดต่อไปนี้ไหม?" })).toBeVisible();
   });
 });
 
 test.describe("ขั้นที่ 2–4", () => {
   test.beforeEach(async ({ page }) => {
     await openFreshSosForm(page);
-    await chooseUrgency(page, "วิกฤต");
+    await answerStep1(page);
     await nextButton(page).click();
     await expectStep(page, 2);
   });

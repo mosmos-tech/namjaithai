@@ -94,11 +94,16 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     }
   });
 
-  it("key ต้องห้ามในโค้ดตรงกับ check constraint ในฐานข้อมูล", () => {
+  it("key ต้องห้ามในโค้ดตรงกับ check constraint ล่าสุดในฐานข้อมูล", () => {
+    // constraint ถูกสร้างใหม่ได้หลายรอบ (TF-49, TF-55) ใช้ตัวที่อยู่ใน migration ล่าสุด
     const dir = path.join(process.cwd(), "supabase/migrations");
-    const file = readdirSync(dir).find((f) => f.endsWith("_tf49_incident_registry.sql"))!;
-    const sql = readFileSync(path.join(dir, file), "utf8");
-    const list = sql.match(/details \?\| array\[([^\]]+)\]/)?.[1] ?? "";
+    const sql = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => readFileSync(path.join(dir, f), "utf8"))
+      .join("\n");
+    const matches = [...sql.matchAll(/details \?\| array\[([^\]]+)\]/g)];
+    const list = matches.at(-1)?.[1] ?? "";
     expect([...list.matchAll(/'([^']+)'/g)].map((m) => m[1])).toEqual([...FORBIDDEN_DETAIL_KEYS]);
   });
 });

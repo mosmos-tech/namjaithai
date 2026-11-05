@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Need, Urgency, WaterLevel } from "../../../lib/domain";
+import { Need, WaterLevel } from "../../../lib/domain";
 import {
   SOS_DRAFT_STORAGE_KEY,
   createInitialSosDraft,
@@ -189,7 +189,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     const draftWithoutLocation = {
       ...createInitialSosDraft(),
       currentStep: 5 as const,
-      urgency: Urgency.RED,
+      dangerSigns: [],
+      canSelfEvacuate: false,
       waterLevel: WaterLevel.WAIST_CHEST,
       lat: undefined,
       lng: undefined,
@@ -236,7 +237,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     const fullDraft = {
       ...createInitialSosDraft(),
       currentStep: 5 as const,
-      urgency: Urgency.RED,
+      dangerSigns: [],
+      canSelfEvacuate: false,
       waterLevel: WaterLevel.WAIST_CHEST,
       lat: 13.7563,
       lng: 100.5018,
@@ -320,7 +322,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     const fullDraft = {
       ...createInitialSosDraft(),
       currentStep: 5 as const,
-      urgency: Urgency.YELLOW,
+      dangerSigns: [],
+      canSelfEvacuate: false,
       waterLevel: WaterLevel.WAIST_CHEST,
       lat: 14.3532,
       lng: 100.5689,
@@ -359,7 +362,7 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(storage.getItem(SOS_DRAFT_STORAGE_KEY)).toBeNull();
     const reloaded = loadSosDraft(storage);
     expect(reloaded.currentStep).toBe(1);
-    expect(reloaded.urgency).toBeUndefined();
+    expect(reloaded.dangerSigns).toBeUndefined();
     expect(reloaded.name).toBe("");
     expect(reloaded.phone).toBe("");
   });

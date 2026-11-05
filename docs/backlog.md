@@ -677,11 +677,28 @@ pg_cron ทุกคืน ปิดบังชื่อ เบอร์ แล
 - [ ] ทั้ง 5 test ผ่านใน CI
 - [ ] มีวิดีโอหรือภาพหน้าจอผลการทดสอบใน docs/
 
+### TF-64 · แยกสภาพแวดล้อม local → dev → uat → production
+
+- **Branch:** `chore/TF-64-environments`
+- **Priority:** Must · **Points:** 3 · **Sprint:** 3
+- **ต้องรอ:** TF-03
+- **Test:** unit
+
+แยกเว็บและฐานข้อมูลเป็น local → dev (branch develop) → uat (branch uat) → production (main) Supabase ฟรีมี 2 project: project 1 ใช้ร่วมกันระหว่าง dev กับ uat, project 2 สำหรับ production GitHub Actions ส่ง migration ขึ้น Supabase เองเมื่อ merge (production ต้องรอคนกดอนุมัติ และ deploy เว็บจริงหลัง migration ผ่านเท่านั้น) และมีแถบบอกสภาพแวดล้อมบนหัวเว็บ รายละเอียดและเช็กลิสต์ตั้งค่าอยู่ใน docs/environments.md
+
+**เกณฑ์ผ่าน (Acceptance criteria)**
+- [ ] push เข้า develop ลง migration ที่ project 1, push เข้า main ลงที่ project 2 หลังมีคนกดอนุมัติ, ไม่รันจาก pull_request
+- [ ] production ไม่ deploy โค้ดก่อน migration: ปิด auto deploy ของ main (vercel.json) แล้วเรียก Vercel Deploy Hook หลัง migration ผ่าน, migration ล้มเหลว = ไม่ deploy
+- [ ] กดรันเองได้ (workflow_dispatch) เลือก dev หรือ production
+- [ ] ค่าลับอยู่ใน GitHub Environments (dev / production) ไม่มีค่าลับในไฟล์
+- [ ] แถบ dev สีฟ้า "DEV · ข้อมูลทดสอบ", uat สีส้ม "UAT · ตรวจก่อนขึ้นจริง", production ไม่แสดง, ไม่บังแถบโทรสายด่วน และมี unit test
+- [ ] docs/environments.md มีตารางโดเมน ลำดับการ merge วิธีแก้เมื่อ migration ล้มเหลว ข้อควรรู้เรื่อง uat ใช้ฐานข้อมูลเดียวกับ dev และเช็กลิสต์ตั้งค่าที่คนไม่เคยทำอ่านตามได้
+
 ### TF-40 · Deploy เวอร์ชันนำเสนอ
 
 - **Branch:** `chore/TF-40-release-demo`
 - **Priority:** Must · **Points:** 2 · **Sprint:** 4
-- **ต้องรอ:** TF-39
+- **ต้องรอ:** TF-39, TF-64
 
 merge develop เข้า main, ตั้งค่า production บน Vercel และ Supabase, ข้อมูลตัวอย่างสำหรับเดโม และเช็กลิสต์ก่อนนำเสนอ
 

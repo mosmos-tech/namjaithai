@@ -68,7 +68,7 @@ select throws_ok(
 -- ---------- create_sos_case() ----------
 create function pg_temp.sos_payload(extra jsonb) returns jsonb language sql as $$
   select jsonb_build_object(
-    'urgency', 'YELLOW', 'lat', 14.5, 'lng', 100.9, 'landmark', 'หน้าวัด',
+    'urgency', 'YELLOW', 'triageReasons', '["CANNOT_SELF_EVACUATE"]'::jsonb, 'lat', 14.5, 'lng', 100.9, 'landmark', 'หน้าวัด',
     'phone', '0899990049', 'name', 'ทดสอบ TF-49', 'adults', 1, 'needs', '[]'::jsonb
   ) || extra
 $$;

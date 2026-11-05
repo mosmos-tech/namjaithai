@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { GetServerSideProps } from "next";
 import Head from "next/head";
+import { EnvBanner } from "@/components/EnvBanner";
 import { FooterContent } from "@/components/public/FooterContent";
 import { Navbar } from "@/components/public/Navbar";
 import { OnboardingPopup } from "@/components/public/OnboardingPopup";
@@ -44,6 +45,7 @@ export default function HomePage({ account, yearBE }: HomeProps) {
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png" />
       </Head>
+      <EnvBanner />
       <header className="sticky top-0 z-50">
         <HotlineBar />
         <Navbar account={account} />

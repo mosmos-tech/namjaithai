@@ -23,7 +23,7 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
   await context.setOffline(true);
   const reopened = await context.newPage();
   await reopened.goto("/request");
-  await expect(reopened.getByRole("radio", { name: /^วิกฤต/ })).toBeVisible();
+  await expect(reopened.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" })).toBeVisible();
   await expect
     .poll(() =>
       reopened
@@ -37,7 +37,8 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
     )
     .toBe(true);
   await reopened.screenshot({ path: test.info().outputPath("offline-sos.png"), fullPage: true });
-  await reopened.getByRole("radio", { name: /^วิกฤต/ }).click();
+  await reopened.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" }).click();
+  await reopened.getByRole("radio", { name: "ได้ ออกเองได้" }).click();
   await reopened.getByRole("button", { name: /^ถัดไป/ }).click();
   await expect
     .poll(() => reopened.evaluate(() => localStorage.getItem("namjaithai-sos-draft-v1")))
