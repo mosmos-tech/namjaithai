@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { User, HeartHandshake, Bed, Baby, PawPrint, Minus, Plus } from "lucide-react";
+import { User, HeartHandshake, Bed, Baby, PawPrint, Minus, Plus, Bandage, Check } from "lucide-react";
 import { getTotalPeopleCount, type Step3ValidationErrors } from "../draft-storage";
 
 export type PeopleGroupKey = "adults" | "elderly" | "bedridden" | "children" | "pets";
@@ -62,8 +62,10 @@ interface Step3PeopleProps {
   bedridden: number;
   childrenCount: number;
   pets: number;
+  hasInjured: boolean;
   errors: Step3ValidationErrors;
   onChangeCount: (group: PeopleGroupKey, nextValue: number) => void;
+  onToggleInjured: (next: boolean) => void;
   onPrev: () => void;
   onNext: () => void;
 }
@@ -80,8 +82,10 @@ export function Step3People({
   bedridden,
   childrenCount,
   pets,
+  hasInjured,
   errors,
   onChangeCount,
+  onToggleInjured,
   onPrev,
   onNext,
 }: Step3PeopleProps) {
@@ -232,6 +236,40 @@ export function Step3People({
             );
           })}
         </div>
+
+        {/* TF-55: ใช้คำนวณความเร่งด่วน (ผู้พิการนับรวมในแถวผู้ป่วยติดเตียง / พิการ ด้านบนแล้ว) */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={hasInjured}
+          data-testid="toggle-injured"
+          onClick={() => onToggleInjured(!hasInjured)}
+          className={`mt-3.5 flex min-h-[48px] w-full items-center gap-3.5 rounded-[14px] border p-4 text-left transition-colors ${
+            hasInjured
+              ? "border-primary-600 bg-bg-subtle/60"
+              : "border-border-default bg-bg-surface hover:border-border-strong"
+          }`}
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-primary-50">
+            <Bandage className="h-6 w-6 text-red-600" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="font-heading text-text-primary block text-lg font-bold">
+              มีผู้บาดเจ็บ (ยังรู้สึกตัว)
+            </span>
+            <span className="text-text-secondary block text-sm leading-relaxed sm:text-base">
+              ถ้ามีคนหมดสติ ให้ย้อนไปติ๊กในขั้นที่ 1 และโทร 1669 ทันที
+            </span>
+          </span>
+          <span
+            aria-hidden="true"
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 ${
+              hasInjured ? "border-primary-600 bg-primary-600 text-white" : "border-border-strong"
+            }`}
+          >
+            {hasInjured && <Check className="h-5 w-5" />}
+          </span>
+        </button>
 
         {/* ข้อความแจ้งเตือนเมื่อจำนวนคนรวมเป็น 0 */}
         {errors.totalPeople && (

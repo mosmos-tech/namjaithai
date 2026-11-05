@@ -34,7 +34,7 @@ test.describe("TF-45: ป๊อปอัปวิธีใช้งาน 4 ข�
 
     // เดินหน้าขั้น 1 -> 2
     await page.getByTestId("onboarding-next").click();
-    await expect(page.getByText("บอกว่าเร่งด่วนแค่ไหน")).toBeVisible();
+    await expect(page.getByText("ตอบคำถามสั้นๆ")).toBeVisible();
     await expect(page.getByTestId("onboarding-step-number")).toHaveText("02");
 
     // เดินหน้าขั้น 2 -> 3

@@ -5,7 +5,6 @@ import { CheckCircle2 } from "lucide-react";
 import {
   Need,
   type LocatedArea,
-  type Urgency,
   type WaterLevel,
 } from "../../../lib/domain";
 import {
@@ -35,7 +34,8 @@ import { MAX_SOS_PHOTOS } from "../image-compression";
 import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
 import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
-import { Step1UrgencyWater } from "./Step1UrgencyWater";
+import { DangerCallBar } from "./DangerCallBar";
+import { Step1Situation } from "./Step1Situation";
 import { Step2Location } from "./Step2Location";
 import { Step3People, type PeopleGroupKey } from "./Step3People";
 import { Step4Needs } from "./Step4Needs";
@@ -43,7 +43,7 @@ import { Step5Contact } from "./Step5Contact";
 
 /**
  * โครงฟอร์มขอความช่วยเหลือ SOS 5 ขั้น:
- * ขั้นที่ 1: ความเร่งด่วนและระดับน้ำ (TF-08)
+ * ขั้นที่ 1: สถานการณ์ — สัญญาณอันตราย ออกเองได้ไหม ระดับน้ำ (TF-08, TF-55)
  * ขั้นที่ 2: ตำแหน่งที่เกิดเหตุ (TF-09)
  * ขั้นที่ 3: จำนวนผู้ติดค้าง (TF-11)
  * ขั้นที่ 4: สิ่งที่ต้องการ (TF-11)
@@ -101,10 +101,11 @@ export function SosWizard() {
   }
 
   // ── ขั้นที่ 1 ───────────────────────────────────────────────────────────────
-  function handleSelectUrgency(urgency: Urgency) {
+  // TF-55: ผู้แจ้งตอบคำถาม ระบบคำนวณระดับเองที่เซิร์ฟเวอร์
+  function handleChangeStep1(patch: Partial<Pick<SosDraft, "dangerSigns" | "canSelfEvacuate">>) {
     setSubmitSuccessMessage(null);
     setSubmitError(null);
-    const next = updateDraft((prev) => ({ ...prev, urgency }));
+    const next = updateDraft((prev) => ({ ...prev, ...patch }));
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -426,6 +427,8 @@ export function SosWizard() {
       <SosStepperCard currentStep={draft.currentStep} onSelectStep={handleGoToStep} />
 
       <div className="min-w-0 flex-1">
+        {/* TF-55: ติ๊กสัญญาณอันตรายแล้วแถบโทรค้างบนสุดทุกขั้น */}
+        {(draft.dangerSigns?.length ?? 0) > 0 && <DangerCallBar />}
         <SosTopBar onBack={goToPrevStep} />
         <SosProgressSegments currentStep={draft.currentStep} />
 
@@ -449,11 +452,13 @@ export function SosWizard() {
           )}
 
           {draft.currentStep === 1 && (
-            <Step1UrgencyWater
-              urgency={draft.urgency}
+            <Step1Situation
+              dangerSigns={draft.dangerSigns}
+              canSelfEvacuate={draft.canSelfEvacuate}
               waterLevel={draft.waterLevel}
               errors={step1Errors}
-              onSelectUrgency={handleSelectUrgency}
+              onChangeDangerSigns={(dangerSigns) => handleChangeStep1({ dangerSigns })}
+              onSelectCanSelfEvacuate={(canSelfEvacuate) => handleChangeStep1({ canSelfEvacuate })}
               onSelectWaterLevel={handleSelectWaterLevel}
               onNext={handleStep1Next}
             />
@@ -479,8 +484,10 @@ export function SosWizard() {
               bedridden={draft.bedridden}
               childrenCount={draft.children}
               pets={draft.pets}
+              hasInjured={draft.hasInjured}
               errors={step3Errors}
               onChangeCount={handleChangePeopleCount}
+              onToggleInjured={(hasInjured) => updateDraft((prev) => ({ ...prev, hasInjured }))}
               onPrev={() => handleGoToStep(2)}
               onNext={handleStep3Next}
             />

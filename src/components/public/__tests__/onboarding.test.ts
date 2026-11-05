@@ -57,7 +57,7 @@ describe("TF-45: Onboarding Storage & Configuration", () => {
     expect(waterLevels[2]).toBeLessThan(waterLevels[3]);
 
     expect(ONBOARDING_STEPS[0].title).toBe("ยินดีต้อนรับสู่ น้ำใจไทย SOS");
-    expect(ONBOARDING_STEPS[1].title).toBe("บอกว่าเร่งด่วนแค่ไหน");
+    expect(ONBOARDING_STEPS[1].title).toBe("ตอบคำถามสั้นๆ");
     expect(ONBOARDING_STEPS[2].title).toBe("ส่งตำแหน่งของคุณ");
     expect(ONBOARDING_STEPS[3].title).toBe("ติดตามความช่วยเหลือ");
   });
