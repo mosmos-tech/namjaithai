@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { Logo } from "./Logo";
 
@@ -12,12 +12,17 @@ const NAV_LINKS = [
   { label: "คู่มือเอาตัวรอด", href: "/survival" },
 ];
 
+const subscribeHydration = () => () => {};
+const browserReady = () => true;
+const serverNotReady = () => false;
+
 // account: คนที่ล็อกอินอยู่ (ส่งมาจาก NavbarWithAccount) — ไม่มี = ปุ่ม "เข้าสู่ระบบ"
 export function Navbar({ account }: { account?: { href: string } | null }) {
   const accountHref = account?.href ?? "/login";
   const accountLabel = account ? "หน้าของฉัน" : "เข้าสู่ระบบ";
 
   const [open, setOpen] = useState(false);
+  const ready = useSyncExternalStore(subscribeHydration, browserReady, serverNotReady);
 
   return (
     <nav className="bg-bg-nav rounded-b-[20px] sm:rounded-b-3xl">
@@ -55,6 +60,7 @@ export function Navbar({ account }: { account?: { href: string } | null }) {
         {/* Mobile hamburger */}
         <button
           type="button"
+          disabled={!ready}
           aria-label={open ? "ปิดเมนู" : "เปิดเมนู"}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
