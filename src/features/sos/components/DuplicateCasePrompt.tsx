@@ -3,7 +3,6 @@
 import { AlertTriangle, RefreshCw, PlusCircle } from "lucide-react";
 import {
   duplicateActionLabels,
-  urgencyLabel,
   waterLevelLabel,
   type DuplicateCandidateMatch,
 } from "@/lib/domain";
@@ -77,13 +76,12 @@ export function DuplicateCasePrompt({
             {candidate.caseCode}
           </strong>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-text-secondary">ระดับความเร่งด่วน</span>
-          <strong className="text-text-primary">
-            {urgencyLabel[candidate.urgency]}
-            {candidate.waterLevel ? ` · ${waterLevelLabel[candidate.waterLevel]}` : ""}
-          </strong>
-        </div>
+        {candidate.waterLevel && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-text-secondary">ระดับน้ำ</span>
+            <strong className="text-text-primary">{waterLevelLabel[candidate.waterLevel]}</strong>
+          </div>
+        )}
         {typeof candidate.distanceM === "number" && (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-text-secondary">ระยะห่างจากจุดที่แจ้ง</span>

@@ -6,9 +6,9 @@ import {
   step3Schema,
   step4Schema,
   step5Schema,
-  Urgency,
   WaterLevel,
   Need,
+  INCIDENT_REGISTRY,
   type LocatedArea,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
@@ -64,9 +64,10 @@ export interface SosDraftPhoto {
 export const SOS_STEPS: readonly SosStepDefinition[] = [
   {
     step: 1,
-    title: "ความเร่งด่วนและระดับน้ำ",
-    shortLabel: "ความเร่งด่วน",
-    description: "เลือกสีความเร่งด่วนและระดับน้ำปัจจุบันเพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
+    title: "สถานการณ์ตอนนี้",
+    shortLabel: "สถานการณ์",
+    // TF-55: ผู้แจ้งตอบคำถามสั้นๆ ระบบจัดลำดับความเร่งด่วนเอง (ผู้แจ้งไม่เห็นระดับ)
+    description: "ตอบคำถามสั้นๆ เรื่องอันตรายและระดับน้ำ เพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
   },
   {
     step: 2,
@@ -100,8 +101,9 @@ export const SOS_STEPS: readonly SosStepDefinition[] = [
  */
 export interface SosDraft {
   currentStep: SosStepNumber;
-  // ขั้นที่ 1: ความเร่งด่วนและระดับน้ำ
-  urgency?: Urgency;
+  // ขั้นที่ 1: สถานการณ์ (TF-55) — undefined = ยังไม่ได้ตอบ
+  dangerSigns?: string[];
+  canSelfEvacuate?: boolean;
   waterLevel?: WaterLevel;
   // ขั้นที่ 2: ตำแหน่ง (TF-09)
   lat?: number;
@@ -122,6 +124,9 @@ export interface SosDraft {
   bedridden: number;
   children: number;
   pets: number;
+  // TF-55: ใช้คำนวณระดับ (ข้อมูลสุขภาพ)
+  hasDisabled: boolean;
+  hasInjured: boolean;
   // ขั้นที่ 4: สิ่งที่ต้องการ (TF-11)
   needs: Need[];
   otherDetail: string;
@@ -140,7 +145,8 @@ export interface SosDraft {
 export function createInitialSosDraft(): SosDraft {
   return {
     currentStep: 1,
-    urgency: undefined,
+    dangerSigns: undefined,
+    canSelfEvacuate: undefined,
     waterLevel: undefined,
     addressLine: "",
     gmapsUrl: "",
@@ -150,6 +156,8 @@ export function createInitialSosDraft(): SosDraft {
     bedridden: 0,
     children: 0,
     pets: 0,
+    hasDisabled: false,
+    hasInjured: false,
     needs: [],
     otherDetail: "",
     name: "",
@@ -161,7 +169,8 @@ export function createInitialSosDraft(): SosDraft {
 }
 
 export interface Step1ValidationErrors {
-  urgency?: string;
+  dangerSigns?: string;
+  canSelfEvacuate?: string;
   waterLevel?: string;
   missingSummary: string[];
 }
@@ -174,14 +183,17 @@ export interface Step2ValidationErrors {
 
 /**
  * ตรวจสอบข้อมูลขั้นที่ 1 ด้วย step1Schema จาก src/lib/domain
- * ถ้ายังไม่เลือกช่องไหน จะคืนข้อความภาษาไทยบอกว่าขาดอะไรอย่างชัดเจน
+ * ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
  */
-export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel">): {
+export function validateStep1Draft(
+  draft: Pick<SosDraft, "dangerSigns" | "canSelfEvacuate" | "waterLevel">,
+): {
   valid: boolean;
   errors: Step1ValidationErrors;
 } {
   const result = step1Schema.safeParse({
-    urgency: draft.urgency,
+    dangerSigns: draft.dangerSigns,
+    canSelfEvacuate: draft.canSelfEvacuate,
     waterLevel: draft.waterLevel,
   });
 
@@ -196,15 +208,19 @@ export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel
     missingSummary: [],
   };
 
-  const validUrgencies = Object.values(Urgency) as string[];
   const validWaterLevels = Object.values(WaterLevel) as string[];
 
-  if (!draft.urgency || !validUrgencies.includes(draft.urgency)) {
-    errors.urgency = "กรุณาเลือกความเร่งด่วน 1 ข้อ";
-    errors.missingSummary.push("ระดับความเร่งด่วน");
+  if (!Array.isArray(draft.dangerSigns)) {
+    errors.dangerSigns = "กรุณาเลือกข้อที่ตรง หรือกด \"ไม่มีข้อใดเลย\"";
+    errors.missingSummary.push("สัญญาณอันตราย");
   }
 
-  // ระดับน้ำไม่บังคับ (Figma มือถือไม่ถาม) ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
+  if (typeof draft.canSelfEvacuate !== "boolean") {
+    errors.canSelfEvacuate = "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม";
+    errors.missingSummary.push("ออกเองได้ไหม");
+  }
+
+  // ระดับน้ำไม่บังคับ ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
   if (draft.waterLevel && !validWaterLevels.includes(draft.waterLevel)) {
     errors.waterLevel = "ไม่มีตัวเลือกระดับน้ำนี้";
     errors.missingSummary.push("ระดับน้ำ");
@@ -646,14 +662,18 @@ export function loadSosDraft(
       return initial;
     }
 
-    const validUrgencies = Object.values(Urgency) as string[];
     const validWaterLevels = Object.values(WaterLevel) as string[];
     const validNeeds = Object.values(Need) as string[];
+    const validDangerSigns = INCIDENT_REGISTRY.FLOOD.dangerSigns.map((sign) => sign.key);
 
-    const urgency =
-      typeof parsed.urgency === "string" && validUrgencies.includes(parsed.urgency)
-        ? (parsed.urgency as Urgency)
-        : undefined;
+    // ร่างที่บันทึกก่อน TF-55 มี urgency แต่ไม่มีคำตอบใหม่ → กลับไปตอบขั้น 1 ใหม่
+    const dangerSigns = Array.isArray(parsed.dangerSigns)
+      ? parsed.dangerSigns.filter(
+          (key): key is string => typeof key === "string" && validDangerSigns.includes(key),
+        )
+      : undefined;
+    const canSelfEvacuate =
+      typeof parsed.canSelfEvacuate === "boolean" ? parsed.canSelfEvacuate : undefined;
 
     const waterLevel =
       typeof parsed.waterLevel === "string" && validWaterLevels.includes(parsed.waterLevel)
@@ -678,13 +698,23 @@ export function loadSosDraft(
 
     // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ ให้กลับมาเริ่มที่ขั้นที่ 1
     const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
-    const currentStep: SosStepNumber = rawStep > 1 && !urgency ? 1 : rawStep;
+    const step1Answered = dangerSigns !== undefined && canSelfEvacuate !== undefined;
+    const currentStep: SosStepNumber = rawStep > 1 && !step1Answered ? 1 : rawStep;
+
+    // ตัด urgency ของร่างรุ่นเก่าทิ้ง ไม่ให้หลุดไปกับคำขอ
+    const { urgency: _legacyUrgency, ...rest } = parsed as Partial<SosDraft> & {
+      urgency?: unknown;
+    };
+    void _legacyUrgency;
 
     return {
       ...initial,
-      ...parsed,
+      ...rest,
       currentStep,
-      urgency,
+      dangerSigns,
+      canSelfEvacuate,
+      hasDisabled: parsed.hasDisabled === true,
+      hasInjured: parsed.hasInjured === true,
       waterLevel,
       needs,
       photos,
@@ -872,12 +902,12 @@ export async function submitSosDraft(
     }
 
     const check1 = validateStep1Draft(draft);
-    if (!check1.valid || !draft.urgency) {
+    if (!check1.valid) {
       return {
         status: "invalid_step",
         step: 1,
         step1Errors: check1.errors,
-        error: "ยังส่งคำขอไม่ได้ กรุณาเลือกระดับความเร่งด่วนในขั้นที่ 1",
+        error: `ยังส่งคำขอไม่ได้ กรุณาตอบ${check1.errors.missingSummary.join("และ")} ในขั้นที่ 1`,
       };
     }
 
@@ -936,7 +966,8 @@ export async function submitSosDraft(
           "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
-          urgency: nextDraft.urgency,
+          dangerSigns: nextDraft.dangerSigns,
+          canSelfEvacuate: nextDraft.canSelfEvacuate,
           waterLevel: nextDraft.waterLevel,
           lat: nextDraft.lat,
           lng: nextDraft.lng,
@@ -950,6 +981,8 @@ export async function submitSosDraft(
           bedridden: nextDraft.bedridden,
           children: nextDraft.children,
           pets: nextDraft.pets,
+          hasDisabled: nextDraft.hasDisabled,
+          hasInjured: nextDraft.hasInjured,
           needs: nextDraft.needs,
           otherDetail: nextDraft.needs.includes(Need.OTHER)
             ? nextDraft.otherDetail

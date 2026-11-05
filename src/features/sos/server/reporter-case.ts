@@ -12,6 +12,7 @@ import {
 export const reporterMutationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("cancel"), version: z.number().int().positive() }).strict(),
   step3BaseSchema
+    .pick({ adults: true, elderly: true, bedridden: true, children: true, pets: true })
     .extend({
       action: z.literal("update"),
       version: z.number().int().positive(),

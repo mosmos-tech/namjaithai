@@ -56,7 +56,9 @@ async function report(request: APIRequestContext, extra: Record<string, unknown>
       "X-Forwarded-For": `10.43.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
     },
     data: {
-      urgency: "RED",
+      // TF-55: ส่งคำตอบ ระบบคำนวณระดับเอง (ไม่รับ urgency จากผู้แจ้งแล้ว)
+      dangerSigns: [],
+      canSelfEvacuate: false,
       ...randomBangkokPoint(),
       landmark: "TF43 synthetic fixture",
       adults: 1,

@@ -7,7 +7,6 @@ const TRACKED: TrackedCase = {
   caseCode: "FL-2610-0042",
   trackingToken: TOKEN,
   status: "NEW",
-  urgency: "RED",
   createdAt: "2026-10-30T07:48:00Z",
   lastStatusUpdatedAt: "2026-10-30T07:48:00Z",
   area: { province: "กรุงเทพมหานคร", district: "ราชเทวี", subdistrict: "ทุ่งพญาไท" },

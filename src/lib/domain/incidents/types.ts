@@ -64,6 +64,25 @@ export interface DangerSign {
   source: string;
 }
 
+/** ที่มาของสัญญาณอันตรายชุดแรก: ตารางกติกาในการ์ด TF-55 (อ้างอิง CBD สพฉ. ในเอกสารสถาปัตยกรรม) */
+export const TF55_TRIAGE_TABLE_SOURCE =
+  "ตารางกติกา TF-55 (เอกสารสถาปัตยกรรม อ้างอิง CBD สพฉ.) — รอตรวจกับต้นฉบับใน TF-54";
+
+/**
+ * สัญญาณอันตรายที่ใช้กับทุกประเภทเหตุ (แถวแรกของตารางกติกา TF-55)
+ * แต่ละประเภทเหตุเพิ่มสัญญาณเฉพาะของตัวเองต่อท้าย เช่น น้ำท่วม = มีคนอยู่ในน้ำ
+ */
+export const UNIVERSAL_DANGER_SIGNS: readonly DangerSign[] = [
+  { key: "UNCONSCIOUS", label: { th: "มีคนหมดสติ" }, source: TF55_TRIAGE_TABLE_SOURCE },
+  {
+    key: "ABNORMAL_BREATHING",
+    label: { th: "มีคนหายใจผิดปกติ" },
+    source: TF55_TRIAGE_TABLE_SOURCE,
+  },
+  { key: "SEVERE_BLEEDING", label: { th: "มีคนเลือดออกมาก" }, source: TF55_TRIAGE_TABLE_SOURCE },
+  { key: "CHEST_PAIN", label: { th: "มีคนเจ็บหน้าอก" }, source: TF55_TRIAGE_TABLE_SOURCE },
+];
+
 /** คำแนะนำระหว่างรอทีม (TF-53) */
 export interface WaitingAdvice {
   text: LocalizedText;
@@ -93,4 +112,8 @@ export const FORBIDDEN_DETAIL_KEYS = [
   "lineId",
   "detailedAddress",
   "health",
+  // TF-55: คำตอบเรื่องสุขภาพที่ใช้คำนวณระดับ เก็บใน case_sensitive_details เท่านั้น
+  "dangerSigns",
+  "hasDisabled",
+  "hasInjured",
 ] as const;

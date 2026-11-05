@@ -2,16 +2,28 @@ import { z } from "zod";
 import {
   sosSchema,
   priorityScore,
+  computeTriage,
+  IncidentType,
   duplicateResolutionSchema,
   duplicateActionLabels,
   formatAdminDuplicateNotice,
   type SosFormData,
   type CaseStatus,
+  type TriageReason,
+  type Urgency,
   type DuplicateAction,
   type DuplicateCandidateMatch,
 } from "../../../lib/domain";
 
-export type CreateSosCasePayload = SosFormData & {
+// คำตอบด้านสุขภาพไม่ส่งตรงๆ แต่รวมไว้ใน sensitive → ฐานข้อมูลเก็บลง case_sensitive_details
+type SensitiveAnswerKey = "dangerSigns" | "hasDisabled" | "hasInjured";
+
+export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
+  // TF-55: ระดับคำนวณที่เซิร์ฟเวอร์ ไม่เชื่อค่าที่ส่งมาจากเบราว์เซอร์
+  urgency: Urgency;
+  triageReasons: TriageReason[];
+  // ส่งมาเฉพาะเมื่อมีคำตอบด้านสุขภาพที่เป็น "ใช่" อย่างน้อย 1 ข้อ
+  sensitive?: { dangerSigns?: string[]; hasDisabled?: true; hasInjured?: true };
   duplicateAction?: DuplicateAction;
   targetCaseId?: string;
 };
@@ -62,7 +74,7 @@ export interface CreateSosCaseSuccessResponse {
   caseCode: string;
   trackingToken: string;
   status: CaseStatus;
-  priorityScore: number;
+  // ไม่ส่งระดับหรือคะแนนความเร่งด่วนกลับไปให้ผู้แจ้ง (TF-55)
   createdAt: string;
   replayed: boolean;
   updatedExisting?: boolean;
@@ -245,8 +257,35 @@ export async function handleCreateSosCase(params: {
     };
   }
 
+  // 3. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
+  const { dangerSigns, hasDisabled, hasInjured, ...answers } = parsed.data;
+  const triage = computeTriage({
+    incidentType: IncidentType.FLOOD,
+    dangerSigns,
+    waterLevel: answers.waterLevel,
+    canSelfEvacuate: answers.canSelfEvacuate,
+    elderly: answers.elderly,
+    bedridden: answers.bedridden,
+    children: answers.children,
+    hasDisabled,
+    hasInjured,
+    needs: answers.needs,
+  });
+  const hasSensitive = dangerSigns.length > 0 || hasDisabled || hasInjured;
+
   const formData: CreateSosCasePayload = {
-    ...parsed.data,
+    ...answers,
+    urgency: triage.level,
+    triageReasons: triage.reasons,
+    ...(hasSensitive
+      ? {
+          sensitive: {
+            ...(dangerSigns.length > 0 ? { dangerSigns } : {}),
+            ...(hasDisabled ? { hasDisabled: true as const } : {}),
+            ...(hasInjured ? { hasInjured: true as const } : {}),
+          },
+        }
+      : {}),
     ...(dupResolution.data.duplicateAction
       ? { duplicateAction: dupResolution.data.duplicateAction }
       : {}),
@@ -255,7 +294,7 @@ export async function handleCreateSosCase(params: {
       : {}),
   };
 
-  // 3. คำนวณคะแนนความเร่งด่วนด้วยฟังก์ชันกลาง priorityScore() จาก src/lib/domain
+  // 4. คำนวณคะแนนจัดลำดับด้วยฟังก์ชันกลาง priorityScore() โดยใช้ระดับที่ระบบคำนวณ
   const score = priorityScore(
     {
       urgency: formData.urgency,
@@ -270,7 +309,7 @@ export async function handleCreateSosCase(params: {
 
   const clientIp = extractClientIp(headers);
 
-  // 4. เรียกฟังก์ชัน create_sos_case() ใน PostgreSQL เพื่อบันทึกทุกตารางใน transaction เดียว
+  // 5. เรียกฟังก์ชัน create_sos_case() ใน PostgreSQL เพื่อบันทึกทุกตารางใน transaction เดียว
   const { data, error } = await supabase.rpc("create_sos_case", {
     p_idempotency_key: idempotency.key,
     p_payload: formData,
@@ -352,7 +391,6 @@ export async function handleCreateSosCase(params: {
       caseCode: row.case_code,
       trackingToken: row.tracking_token,
       status: row.status,
-      priorityScore: score,
       createdAt: row.created_at,
       replayed: row.replayed,
       ...(row.updated_existing !== undefined
