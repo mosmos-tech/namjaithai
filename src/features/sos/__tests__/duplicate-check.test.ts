@@ -18,7 +18,8 @@ import {
 } from "../server/create-case";
 
 const baseIncomingPayload = {
-  urgency: Urgency.RED,
+  dangerSigns: [],
+  canSelfEvacuate: false,
   waterLevel: WaterLevel.ROOF,
   lat: 13.7563,
   lng: 100.5018,

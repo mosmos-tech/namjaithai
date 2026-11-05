@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   decideAccess,
+  effectiveUserRole,
   homePathForRole,
+  isMembershipActive,
   requiredRolesForPath,
   type UserRole,
   type UserStatus,
@@ -28,10 +30,28 @@ export async function proxy(request: NextRequest) {
   if (authUserId) {
     const { data } = await supabase
       .from("users")
-      .select("role, status")
+      .select("id, role, status")
       .eq("auth_user_id", authUserId)
-      .maybeSingle<{ role: UserRole; status: UserStatus }>();
-    appUser = data;
+      .maybeSingle<{ id: string; role: UserRole; status: UserStatus }>();
+    if (data) {
+      let role = data.role;
+      if (role === "RESCUER") {
+        const { data: memberships } = await supabase
+          .from("unit_members")
+          .select("status, expires_at, unit:units(is_active)")
+          .eq("user_id", data.id)
+          .eq("status", "APPROVED");
+        const hasActiveMembership = (memberships ?? []).some((m) =>
+          isMembershipActive({
+            status: m.status,
+            expiresAt: m.expires_at,
+            unitIsActive: (m.unit as unknown as { is_active?: boolean } | null)?.is_active,
+          }),
+        );
+        role = effectiveUserRole(role, hasActiveMembership);
+      }
+      appUser = { role, status: data.status };
+    }
   }
 
   const decision = decideAccess(pathname, appUser);
