@@ -57,6 +57,19 @@ export async function GET() {
   }
 
   const rows = (data ?? []) as unknown as MemberRow[];
+  const rescuerIds = [
+    ...new Set(rows.filter((row) => row.status === "APPROVED").map((row) => row.user_id)),
+  ];
+  const { data: cases, error: casesError } = rescuerIds.length
+    ? await admin
+        .from("cases")
+        .select("case_code, status, assigned_unit_id, assigned_rescuer_id")
+        .in("assigned_unit_id", ids)
+        .in("assigned_rescuer_id", rescuerIds)
+        .in("status", ["ACCEPTED", "EN_ROUTE", "ON_SITE"])
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+  if (casesError) return NextResponse.json({ error: "load_failed" }, { status: 500 });
   const members = rows.map((row) => ({
     id: row.id,
     unit_id: row.unit_id,
@@ -66,6 +79,11 @@ export async function GET() {
     has_line: Boolean(row.user?.line_user_id),
     status: row.status,
     duty_status: row.duty_status,
+    cases: (cases ?? [])
+      .filter(
+        (item) => item.assigned_unit_id === row.unit_id && item.assigned_rescuer_id === row.user_id,
+      )
+      .map((item) => ({ code: item.case_code, status: item.status })),
     is_on_duty: row.is_on_duty,
     approved_at: row.approved_at,
     expires_at: row.expires_at,
