@@ -1,13 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { INCIDENT_REGISTRY, type IncidentType } from "@/lib/domain/incidents";
 
 type Province = {
   name: string;
   teams: number;
   waiting: number;
   rescued: number;
-  incidents: { code: IncidentType; waiting: number }[];
+  incidents: { code: string; label: string; waiting: number }[];
 };
 type Summary = { provinces: Province[]; generatedAt: string };
 
@@ -109,7 +108,7 @@ export function SituationBoard() {
           <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
             {selected.incidents.map((item) => (
               <li className="flex justify-between gap-2" key={item.code}>
-                <span>{INCIDENT_REGISTRY[item.code]?.label.th ?? item.code}</span>
+                <span>{item.label}</span>
                 <span>{item.waiting}</span>
               </li>
             ))}

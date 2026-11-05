@@ -17,7 +17,9 @@ export default function IncidentSelection() {
               .map((type: { code: IncidentType }) => type.code),
           );
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!navigator.onLine) setEnabled(["FLOOD"]);
+      });
     return () => controller.abort();
   }, []);
   return (

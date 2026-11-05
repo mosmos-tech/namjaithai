@@ -2,7 +2,7 @@ import Link from "next/link";
 import { OnboardingPopup } from "@/components/public/OnboardingPopup";
 import { SituationBoard } from "@/features/home/SituationBoard";
 
-export default function HomePage() {
+export function HomeContent() {
   return (
     <div className="bg-white px-5 py-10 sm:py-16">
       <div className="mx-auto max-w-6xl">

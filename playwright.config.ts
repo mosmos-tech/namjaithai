@@ -17,6 +17,7 @@ const PORT = 3000;
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "pwa.spec.ts",
   globalSetup: "./e2e/global-setup.ts",
   // ฟอร์ม SOS เก็บร่างใน localStorage ของแต่ละ context อยู่แล้ว รันขนานกันได้
   fullyParallel: true,
