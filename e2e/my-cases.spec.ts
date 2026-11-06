@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext, type BrowserContext } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
-import { adminDb, randomPhone, randomBangkokPoint } from "./helpers/db";
+import { adminDb, randomPhone, uniqueTestPoint } from "./helpers/db";
 
 async function account() {
   const db = adminDb();
@@ -61,7 +61,7 @@ async function report(request: APIRequestContext, extra: Record<string, unknown>
       // TF-55: ส่งคำตอบ ระบบคำนวณระดับเอง (ไม่รับ urgency จากผู้แจ้งแล้ว)
       dangerSigns: [],
       canSelfEvacuate: false,
-      ...randomBangkokPoint(),
+      ...uniqueTestPoint(),
       landmark: "TF43 synthetic fixture",
       adults: 1,
       elderly: 0,
@@ -162,7 +162,7 @@ test.describe("TF-43 account cases", () => {
     const fixtures = Array.from({ length: 21 }, (_, i) => ({
       case_code: `FL-2611-${base}${String(i).padStart(2, "0")}`,
       urgency: "GREEN",
-      ...randomBangkokPoint(),
+      ...uniqueTestPoint(),
       landmark: "TF43 pagination synthetic",
       reporter_user_id: owner.id,
       created_at: new Date(Date.now() - (i + 1) * 60000).toISOString(),

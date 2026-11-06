@@ -8,7 +8,9 @@ import {
   step5Schema,
   WaterLevel,
   Need,
+  IncidentType,
   INCIDENT_REGISTRY,
+  UNIVERSAL_DANGER_SIGNS,
   type LocatedArea,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
@@ -97,7 +99,9 @@ export const SOS_STEPS: readonly SosStepDefinition[] = [
  */
 export interface SosDraft {
   currentStep: SosStepNumber;
-  // ขั้นที่ 1: สถานการณ์ (TF-55) — undefined = ยังไม่ได้ตอบ
+  // ขั้นที่ 1: สถานการณ์ (TF-50, TF-55) — undefined = ยังไม่ได้ตอบ
+  incidentType?: IncidentType;
+  atScene?: boolean;
   dangerSigns?: string[];
   canSelfEvacuate?: boolean;
   waterLevel?: WaterLevel;
@@ -143,6 +147,8 @@ export interface SosDraft {
 export function createInitialSosDraft(): SosDraft {
   return {
     currentStep: 1,
+    incidentType: undefined,
+    atScene: undefined,
     dangerSigns: undefined,
     canSelfEvacuate: undefined,
     waterLevel: undefined,
@@ -168,7 +174,28 @@ export function createInitialSosDraft(): SosDraft {
   };
 }
 
+/**
+ * อ่านพารามิเตอร์ ?type=FLOOD จาก URL query string เพื่อเลือกประเภทเหตุไว้ให้ล่วงหน้า (TF-50)
+ */
+export function parseIncidentTypeParam(
+  search: string | null | undefined,
+): IncidentType | undefined {
+  if (!search) return undefined;
+  try {
+    const params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
+    const rawType = params.get("type")?.trim().toUpperCase();
+    if (rawType && (Object.values(IncidentType) as string[]).includes(rawType)) {
+      return rawType as IncidentType;
+    }
+  } catch {
+    // ข้ามกรณี query string รูปแบบไม่ถูกต้อง
+  }
+  return undefined;
+}
+
 export interface Step1ValidationErrors {
+  incidentType?: string;
+  atScene?: string;
   dangerSigns?: string;
   canSelfEvacuate?: string;
   waterLevel?: string;
@@ -183,15 +210,21 @@ export interface Step2ValidationErrors {
 
 /**
  * ตรวจสอบข้อมูลขั้นที่ 1 ด้วย step1Schema จาก src/lib/domain
- * ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
+ * - ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene === false) จะไม่ผ่านและไม่สร้างเคส (TF-50)
+ * - ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
  */
 export function validateStep1Draft(
-  draft: Pick<SosDraft, "dangerSigns" | "canSelfEvacuate" | "waterLevel">,
+  draft: Pick<
+    SosDraft,
+    "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate" | "waterLevel"
+  >,
 ): {
   valid: boolean;
   errors: Step1ValidationErrors;
 } {
   const result = step1Schema.safeParse({
+    incidentType: draft.incidentType,
+    atScene: draft.atScene,
     dangerSigns: draft.dangerSigns,
     canSelfEvacuate: draft.canSelfEvacuate,
     waterLevel: draft.waterLevel,
@@ -208,7 +241,21 @@ export function validateStep1Draft(
     missingSummary: [],
   };
 
+  const validIncidentTypes = Object.values(IncidentType) as string[];
   const validWaterLevels = Object.values(WaterLevel) as string[];
+
+  if (draft.atScene === false) {
+    errors.atScene = "แจ้งแทนคนอื่นไม่ได้ กรุณาโทรสายด่วนฉุกเฉินแทน";
+    errors.missingSummary.push("อยู่ที่จุดเกิดเหตุ");
+  }
+
+  if (
+    draft.incidentType !== undefined &&
+    !validIncidentTypes.includes(draft.incidentType)
+  ) {
+    errors.incidentType = "ไม่มีประเภทเหตุนี้";
+    errors.missingSummary.push("ประเภทเหตุ");
+  }
 
   if (!Array.isArray(draft.dangerSigns)) {
     errors.dangerSigns = 'กรุณาเลือกข้อที่ตรง หรือกด "ไม่มีข้อใดเลย"';
@@ -649,7 +696,7 @@ function isValidStepNumber(value: unknown): value is SosStepNumber {
 
 const SERVER_INITIAL_DRAFT: SosDraft = Object.freeze(createInitialSosDraft());
 
-let _cachedRaw: string | null = null;
+let _cachedKey: string | null = null;
 let _cachedDraft: SosDraft = SERVER_INITIAL_DRAFT;
 const _listeners = new Set<() => void>();
 
@@ -678,9 +725,24 @@ export function loadSosDraft(
       return initial;
     }
 
+    const validIncidentTypes = Object.values(IncidentType) as string[];
     const validWaterLevels = Object.values(WaterLevel) as string[];
     const validNeeds = Object.values(Need) as string[];
-    const validDangerSigns = INCIDENT_REGISTRY.FLOOD.dangerSigns.map((sign) => sign.key);
+    const validDangerSigns = Array.from(
+      new Set([
+        ...UNIVERSAL_DANGER_SIGNS.map((sign) => sign.key),
+        ...Object.values(INCIDENT_REGISTRY).flatMap((def) =>
+          def.dangerSigns.map((sign) => sign.key),
+        ),
+      ]),
+    );
+
+    const incidentType =
+      typeof parsed.incidentType === "string" &&
+      validIncidentTypes.includes(parsed.incidentType)
+        ? (parsed.incidentType as IncidentType)
+        : undefined;
+    const atScene = typeof parsed.atScene === "boolean" ? parsed.atScene : undefined;
 
     // ร่างที่บันทึกก่อน TF-55 มี urgency แต่ไม่มีคำตอบใหม่ → กลับไปตอบขั้น 1 ใหม่
     const dangerSigns = Array.isArray(parsed.dangerSigns)
@@ -711,9 +773,10 @@ export function loadSosDraft(
         ? parsed.idempotencyKey.trim()
         : undefined;
 
-    // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ ให้กลับมาเริ่มที่ขั้นที่ 1
+    // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ หรือตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ ให้กลับมาเริ่มที่ขั้นที่ 1
     const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
-    const step1Answered = dangerSigns !== undefined && canSelfEvacuate !== undefined;
+    const step1Answered =
+      atScene !== false && dangerSigns !== undefined && canSelfEvacuate !== undefined;
     const currentStep: SosStepNumber = rawStep > 1 && !step1Answered ? 1 : rawStep;
 
     // ตัด urgency ของร่างรุ่นเก่าทิ้ง ไม่ให้หลุดไปกับคำขอ
@@ -726,6 +789,8 @@ export function loadSosDraft(
       ...initial,
       ...rest,
       currentStep,
+      incidentType,
+      atScene,
       dangerSigns,
       canSelfEvacuate,
       consent: false,
@@ -762,7 +827,7 @@ export function saveSosDraft(
     storage.setItem(SOS_DRAFT_STORAGE_KEY, raw);
 
     if (typeof window !== "undefined" && storage === window.localStorage) {
-      _cachedRaw = raw;
+      _cachedKey = `${raw}::${window.location.search}`;
       _cachedDraft = payload;
       notifyListeners();
     }
@@ -784,7 +849,7 @@ export function clearSosDraft(
   try {
     storage.removeItem(SOS_DRAFT_STORAGE_KEY);
     if (typeof window !== "undefined" && storage === window.localStorage) {
-      _cachedRaw = null;
+      _cachedKey = null;
       _cachedDraft = SERVER_INITIAL_DRAFT;
       notifyListeners();
     }
@@ -800,9 +865,16 @@ export function clearSosDraft(
 export function getSosDraftSnapshot(): SosDraft {
   try {
     const raw = window.localStorage.getItem(SOS_DRAFT_STORAGE_KEY);
-    if (raw !== _cachedRaw) {
-      _cachedRaw = raw;
-      _cachedDraft = raw ? loadSosDraft(window.localStorage) : SERVER_INITIAL_DRAFT;
+    const search = window.location.search;
+    const cacheKey = `${raw ?? ""}::${search}`;
+    if (cacheKey !== _cachedKey) {
+      _cachedKey = cacheKey;
+      const base = raw ? loadSosDraft(window.localStorage) : createInitialSosDraft();
+      const urlType = parseIncidentTypeParam(search);
+      _cachedDraft =
+        base.incidentType === undefined && urlType !== undefined
+          ? { ...base, incidentType: urlType }
+          : base;
     }
     return _cachedDraft;
   } catch {

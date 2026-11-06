@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { WaterLevel } from "../../../lib/domain";
+import { IncidentType, WaterLevel } from "../../../lib/domain";
 import {
   SOS_STEPS,
   createInitialSosDraft,
+  parseIncidentTypeParam,
   validateStep1Draft,
   saveSosDraft,
   loadSosDraft,
@@ -122,5 +123,42 @@ describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานกา�
     const restored = loadSosDraft(storage) as unknown as Record<string, unknown>;
     expect(restored.currentStep).toBe(1);
     expect(restored.urgency).toBeUndefined();
+  });
+
+  it("TF-50: ตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene = false) ไม่ผ่านการตรวจ และกลับขั้น 1 เสมอ", () => {
+    const check = validateStep1Draft({
+      incidentType: IncidentType.FLOOD,
+      atScene: false,
+      dangerSigns: [],
+      canSelfEvacuate: true,
+    });
+    expect(check.valid).toBe(false);
+    expect(check.errors.atScene).toContain("แจ้งแทนคนอื่นไม่ได้");
+    expect(check.errors.missingSummary).toContain("อยู่ที่จุดเกิดเหตุ");
+
+    const storage = createMemoryStorage();
+    saveSosDraft(
+      {
+        ...createInitialSosDraft(),
+        currentStep: 3,
+        incidentType: IncidentType.FLOOD,
+        atScene: false,
+        dangerSigns: [],
+        canSelfEvacuate: true,
+      },
+      storage,
+    );
+    const restored = loadSosDraft(storage);
+    expect(restored.atScene).toBe(false);
+    expect(restored.currentStep).toBe(1);
+  });
+
+  it("TF-50: อ่านพารามิเตอร์ ?type=FLOOD จาก URL เพื่อเลือกประเภทเหตุไว้ให้", () => {
+    expect(parseIncidentTypeParam("?type=FLOOD")).toBe(IncidentType.FLOOD);
+    expect(parseIncidentTypeParam("?type=flood")).toBe(IncidentType.FLOOD);
+    expect(parseIncidentTypeParam("type=FIRE")).toBe(IncidentType.FIRE);
+    expect(parseIncidentTypeParam("?type=UNKNOWN")).toBeUndefined();
+    expect(parseIncidentTypeParam("")).toBeUndefined();
+    expect(parseIncidentTypeParam(null)).toBeUndefined();
   });
 });

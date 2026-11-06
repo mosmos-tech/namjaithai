@@ -16,7 +16,7 @@ import {
 } from "../../../lib/domain";
 
 // คำตอบด้านสุขภาพไม่ส่งตรงๆ แต่รวมไว้ใน sensitive → ฐานข้อมูลเก็บลง case_sensitive_details
-type SensitiveAnswerKey = "dangerSigns" | "hasDisabled" | "hasInjured";
+type SensitiveAnswerKey = "dangerSigns" | "hasDisabled" | "hasInjured" | "atScene";
 
 export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   // TF-55: ระดับคำนวณที่เซิร์ฟเวอร์ ไม่เชื่อค่าที่ส่งมาจากเบราว์เซอร์
@@ -259,9 +259,10 @@ export async function handleCreateSosCase(params: {
   }
 
   // 3. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
-  const { dangerSigns, hasDisabled, hasInjured, ...answers } = parsed.data;
+  const { dangerSigns, hasDisabled, hasInjured, atScene: _atScene, ...answers } = parsed.data;
+  void _atScene;
   const triage = computeTriage({
-    incidentType: IncidentType.FLOOD,
+    incidentType: answers.incidentType ?? IncidentType.FLOOD,
     dangerSigns,
     waterLevel: answers.waterLevel,
     canSelfEvacuate: answers.canSelfEvacuate,

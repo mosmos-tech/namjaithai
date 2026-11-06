@@ -31,3 +31,23 @@ export const INCIDENT_REGISTRY: Record<IncidentType, IncidentDefinition> = {
 
 /** ลำดับที่แสดงในกริดเลือกประเภท (OTHER อยู่ท้ายเสมอ) — ตรงกับ incident_types.sort_order */
 export const INCIDENT_TYPE_ORDER: IncidentType[] = Object.values(IncidentType);
+
+/** The listed capabilities are alternatives; incidents without a requirement are open to all. */
+export function canUnitHandle(
+  type: IncidentType,
+  capabilities: readonly import("./types").UnitCapability[],
+): boolean {
+  const required = INCIDENT_REGISTRY[type].capabilities;
+  return required.length === 0 || required.some((capability) => capabilities.includes(capability));
+}
+
+/** A UI preference only; it must never be used as an authorization rule. */
+export function filterCasesByCapability<T extends { incident_type: IncidentType }>(
+  cases: readonly T[],
+  capabilities: readonly import("./types").UnitCapability[],
+  enabled = true,
+): T[] {
+  return enabled
+    ? cases.filter((item) => canUnitHandle(item.incident_type, capabilities))
+    : [...cases];
+}

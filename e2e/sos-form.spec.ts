@@ -13,8 +13,107 @@ import {
 
 // E. ฟอร์ม SOS 5 ขั้น (TF-08 ขั้น 1, TF-11 ขั้น 3–5, TF-16 เคสซ้ำ)
 
-test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-55)", () => {
+test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-50, TF-55)", () => {
   test.beforeEach(async ({ page }) => openFreshSosForm(page));
+
+  test("TF-50: กริด 8 ประเภท ปุ่มสูงอย่างน้อย 56px และไม่มีการ์ดแดง/เหลือง/เขียวให้เลือก", async ({
+    page,
+  }) => {
+    const grid = page.getByTestId("incident-type-grid");
+    await expect(grid).toBeVisible();
+
+    const expectedTypes = [
+      "น้ำท่วม",
+      "ไฟไหม้",
+      "อุบัติเหตุทางถนน",
+      "เจ็บป่วยฉุกเฉิน",
+      "ตกน้ำ / จมน้ำ",
+      "อาคารถล่ม / ติดใต้ซาก",
+      "สัตว์อันตราย",
+      "เหตุอื่นๆ",
+    ];
+    const buttons = grid.getByRole("radio");
+    await expect(buttons).toHaveCount(8);
+
+    for (let i = 0; i < expectedTypes.length; i++) {
+      const btn = buttons.nth(i);
+      await expect(btn).toHaveText(expectedTypes[i]);
+      const box = await btn.boundingBox();
+      expect(box!.height, `ปุ่ม ${expectedTypes[i]} ต้องสูง >= 56px`).toBeGreaterThanOrEqual(56);
+    }
+
+    for (const word of ["วิกฤต", "เร่งด่วน", "ทั่วไป"]) {
+      await expect(page.getByRole("radio", { name: new RegExp(`^${word}`) })).toHaveCount(0);
+    }
+    await expect(page.getByText(/เคสสีแดง|เลือกสี/)).toHaveCount(0);
+  });
+
+  test("TF-50: ตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ แสดงเบอร์สายด่วนแทน และไม่สร้างเคส", async ({
+    page,
+    isMobile,
+  }) => {
+    await page.getByRole("radio", { name: "ไม่ได้อยู่ที่จุดเกิดเหตุ" }).click();
+
+    const hotlinesBox = page.getByTestId("not-at-scene-hotlines");
+    await expect(hotlinesBox).toBeVisible();
+    await expect(
+      hotlinesBox.getByRole("heading", { name: /แจ้งแทนคนอื่นไม่ได้/ }),
+    ).toBeVisible();
+    await expect(hotlinesBox.getByRole("link", { name: /โทร 1669/ })).toHaveAttribute(
+      "href",
+      "tel:1669",
+    );
+    await expect(hotlinesBox.getByRole("link", { name: /โทร 1784/ })).toHaveAttribute(
+      "href",
+      "tel:1784",
+    );
+
+    // ปุ่มถัดไปหายไป ไม่ให้ไปขั้น 2 หรือสร้างเคส
+    await expect(nextButton(page)).toHaveCount(0);
+
+    // บนจอคอม แม้กดขั้นอื่นในการ์ดด้านซ้ายก็จะถูกกันไว้ที่ขั้น 1
+    if (!isMobile) {
+      await page.getByRole("button", { name: /ผู้ติดค้าง/ }).click();
+      await expectStep(page, 1);
+    }
+
+    // ยิง API ตรงด้วย atScene: false ก็ต้องถูกปฏิเสธและไม่เกิดเคสใหม่ในฐานข้อมูล
+    const phone = randomPhone();
+    const res = await page.request.post("/api/cases", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      data: {
+        atScene: false,
+        dangerSigns: [],
+        canSelfEvacuate: false,
+        lat: 13.7563,
+        lng: 100.5018,
+        landmark: "หน้าวัด",
+        adults: 1,
+        elderly: 0,
+        bedridden: 0,
+        children: 0,
+        pets: 0,
+        needs: [],
+        name: "ทดสอบ แจ้งแทน",
+        phone,
+      },
+    });
+    expect(res.status()).toBe(400);
+    expect(await countCasesByPhone(phone)).toBe(0);
+  });
+
+  test("TF-50: เปิดลิงก์ ?type=FLOOD แล้วเลือกประเภทน้ำท่วมไว้ให้", async ({ page }) => {
+    await openFreshSosForm(page, "/request?type=FLOOD");
+    const grid = page.getByTestId("incident-type-grid");
+    await expect(grid.getByRole("radio", { name: "น้ำท่วม" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(grid.getByRole("radio", { name: "ไฟไหม้" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
 
   test("ไม่ตอบแล้วกดถัดไป บอกว่าขาดอะไร และยังอยู่ขั้น 1", async ({ page }) => {
     await nextButton(page).click();
