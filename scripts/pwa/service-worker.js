@@ -2,7 +2,8 @@
 /* global __CACHE_VERSION__ */
 const CACHE = "namjaithai-public-" + __CACHE_VERSION__;
 
-const PAGES = ["/", "/request", "/sos", "/hotlines", "/survival"];
+// /incidents: ปุ่ม SOS บนหน้าแรก (TF-46) พาไปหน้าเลือกประเภทเหตุ ต้องเปิดได้ตอนออฟไลน์ด้วย
+const PAGES = ["/", "/incidents", "/request", "/sos", "/hotlines", "/survival"];
 const PUBLIC_ASSETS = [
   "/favicon.ico",
   "/manifest.webmanifest",

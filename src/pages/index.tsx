@@ -1,38 +1,28 @@
-import { createServerClient } from "@supabase/ssr";
 import type { GetServerSideProps } from "next";
 import Head from "next/head";
 import { EnvBanner } from "@/components/EnvBanner";
 import { FooterContent } from "@/components/public/FooterContent";
 import { Navbar } from "@/components/public/Navbar";
-import { OnboardingPopup } from "@/components/public/OnboardingPopup";
 import { HotlineBar } from "@/components/public/HotlineBar";
+import { HomeContent } from "@/features/home/HomeContent";
 import { getSessionUserRow } from "@/features/auth/server/session-user";
 import { PwaSupport } from "@/features/pwa/PwaSupport";
 import { homePathForRole } from "@/lib/domain";
+import { createPagesClient } from "@/lib/supabase/pages";
 
 type HomeProps = { account: { href: string } | null; yearBE: number };
 
 export const getServerSideProps: GetServerSideProps<HomeProps> = async ({ req }) => {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll: () =>
-          Object.entries(req.cookies).flatMap(([name, value]) =>
-            value === undefined ? [] : [{ name, value }],
-          ),
-        // The proxy refreshes the session and forwards the new cookies to this request.
-        setAll() {},
-      },
-    },
-  );
-  const user = await getSessionUserRow(supabase);
+  const user = await getSessionUserRow(createPagesClient(req));
   const account = user?.status === "ACTIVE" ? { href: homePathForRole(user.role) } : null;
   return { props: { account, yearBE: new Date().getFullYear() + 543 } };
 };
 
-/* TF-46: หน้าแรกสาธารณะ — ยังไม่ได้ทำ */
+/**
+ * หน้าแรก (TF-46) ทำด้วย Pages Router เพื่อให้เบาตามเกณฑ์ TF-41 (ไม่เกิน 150 KB gzip)
+ * App Router ทั้งชุดหนักราว 206 KB — หน้าอื่นทั้งหมดยังเป็น App Router ใน src/app
+ * เนื้อหาอยู่ใน src/features/home/HomeContent.tsx
+ */
 export default function HomePage({ account, yearBE }: HomeProps) {
   return (
     <div data-lightweight-home className="flex min-h-dvh flex-col">
@@ -50,10 +40,8 @@ export default function HomePage({ account, yearBE }: HomeProps) {
         <HotlineBar />
         <Navbar account={account} />
       </header>
-      <main className="bg-bg-page flex flex-1 flex-col items-center justify-center px-4 py-24">
-        <h1 className="font-heading text-text-primary text-3xl font-bold">น้ำใจไทย SOS</h1>
-        <p className="text-text-secondary mt-3 text-base">หน้าแรกอยู่ระหว่างพัฒนา (TF-46)</p>
-        <OnboardingPopup />
+      <main className="flex-1">
+        <HomeContent />
       </main>
       <FooterContent yearBE={yearBE} />
       <PwaSupport />

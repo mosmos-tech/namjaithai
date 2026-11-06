@@ -21,11 +21,23 @@ export function randomPhone(): string {
   return `08${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
 }
 
-// พิกัดสุ่มในกรุงเทพฯ ห่างกันเกิน 50 ม. แทบทุกครั้ง (เลี่ยงการตรวจเคสซ้ำด้วยระยะของ TF-16)
-export function randomBangkokPoint(): { lat: number; lng: number } {
+// พิกัดไม่ซ้ำสำหรับแต่ละเคสใน test: เลี่ยงการตรวจเคสซ้ำด้วยระยะ 50 ม. ของ TF-16
+// เดิมสุ่มในกรุงเทพฯ ช่องเล็ก พอรันร้อยกว่าเคสมีโอกาสสุ่มได้จุดใกล้กันจน test ล้มแบบสุ่ม
+// ตอนนี้ใช้ตารางช่องละ 0.001° (≈110 ม.) ในภาคกลาง 1,800 × 1,800 ช่อง:
+// - รอบเดียวกันไม่ซ้ำช่องแน่นอน: worker แต่ละตัวได้ช่วงของตัวเอง แล้วนับต่อไปทีละช่อง
+// - ต่างรอบ (เคสค้างในฐานข้อมูลในเครื่อง) เริ่มที่จุดสุ่มจาก global-setup โอกาสชนน้อยมาก
+const GRID_SIZE = 1800;
+const GRID_STEP = 0.001;
+const POINTS_PER_WORKER = 100_003;
+let pointCounter = 0;
+
+export function uniqueTestPoint(): { lat: number; lng: number } {
+  const seed = Number(process.env.E2E_LOCATION_SEED ?? 0);
+  const worker = Number(process.env.TEST_WORKER_INDEX ?? 0);
+  const cell = (seed + worker * POINTS_PER_WORKER + pointCounter++) % (GRID_SIZE * GRID_SIZE);
   return {
-    lat: Number((13.7 + Math.random() * 0.15).toFixed(6)),
-    lng: Number((100.45 + Math.random() * 0.15).toFixed(6)),
+    lat: Number((13.8 + Math.floor(cell / GRID_SIZE) * GRID_STEP).toFixed(6)),
+    lng: Number((99.6 + (cell % GRID_SIZE) * GRID_STEP).toFixed(6)),
   };
 }
 
@@ -49,7 +61,7 @@ export async function createCaseViaApi(
       // TF-55: ระบบคำนวณระดับจากคำตอบ (ส่ง urgency มาก็ถูกเมิน)
       dangerSigns: [],
       canSelfEvacuate: false,
-      ...randomBangkokPoint(),
+      ...uniqueTestPoint(),
       landmark: "จุดสังเกตทดสอบ E2E",
       adults: 1,
       elderly: 0,

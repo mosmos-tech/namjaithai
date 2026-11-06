@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -17,6 +17,7 @@ import {
   caseCodeSchema,
   formatThaiDateTime,
   formatThaiTime,
+  isClosedStatus,
   reporterStatusView,
   timelineLabel,
   type CaseStatus,
@@ -25,11 +26,13 @@ import {
 } from "@/lib/domain";
 import { useTrackedCase } from "../use-tracked-case";
 import { TrackLookupForm } from "./TrackLookupForm";
+import { ReporterCaseActions } from "./ReporterCaseActions";
+import { WaitingAdvice } from "./WaitingAdvice";
 
 /**
  * หน้าติดตามเคส /track/รหัสเคส?t=token (TF-13)
  * แสดงสถานะ แถบขั้นตอน ทีมที่รับเคส และไทม์ไลน์ ดึงข้อมูลใหม่ทุก 20 วินาที
- * (แผนที่สดอยู่ใน TF-42 ปุ่มยกเลิก/ปลอดภัยแล้วอยู่ใน TF-14)
+ * (แผนที่สดอยู่ใน TF-42)
  */
 export function TrackCaseView({
   params,
@@ -60,7 +63,8 @@ export function TrackCaseView({
 }
 
 function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string }) {
-  const state = useTrackedCase(caseCode, token);
+  const [revision, setRevision] = useState(0);
+  const state = useTrackedCase(caseCode, token, revision);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-10">
@@ -94,7 +98,18 @@ function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string 
       )}
 
       {state.kind === "ready" && (
-        <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
+        <>
+          <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
+          {!isClosedStatus(state.data.status) && (
+            <WaitingAdvice incidentType={state.data.incidentType} />
+          )}
+          <ReporterCaseActions
+            caseCode={caseCode}
+            token={token}
+            status={state.data.status}
+            onChanged={() => setRevision((value) => value + 1)}
+          />
+        </>
       )}
     </div>
   );
@@ -139,7 +154,7 @@ function TrackedCaseDetail({
         {data.status === "NEW" && (
           <div className="text-text-primary mt-6 flex gap-3 rounded-[12px] bg-amber-50 p-4 text-lg">
             <TriangleAlert className="mt-1 size-6 shrink-0 text-amber-700" aria-hidden="true" />
-            <p>ระหว่างรอ: ขึ้นที่สูง เปิดเสียงโทรศัพท์ไว้ ทีมจะโทรหาก่อนออกเดินทาง</p>
+            <p>ระหว่างรอ: เปิดเสียงโทรศัพท์ไว้ ทีมจะโทรหาก่อนออกเดินทาง</p>
           </div>
         )}
 

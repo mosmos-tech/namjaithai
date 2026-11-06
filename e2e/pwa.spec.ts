@@ -66,6 +66,21 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
   );
 });
 
+test("TF-46 เปิดหน้าแรกและเลือก SOS ขณะออฟไลน์", async ({ page, context }) => {
+  await offlineReady(page);
+  await context.setOffline(true);
+  const reopened = await context.newPage();
+  await reopened.goto("/");
+  await expect(reopened.getByText("ไม่มีข้อมูลล่าสุด")).toBeVisible();
+  await reopened
+    .getByRole("link", { name: /แจ้งขอความช่วยเหลือ/ })
+    .last()
+    .click();
+  await expect(reopened.getByRole("heading", { name: "เลือกประเภทเหตุ" })).toBeVisible();
+  await reopened.getByRole("link", { name: /^น้ำท่วม/ }).click();
+  await expect(reopened.getByText("ขั้นที่ 1 จาก 5")).toBeVisible();
+});
+
 test("ไม่แคชข้อมูลบัญชี เคส หรือ API", async ({ page }) => {
   await offlineReady(page);
   await page.evaluate(async () => {

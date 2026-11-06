@@ -19,7 +19,9 @@ export async function overrideCaseUrgencyAction(input: unknown): Promise<Overrid
     async loadCase(caseId) {
       const { data } = await supabase
         .from("cases")
-        .select("urgency, version, created_at, details, case_people(elderly, bedridden, children)")
+        .select(
+          "urgency, incident_type, version, created_at, details, case_people(elderly, bedridden, children)",
+        )
         .eq("id", caseId)
         .maybeSingle<OverrideCaseRow>();
       return data;

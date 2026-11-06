@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { countCasesByPhone, createCaseViaApi, randomPhone } from "./helpers/db";
+import { adminDb, countCasesByPhone, createCaseViaApi, randomPhone } from "./helpers/db";
 import {
   backButton,
   answerStep1,
@@ -13,8 +13,107 @@ import {
 
 // E. ฟอร์ม SOS 5 ขั้น (TF-08 ขั้น 1, TF-11 ขั้น 3–5, TF-16 เคสซ้ำ)
 
-test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-55)", () => {
+test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-50, TF-55)", () => {
   test.beforeEach(async ({ page }) => openFreshSosForm(page));
+
+  test("TF-50: กริด 8 ประเภท ปุ่มสูงอย่างน้อย 56px และไม่มีการ์ดแดง/เหลือง/เขียวให้เลือก", async ({
+    page,
+  }) => {
+    const grid = page.getByTestId("incident-type-grid");
+    await expect(grid).toBeVisible();
+
+    const expectedTypes = [
+      "น้ำท่วม",
+      "ไฟไหม้",
+      "อุบัติเหตุทางถนน",
+      "เจ็บป่วยฉุกเฉิน",
+      "ตกน้ำ / จมน้ำ",
+      "อาคารถล่ม / ติดใต้ซาก",
+      "สัตว์อันตราย",
+      "เหตุอื่นๆ",
+    ];
+    const buttons = grid.getByRole("radio");
+    await expect(buttons).toHaveCount(8);
+
+    for (let i = 0; i < expectedTypes.length; i++) {
+      const btn = buttons.nth(i);
+      await expect(btn).toHaveText(expectedTypes[i]);
+      const box = await btn.boundingBox();
+      expect(box!.height, `ปุ่ม ${expectedTypes[i]} ต้องสูง >= 56px`).toBeGreaterThanOrEqual(56);
+    }
+
+    for (const word of ["วิกฤต", "เร่งด่วน", "ทั่วไป"]) {
+      await expect(page.getByRole("radio", { name: new RegExp(`^${word}`) })).toHaveCount(0);
+    }
+    await expect(page.getByText(/เคสสีแดง|เลือกสี/)).toHaveCount(0);
+  });
+
+  test("TF-50: ตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ แสดงเบอร์สายด่วนแทน และไม่สร้างเคส", async ({
+    page,
+    isMobile,
+  }) => {
+    await page.getByRole("radio", { name: "ไม่ได้อยู่ที่จุดเกิดเหตุ" }).click();
+
+    const hotlinesBox = page.getByTestId("not-at-scene-hotlines");
+    await expect(hotlinesBox).toBeVisible();
+    await expect(
+      hotlinesBox.getByRole("heading", { name: /แจ้งแทนคนอื่นไม่ได้/ }),
+    ).toBeVisible();
+    await expect(hotlinesBox.getByRole("link", { name: /โทร 1669/ })).toHaveAttribute(
+      "href",
+      "tel:1669",
+    );
+    await expect(hotlinesBox.getByRole("link", { name: /โทร 1784/ })).toHaveAttribute(
+      "href",
+      "tel:1784",
+    );
+
+    // ปุ่มถัดไปหายไป ไม่ให้ไปขั้น 2 หรือสร้างเคส
+    await expect(nextButton(page)).toHaveCount(0);
+
+    // บนจอคอม แม้กดขั้นอื่นในการ์ดด้านซ้ายก็จะถูกกันไว้ที่ขั้น 1
+    if (!isMobile) {
+      await page.getByRole("button", { name: /ผู้ติดค้าง/ }).click();
+      await expectStep(page, 1);
+    }
+
+    // ยิง API ตรงด้วย atScene: false ก็ต้องถูกปฏิเสธและไม่เกิดเคสใหม่ในฐานข้อมูล
+    const phone = randomPhone();
+    const res = await page.request.post("/api/cases", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      data: {
+        atScene: false,
+        dangerSigns: [],
+        canSelfEvacuate: false,
+        lat: 13.7563,
+        lng: 100.5018,
+        landmark: "หน้าวัด",
+        adults: 1,
+        elderly: 0,
+        bedridden: 0,
+        children: 0,
+        pets: 0,
+        needs: [],
+        name: "ทดสอบ แจ้งแทน",
+        phone,
+      },
+    });
+    expect(res.status()).toBe(400);
+    expect(await countCasesByPhone(phone)).toBe(0);
+  });
+
+  test("TF-50: เปิดลิงก์ ?type=FLOOD แล้วเลือกประเภทน้ำท่วมไว้ให้", async ({ page }) => {
+    await openFreshSosForm(page, "/request?type=FLOOD");
+    const grid = page.getByTestId("incident-type-grid");
+    await expect(grid.getByRole("radio", { name: "น้ำท่วม" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(grid.getByRole("radio", { name: "ไฟไหม้" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
 
   test("ไม่ตอบแล้วกดถัดไป บอกว่าขาดอะไร และยังอยู่ขั้น 1", async ({ page }) => {
     await nextButton(page).click();
@@ -369,5 +468,200 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await submit(page).click();
     await expect(page.getByRole("button", { name: /อัปเดตเคสเดิม/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /สร้างใหม่/ })).toBeVisible();
+  });
+});
+
+test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน + API รับ details", () => {
+  test("TF-51: ขั้น 3 วาดคำถามเฉพาะประเภท (ไม่เกิน 3 ข้อ: ตัวเลข/ตัวเลือก/ใช่-ไม่ใช่) และขั้น 4 ความต้องการเปลี่ยนตามประเภท + อื่นๆ พิมพ์เอง", async ({
+    page,
+  }) => {
+    await openFreshSosForm(page);
+
+    // เลือกประเภท "อุบัติเหตุทางถนน" (ROAD_ACCIDENT)
+    await page.getByTestId("incident-type-ROAD_ACCIDENT").click();
+    await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
+    await answerStep1(page);
+    await nextButton(page).click();
+    await expectStep(page, 2);
+
+    await seedLocationIntoDraft(page);
+    await nextButton(page).click();
+    await expectStep(page, 3);
+
+    // ตรวจว่าขั้น 3 แสดงคำถามเฉพาะประเภทไม่เกิน 3 ข้อ (ROAD_ACCIDENT มี 3 ข้อ: ตัวเลข, ตัวเลือก, ใช่-ไม่ใช่)
+    const questionsSection = page.getByTestId("step3-incident-questions");
+    await expect(questionsSection).toBeVisible();
+    const questionCards = questionsSection.locator('[data-testid^="incident-question-"]');
+    const qCount = await questionCards.count();
+    expect(qCount).toBeGreaterThanOrEqual(1);
+    expect(qCount).toBeLessThanOrEqual(3);
+
+    // กดถัดไปโดยยังไม่ตอบคำถามบังคับของ ROAD_ACCIDENT ต้องแจ้งเตือนและยังอยู่ขั้น 3
+    await nextButton(page).click();
+    await expectStep(page, 3);
+    await expect(page.getByTestId("step3-missing-alert")).toBeVisible();
+
+    // ตอบคำถามทั้ง 3 ชนิด (ตัวเลข, ตัวเลือก, ใช่-ไม่ใช่)
+    await page.getByTestId("question-injuredCount-input").fill("2");
+    await page.getByTestId("question-vehicleType-option-MOTORCYCLE").click();
+    await page.getByTestId("question-isTrapped-yes").click();
+
+    await nextButton(page).click();
+    await expectStep(page, 4);
+
+    // ขั้น 4: ความต้องการของ ROAD_ACCIDENT ต้องไม่มี "เรืออพยพด่วน" แต่มี "ยารักษาโรค/ปฐมพยาบาล" และ "อื่นๆ (พิมพ์เอง)"
+    await expect(page.getByTestId("need-option-EVACUATION_BOAT")).toHaveCount(0);
+    await expect(page.getByTestId("need-option-MEDICINE")).toBeVisible();
+    const otherBtn = page.getByTestId("need-option-OTHER");
+    await expect(otherBtn).toBeVisible();
+
+    await otherBtn.click();
+    await page.getByTestId("other-detail-input").fill("ต้องการเครื่องตัดถ่างด่วน");
+    await nextButton(page).click();
+    await expectStep(page, 5);
+  });
+
+  test("TF-51: API /api/cases ตอบ 400 เมื่อส่ง details ไม่ตรงประเภทเหตุ", async ({ page }) => {
+    const phone = randomPhone();
+
+    // ส่ง waterLevel ของ FLOOD มาในเคส ROAD_ACCIDENT -> ต้องได้ 400
+    const resMismatch = await page.request.post("/api/cases", {
+      headers: {
+        "Idempotency-Key": crypto.randomUUID(),
+        "X-Forwarded-For": `10.51.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+      },
+      data: {
+        incidentType: "ROAD_ACCIDENT",
+        atScene: true,
+        dangerSigns: [],
+        canSelfEvacuate: false,
+        details: {
+          waterLevel: "ROOF",
+        },
+        lat: 13.7563,
+        lng: 100.5018,
+        landmark: "แยกอโศก",
+        adults: 1,
+        elderly: 0,
+        bedridden: 0,
+        children: 0,
+        pets: 0,
+        needs: [],
+        name: "ทดสอบ API 400",
+        phone,
+      },
+    });
+    expect(resMismatch.status()).toBe(400);
+    expect(await countCasesByPhone(phone)).toBe(0);
+  });
+
+  test("TF-51: ส่งฟอร์ม SOS สำเร็จอย่างน้อย 3 ประเภทเหตุ (FLOOD, ROAD_ACCIDENT, ANIMAL) และแยกข้อมูลสุขภาพออกจาก cases.details", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+
+    // 1. ประเภทที่ 1: น้ำท่วม (FLOOD)
+    await openFreshSosForm(page, "/request?type=FLOOD");
+    await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
+    await answerStep1(page, { canSelfEvacuate: false });
+    await page.getByRole("radio", { name: "ระดับเอว–หน้าอก" }).click();
+    await nextButton(page).click();
+    await expectStep(page, 2);
+    await seedLocationIntoDraft(page);
+    await nextButton(page).click();
+    await expectStep(page, 3);
+    await page.getByTestId("question-hasInjured-yes").click();
+    await nextButton(page).click();
+    await expectStep(page, 4);
+    await page.getByTestId("need-option-EVACUATION_BOAT").click();
+    await nextButton(page).click();
+    await expectStep(page, 5);
+    const phoneFlood = randomPhone();
+    await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ผู้แจ้ง น้ำท่วม");
+    await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phoneFlood);
+    await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(await countCasesByPhone(phoneFlood)).toBe(1);
+
+    // 2. ประเภทที่ 2: อุบัติเหตุทางถนน (ROAD_ACCIDENT)
+    await openFreshSosForm(page, "/request?type=ROAD_ACCIDENT");
+    await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
+    await answerStep1(page, { canSelfEvacuate: false });
+    await nextButton(page).click();
+    await expectStep(page, 2);
+    await seedLocationIntoDraft(page);
+    await nextButton(page).click();
+    await expectStep(page, 3);
+    await page.getByTestId("question-injuredCount-input").fill("2");
+    await page.getByTestId("question-vehicleType-option-CAR").click();
+    await page.getByTestId("question-isTrapped-yes").click();
+    await nextButton(page).click();
+    await expectStep(page, 4);
+    await page.getByTestId("need-option-MEDICINE").click();
+    await nextButton(page).click();
+    await expectStep(page, 5);
+    const phoneRoad = randomPhone();
+    await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ผู้แจ้ง อุบัติเหตุ");
+    await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phoneRoad);
+    const roadResPromise = page.waitForResponse(
+      (r) => r.url().endsWith("/api/cases") && r.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+    const roadRes = await roadResPromise;
+    expect(roadRes.status()).toBe(201);
+    const roadBody = (await roadRes.json()) as { caseCode: string };
+    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(await countCasesByPhone(phoneRoad)).toBe(1);
+
+    // ตรวจในฐานข้อมูลว่า ROAD_ACCIDENT เก็บ vehicleType/isTrapped ใน cases.details และแยก injuredCount ไป case_sensitive_details
+    const { data: roadCase, error: roadErr } = await adminDb()
+      .from("cases")
+      .select("incident_type, details, case_sensitive_details(details)")
+      .eq("case_code", roadBody.caseCode)
+      .single();
+    expect(roadErr).toBeNull();
+    expect(roadCase?.incident_type).toBe("ROAD_ACCIDENT");
+    expect(roadCase?.details).toMatchObject({
+      vehicleType: "CAR",
+      isTrapped: true,
+    });
+    expect(roadCase?.details).not.toHaveProperty("injuredCount");
+    const roadSensitive = (
+      roadCase?.case_sensitive_details as unknown as { details: Record<string, unknown> } | null
+    )?.details;
+    expect(roadSensitive).toMatchObject({
+      injuredCount: 2,
+    });
+
+    // 3. ประเภทที่ 3: สัตว์อันตราย (ANIMAL)
+    await openFreshSosForm(page, "/request?type=ANIMAL");
+    await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
+    await answerStep1(page, { canSelfEvacuate: true });
+    await nextButton(page).click();
+    await expectStep(page, 2);
+    await seedLocationIntoDraft(page);
+    await nextButton(page).click();
+    await expectStep(page, 3);
+    await page.getByTestId("question-animalType-option-SNAKE").click();
+    await page.getByTestId("question-isInsideHome-yes").click();
+    await page.getByTestId("question-hasBittenOrStung-no").click();
+    await nextButton(page).click();
+    await expectStep(page, 4);
+    await page.getByTestId("need-option-OTHER").click();
+    await page.getByTestId("other-detail-input").fill("งูเห่าอยู่ในห้องครัว");
+    await nextButton(page).click();
+    await expectStep(page, 5);
+    const phoneAnimal = randomPhone();
+    await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ผู้แจ้ง สัตว์อันตราย");
+    await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phoneAnimal);
+    await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(await countCasesByPhone(phoneAnimal)).toBe(1);
   });
 });

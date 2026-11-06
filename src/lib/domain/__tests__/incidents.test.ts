@@ -3,6 +3,7 @@ import path from "node:path";
 import * as lucide from "lucide-react";
 import { describe, it, expect } from "vitest";
 import { Need, WaterLevel } from "../enums";
+import { validateAndSplitIncidentDetails } from "../sos-schema";
 import {
   FORBIDDEN_DETAIL_KEYS,
   INCIDENT_REGISTRY,
@@ -95,7 +96,7 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
   });
 
   it("key ต้องห้ามในโค้ดตรงกับ check constraint ล่าสุดในฐานข้อมูล", () => {
-    // constraint ถูกสร้างใหม่ได้หลายรอบ (TF-49, TF-55) ใช้ตัวที่อยู่ใน migration ล่าสุด
+    // constraint ถูกสร้างใหม่ได้หลายรอบ (TF-49, TF-55, TF-51) ใช้ตัวที่อยู่ใน migration ล่าสุด
     const dir = path.join(process.cwd(), "supabase/migrations");
     const sql = readdirSync(dir)
       .filter((f) => f.endsWith(".sql"))
@@ -105,5 +106,55 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     const matches = [...sql.matchAll(/details \?\| array\[([^\]]+)\]/g)];
     const list = matches.at(-1)?.[1] ?? "";
     expect([...list.matchAll(/'([^']+)'/g)].map((m) => m[1])).toEqual([...FORBIDDEN_DETAIL_KEYS]);
+  });
+
+  it("TF-51: แต่ละประเภทเหตุถามไม่เกิน 3 คำถาม และมีความต้องการตามประเภทพร้อม OTHER เสมอ", () => {
+    for (const type of ALL_TYPES) {
+      const def = INCIDENT_REGISTRY[type];
+      expect(def.questions.length, `${type} มีคำถามเกิน 3 ข้อ`).toBeGreaterThanOrEqual(1);
+      expect(def.questions.length, `${type} มีคำถามเกิน 3 ข้อ`).toBeLessThanOrEqual(3);
+      expect(def.needs.length, `${type} ต้องมีรายการความต้องการ`).toBeGreaterThanOrEqual(2);
+      expect(def.needs, `${type} ต้องมี OTHER เสมอ`).toContain(Need.OTHER);
+    }
+
+    // ความต้องการเปลี่ยนตามประเภทเหตุ (เช่น ROAD_ACCIDENT ไม่ได้มีตัวเลือกเหมือน FLOOD ทั้งหมด)
+    expect(INCIDENT_REGISTRY.ROAD_ACCIDENT.needs).not.toEqual(INCIDENT_REGISTRY.FLOOD.needs);
+    expect(INCIDENT_REGISTRY.ANIMAL.needs).not.toEqual(INCIDENT_REGISTRY.FLOOD.needs);
+  });
+
+  it("TF-51: validateAndSplitIncidentDetails ตรวจ details ตามประเภทด้วย Zod และแยกข้อมูลสุขภาพออกจาก publicDetails", () => {
+    // ROAD_ACCIDENT: ถูกต้อง -> แยก injuredCount ไป sensitiveDetails, ที่เหลืออยู่ publicDetails
+    const okRoad = validateAndSplitIncidentDetails(IncidentType.ROAD_ACCIDENT, {
+      injuredCount: 2,
+      vehicleType: "MOTORCYCLE",
+      isTrapped: true,
+    });
+    expect(okRoad.ok).toBe(true);
+    if (okRoad.ok) {
+      expect(okRoad.publicDetails).toEqual({
+        vehicleType: "MOTORCYCLE",
+        isTrapped: true,
+      });
+      expect(okRoad.sensitiveDetails).toEqual({
+        injuredCount: 2,
+      });
+    }
+
+    // ส่ง key ของ FLOOD (waterLevel) มาใน ROAD_ACCIDENT -> ไม่ผ่าน
+    const mismatchRoad = validateAndSplitIncidentDetails(IncidentType.ROAD_ACCIDENT, {
+      waterLevel: WaterLevel.ROOF,
+      injuredCount: 1,
+      vehicleType: "CAR",
+      isTrapped: false,
+    });
+    expect(mismatchRoad.ok).toBe(false);
+
+    // ส่ง key ของ ROAD_ACCIDENT (vehicleType) มาใน FLOOD -> ไม่ผ่าน
+    const mismatchFlood = validateAndSplitIncidentDetails(
+      IncidentType.FLOOD,
+      { vehicleType: "CAR" },
+      { canSelfEvacuate: true },
+    );
+    expect(mismatchFlood.ok).toBe(false);
   });
 });

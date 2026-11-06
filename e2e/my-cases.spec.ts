@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext, type BrowserContext } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
-import { adminDb, randomPhone, randomBangkokPoint } from "./helpers/db";
+import { adminDb, randomPhone, uniqueTestPoint } from "./helpers/db";
 
 async function account() {
   const db = adminDb();
@@ -59,7 +59,7 @@ async function report(request: APIRequestContext, extra: Record<string, unknown>
       // TF-55: ส่งคำตอบ ระบบคำนวณระดับเอง (ไม่รับ urgency จากผู้แจ้งแล้ว)
       dangerSigns: [],
       canSelfEvacuate: false,
-      ...randomBangkokPoint(),
+      ...uniqueTestPoint(),
       landmark: "TF43 synthetic fixture",
       adults: 1,
       elderly: 0,
@@ -160,7 +160,7 @@ test.describe("TF-43 account cases", () => {
     const fixtures = Array.from({ length: 21 }, (_, i) => ({
       case_code: `FL-2611-${base}${String(i).padStart(2, "0")}`,
       urgency: "GREEN",
-      ...randomBangkokPoint(),
+      ...uniqueTestPoint(),
       landmark: "TF43 pagination synthetic",
       reporter_user_id: owner.id,
       created_at: new Date(Date.now() - (i + 1) * 60000).toISOString(),
@@ -184,19 +184,24 @@ test.describe("TF-43 account cases", () => {
     ).toHaveCount(1);
   });
 
-  test("เปลี่ยนสถานะสร้างคิว LINE โดยผู้ใช้เรียก worker เองไม่ได้", async ({ page }) => {
+  test("พักคิว LINE เมื่อเปลี่ยนสถานะ และผู้ใช้เรียก worker เองไม่ได้", async ({ page }) => {
     const sent = await report(page.request);
     const { data: row } = await adminDb()
       .from("cases")
       .select("id")
       .eq("case_code", sent.caseCode)
       .single();
-    await adminDb().from("cases").update({ status: "ACCEPTED" }).eq("id", row!.id);
-    const { data: jobs } = await adminDb()
+    const { error: updateError } = await adminDb()
+      .from("cases")
+      .update({ status: "ACCEPTED" })
+      .eq("id", row!.id);
+    expect(updateError).toBeNull();
+    const { data: jobs, error: queueError } = await adminDb()
       .from("case_line_notifications")
       .select("user_id,to_status,state")
       .eq("case_id", row!.id);
-    expect(jobs).toEqual([{ user_id: owner.id, to_status: "ACCEPTED", state: "PENDING" }]);
+    expect(queueError).toBeNull();
+    expect(jobs).toEqual([]);
     expect((await page.request.post("/api/notifications/line")).status()).toBe(401);
   });
 

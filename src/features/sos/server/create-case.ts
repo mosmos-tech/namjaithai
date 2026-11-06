@@ -1,9 +1,12 @@
 import { z } from "zod";
 import {
   sosSchema,
+  validateAndSplitIncidentDetails,
   priorityScore,
   computeTriage,
+  accuracyForLocationSource,
   IncidentType,
+  WaterLevel,
   duplicateResolutionSchema,
   duplicateActionLabels,
   formatAdminDuplicateNotice,
@@ -16,14 +19,21 @@ import {
 } from "../../../lib/domain";
 
 // คำตอบด้านสุขภาพไม่ส่งตรงๆ แต่รวมไว้ใน sensitive → ฐานข้อมูลเก็บลง case_sensitive_details
-type SensitiveAnswerKey = "dangerSigns" | "hasDisabled" | "hasInjured";
+type SensitiveAnswerKey = "dangerSigns" | "hasDisabled" | "hasInjured" | "atScene";
 
 export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   // TF-55: ระดับคำนวณที่เซิร์ฟเวอร์ ไม่เชื่อค่าที่ส่งมาจากเบราว์เซอร์
   urgency: Urgency;
   triageReasons: TriageReason[];
-  // ส่งมาเฉพาะเมื่อมีคำตอบด้านสุขภาพที่เป็น "ใช่" อย่างน้อย 1 ข้อ
-  sensitive?: { dangerSigns?: string[]; hasDisabled?: true; hasInjured?: true };
+  // TF-51: คำตอบเฉพาะประเภทเหตุที่ไม่ใช่ข้อมูลสุขภาพ (ลง cases.details)
+  details?: Record<string, string | number | boolean>;
+  // ส่งมาเฉพาะเมื่อมีคำตอบด้านสุขภาพอย่างน้อย 1 ข้อ (ลง case_sensitive_details)
+  sensitive?: {
+    dangerSigns?: string[];
+    hasDisabled?: true;
+    hasInjured?: true;
+    [key: string]: string | number | boolean | string[] | undefined;
+  };
   duplicateAction?: DuplicateAction;
   targetCaseId?: string;
 };
@@ -257,47 +267,91 @@ export async function handleCreateSosCase(params: {
     };
   }
 
-  // 3. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
-  const { dangerSigns, hasDisabled, hasInjured, ...answers } = parsed.data;
-  const triage = computeTriage({
-    incidentType: IncidentType.FLOOD,
-    dangerSigns,
+  // 3. ตรวจ details เฉพาะประเภทเหตุด้วย Zod และแยกข้อมูลสุขภาพออกจาก cases.details (TF-51)
+  const { dangerSigns, hasDisabled, hasInjured, atScene: _atScene, ...answers } = parsed.data;
+  void _atScene;
+  const incidentType = answers.incidentType ?? IncidentType.FLOOD;
+  const rawDetails = (rawBody as Record<string, unknown>).details;
+
+  const detailsCheck = validateAndSplitIncidentDetails(incidentType, rawDetails, {
     waterLevel: answers.waterLevel,
     canSelfEvacuate: answers.canSelfEvacuate,
+    hasInjured,
+  });
+  if (!detailsCheck.ok) {
+    return {
+      status: 400,
+      body: {
+        error: detailsCheck.error,
+        fieldErrors: detailsCheck.fieldErrors,
+        formErrors: [detailsCheck.error],
+        fields: detailsCheck.fields,
+      },
+    };
+  }
+
+  const effectiveWaterLevel =
+    incidentType === IncidentType.FLOOD
+      ? ((detailsCheck.publicDetails.waterLevel as WaterLevel | undefined) ?? answers.waterLevel)
+      : undefined;
+  const effectiveCanSelfEvacuate =
+    typeof detailsCheck.publicDetails.canSelfEvacuate === "boolean"
+      ? detailsCheck.publicDetails.canSelfEvacuate
+      : answers.canSelfEvacuate;
+  const effectiveHasInjured = Boolean(
+    hasInjured ||
+      detailsCheck.sensitiveDetails.hasInjured === true ||
+      (typeof detailsCheck.sensitiveDetails.injuredCount === "number" &&
+        detailsCheck.sensitiveDetails.injuredCount > 0) ||
+      detailsCheck.sensitiveDetails.hasBittenOrStung === true,
+  );
+
+  // 4. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
+  const triage = computeTriage({
+    incidentType,
+    dangerSigns,
+    waterLevel: effectiveWaterLevel,
+    canSelfEvacuate: effectiveCanSelfEvacuate,
     elderly: answers.elderly,
     bedridden: answers.bedridden,
     children: answers.children,
     hasDisabled,
-    hasInjured,
+    hasInjured: effectiveHasInjured,
     needs: answers.needs,
   });
-  const hasSensitive = dangerSigns.length > 0 || hasDisabled || hasInjured;
+
+  const sensitivePayload: NonNullable<CreateSosCasePayload["sensitive"]> = {
+    ...(dangerSigns.length > 0 ? { dangerSigns } : {}),
+    ...(hasDisabled ? { hasDisabled: true as const } : {}),
+    ...(hasInjured ? { hasInjured: true as const } : {}),
+    ...detailsCheck.sensitiveDetails,
+  };
+  const hasSensitive = Object.keys(sensitivePayload).length > 0;
 
   const formData: CreateSosCasePayload = {
     ...answers,
+    incidentType,
+    waterLevel: effectiveWaterLevel,
+    canSelfEvacuate: effectiveCanSelfEvacuate,
+    // TF-65: ปักเอง/วางลิงก์ไม่มีค่าความคลาดเคลื่อน ไม่ว่าคำขอจะส่งอะไรมา
+    accuracyM: accuracyForLocationSource(answers.locationSource, answers.accuracyM),
     urgency: triage.level,
     triageReasons: triage.reasons,
-    ...(hasSensitive
-      ? {
-          sensitive: {
-            ...(dangerSigns.length > 0 ? { dangerSigns } : {}),
-            ...(hasDisabled ? { hasDisabled: true as const } : {}),
-            ...(hasInjured ? { hasInjured: true as const } : {}),
-          },
-        }
+    ...(Object.keys(detailsCheck.publicDetails).length > 0
+      ? { details: detailsCheck.publicDetails }
       : {}),
+    ...(hasSensitive ? { sensitive: sensitivePayload } : {}),
     ...(dupResolution.data.duplicateAction
       ? { duplicateAction: dupResolution.data.duplicateAction }
       : {}),
-    ...(dupResolution.data.targetCaseId
-      ? { targetCaseId: dupResolution.data.targetCaseId }
-      : {}),
+    ...(dupResolution.data.targetCaseId ? { targetCaseId: dupResolution.data.targetCaseId } : {}),
   };
 
   // 4. คำนวณคะแนนจัดลำดับด้วยฟังก์ชันกลาง priorityScore() โดยใช้ระดับที่ระบบคำนวณ
   const score = priorityScore(
     {
       urgency: formData.urgency,
+      incidentType: formData.incidentType ?? IncidentType.FLOOD,
       waterLevel: formData.waterLevel,
       bedridden: formData.bedridden,
       elderly: formData.elderly,
@@ -364,7 +418,8 @@ export async function handleCreateSosCase(params: {
     return {
       status: 500,
       body: {
-        error: "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
+        error:
+          "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
       },
     };
   }
@@ -393,9 +448,7 @@ export async function handleCreateSosCase(params: {
       status: row.status,
       createdAt: row.created_at,
       replayed: row.replayed,
-      ...(row.updated_existing !== undefined
-        ? { updatedExisting: row.updated_existing }
-        : {}),
+      ...(row.updated_existing !== undefined ? { updatedExisting: row.updated_existing } : {}),
       ...(row.is_potential_duplicate !== undefined
         ? {
             isPotentialDuplicate,

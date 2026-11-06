@@ -2,15 +2,15 @@
 
 ระบบมี 4 ที่ที่โค้ดรันอยู่ แต่ละที่ใช้ branch และฐานข้อมูลต่างกัน เพื่อให้ทดสอบได้โดยไม่แตะข้อมูลผู้ประสบภัยจริง
 
-| สภาพแวดล้อม    | branch     | เว็บ                              | Supabase                                    | `NEXT_PUBLIC_APP_ENV` | แถบบนหัวเว็บ                 |
-| -------------- | ---------- | --------------------------------- | ------------------------------------------- | --------------------- | ---------------------------- |
-| **local**      | ทุก branch | http://localhost:3000             | Docker ในเครื่อง (`npm run db:start`)       | `development`         | ไม่มี                        |
-| **dev**        | `develop`  | https://namjaithai-dev.vercel.app | project 1 `namjaithai-dev`                  | `dev`                 | ฟ้า "DEV · ข้อมูลทดสอบ"      |
-| **uat**        | `uat`      | https://namjaithai-uat.vercel.app | project 1 `namjaithai-dev` (ใช้ร่วมกับ dev) | `uat`                 | ส้ม "UAT · ตรวจก่อนขึ้นจริง" |
-| **production** | `main`     | https://namjaithai.vercel.app     | project 2 `uucczpzmpnfzqbxnghwp`            | `production`          | ไม่มี                        |
+| สภาพแวดล้อม    | branch     | เว็บ                              | Supabase                              | `NEXT_PUBLIC_APP_ENV` | แถบบนหัวเว็บ                 |
+| -------------- | ---------- | --------------------------------- | ------------------------------------- | --------------------- | ---------------------------- |
+| **local**      | ทุก branch | http://localhost:3000             | Docker ในเครื่อง (`npm run db:start`) | `development`         | ไม่มี                        |
+| **dev**        | `develop`  | https://namjaithai-dev.vercel.app | project 1 `nsetseehwiabwqtsmjvv`      | `dev`                 | ฟ้า "DEV · ข้อมูลทดสอบ"      |
+| **uat**        | `uat`      | https://namjaithai-uat.vercel.app | project 1 (ใช้ร่วมกับ dev)            | `uat`                 | ส้ม "UAT · ตรวจก่อนขึ้นจริง" |
+| **production** | `main`     | https://namjaithai.vercel.app     | project 2 `uucczpzmpnfzqbxnghwp`      | `production`          | ไม่มี                        |
 
 - ลิงก์ preview ของ PR ทุกใบ (`namjaithai-git-<branch>-jupiter-f675.vercel.app`) ใช้ค่าเดียวกับ dev
-- ถ้าชื่อโดเมน `namjaithai-dev` / `namjaithai-uat` มีคนใช้แล้ว ให้เลือกชื่ออื่นแล้วแก้ตารางนี้
+- Supabase project 1 ชื่อ `namjaithai-dev`, project 2 ชื่อ `namjaithai` (project ref ไม่ใช่ความลับ อยู่ใน URL ของเว็บอยู่แล้ว)
 
 > Supabase แบบฟรีมีได้ 2 project ต่อองค์กร จึงให้ dev กับ uat ใช้ project เดียวกัน
 
@@ -49,6 +49,24 @@ GitHub → **Actions** → **Deploy DB** (เมนูซ้าย) → **Run wo
 - **target**: `dev` หรือ `production` (ต้องคู่กับ branch ด้านบน ไม่งั้นงานจะแดงพร้อมบอกว่าเลือกผิด)
 - target `production` ต้องรอกดอนุมัติเหมือนเดิม และ deploy เว็บจริงให้ด้วยหลัง migration ผ่าน
 
+## กฎ: ชื่อไฟล์ migration ต้องใหม่กว่าไฟล์ล่าสุดใน develop
+
+Supabase ลง migration ตามเวลาหน้าชื่อไฟล์ (`20261103000000_...`) และ**ไม่ยอมลงไฟล์ที่เวลาเก่ากว่าไฟล์ล่าสุดที่ลงไปแล้ว**
+ถ้าสร้าง migration ไว้นานแล้วเพื่อน merge ของใหม่กว่าเข้าไปก่อน พอ merge ของเราตาม Deploy DB จะล้มด้วยข้อความ
+`Found local migration files to be inserted before the last migration on remote database`
+
+**ก่อน merge PR ที่มี migration** (คนรีวิวช่วยเช็กด้วย):
+
+1. ดูไฟล์ล่าสุดใน develop: `git fetch && git ls-tree --name-only origin/develop supabase/migrations/ | tail -1`
+2. ถ้าไฟล์ของเราเวลาเก่ากว่า → เปลี่ยนชื่อให้ใหม่กว่า (ไฟล์ยังไม่เคยลงที่ไหนจึงเปลี่ยนได้):
+   ```bash
+   git mv supabase/migrations/20261103000000_tf20_x.sql supabase/migrations/<เวลาตอนนี้>_tf20_x.sql
+   ```
+   เวลาตอนนี้ดูได้จาก `date -u +%Y%m%d%H%M%S`
+3. `npm run db:reset` + `npm run test:db` ให้ผ่านอีกรอบ แล้วค่อย merge
+
+**ถ้าหลุดไปแล้ว** (Deploy DB แดงด้วยข้อความข้างบน) ดูวิธีแก้ในหัวข้อ "เมื่อ migration ล้มเหลว" ข้อ 5
+
 ## ข้อควรรู้: uat ใช้ฐานข้อมูลเดียวกับ dev
 
 merge เข้า `develop` ปุ๊บ ฐานข้อมูลของ uat เปลี่ยนตามทันที แต่โค้ดบนเว็บ uat ยังเป็นรุ่นเก่า
@@ -63,9 +81,15 @@ merge เข้า `develop` ปุ๊บ ฐานข้อมูลของ u
 อาการ: หน้า **Actions** ของ GitHub มีงาน **Deploy DB** สีแดง
 
 1. **อ่าน log** ที่ขั้น "Apply migrations" ว่าไฟล์ไหนล้ม และ error ว่าอะไร
-   - ขั้น "Check secrets" ล้ม = ยังไม่ได้ตั้ง secret ใน GitHub Environment นั้น (ดูเช็กลิสต์ข้อ C3–C4)
+   - ขั้น "Check secrets" ล้ม = ยังไม่ได้ตั้ง secret ใน GitHub Environment นั้น (ดูหัวข้อ C ในบันทึกการตั้งค่า)
    - ขั้น "Deploy production" ล้ม = migration ผ่านแล้ว แต่เรียก Deploy Hook ไม่ได้ (URL ผิด/ถูกลบ) แก้ secret `VERCEL_DEPLOY_HOOK_PRODUCTION` แล้ว Re-run
-   - ขั้น dry run ล้ม = ต่อฐานข้อมูลไม่ได้ (project ref / รหัสผ่านผิด หรือ project ถูกพักเพราะไม่ได้ใช้นาน — เข้าหน้า Supabase แล้วกด Restore)
+   - ขั้น dry run ล้ม ดูข้อความ:
+     | ข้อความใน log                                          | สาเหตุ                                                                                | แก้                                                          |
+     | ------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+     | `Invalid access token format`                          | secret `SUPABASE_ACCESS_TOKEN` ไม่ใช่ token ล้วน (มีชื่อ/ช่องว่างติดมา หรือวางผิดตัว) | วางใหม่ ต้องขึ้นต้นด้วย `sbp_` ตัวแรก                        |
+     | `password authentication failed`                       | `SUPABASE_DB_PASSWORD` ผิด                                                            | Reset password ของ project นั้นใน Supabase แล้วอัปเดต secret |
+     | `Found local migration files to be inserted before...` | ไฟล์ migration เวลาเก่ากว่าไฟล์ล่าสุดที่ลงแล้ว                                        | ดูข้อ 5 ด้านล่าง                                             |
+     | ต่อไม่ได้ / timeout                                    | project ถูกพักเพราะไม่ได้ใช้นาน (แพ็กเกจฟรี)                                          | เข้าหน้า Supabase แล้วกด Restore                             |
 2. **ห้ามแก้ไฟล์ migration ที่ merge ไปแล้ว** เพราะอาจลงสำเร็จไปแล้วในบางที่ (เช่น ลง dev ผ่าน แต่ production ล้ม) แก้ไฟล์เดิมแล้วแต่ละที่จะไม่ตรงกัน
 3. **แก้ด้วย migration ใหม่**: เปิดการ์ด/branch `fix/...` สร้างไฟล์ใหม่ด้วย `npx supabase migration new <ชื่อ>` เขียนคำสั่งแก้ ทดสอบ `npm run db:reset` และ `npm run test:db` ในเครื่องให้ผ่านก่อน แล้ว PR ตามลำดับปกติ
 4. **ถ้าประวัติ migration บน Supabase ไม่ตรงกับ repo** (log บอก `Remote migration versions not found in local migrations directory`) ให้คนที่มีรหัสผ่านฐานข้อมูลรันในเครื่อง:
@@ -76,153 +100,123 @@ merge เข้า `develop` ปุ๊บ ฐานข้อมูลของ u
    npx supabase migration repair --status reverted <เลขหน้าชื่อไฟล์> --project-ref <PROJECT_REF>
    ```
    ไม่แน่ใจให้ถามในกลุ่มก่อน อย่าเดา
-5. แก้แล้วกด **Re-run jobs** ที่งานเดิมในหน้า Actions ได้ (ไม่ต้อง push ใหม่ ถ้าปัญหาอยู่ที่ secret หรือ project ถูกพัก)
-6. **ถ้า production ล้ม** ไม่ต้องรีบ: ขั้น deploy ไม่ได้รัน เว็บจริงยังเป็นรุ่นเดิมที่ใช้กับฐานข้อมูลเดิมได้ แก้ตามข้อ 3–5 แล้วรอบที่ผ่านจะ deploy ให้เอง
+5. **ไฟล์เวลาเก่ากว่า (`inserted before the last migration`)**: เปิดไฟล์นั้นดูก่อนว่าแก้ของเดียวกับ migration ที่ใหม่กว่าหรือไม่ (เช่น `create or replace function` ชื่อเดียวกัน)
+   - **ไม่ชนกัน** → คนที่มีรหัสผ่านฐานข้อมูลลงเองครั้งเดียว: `npx supabase db push --project-ref <PROJECT_REF> --include-all` (ทำบน `develop` ล่าสุด) แล้ว Re-run งาน
+   - **ชนกัน** หรือไม่แน่ใจ → ถามในกลุ่มก่อน อย่าใช้ `--include-all` เพราะไฟล์เก่าจะไปทับของใหม่
+   - ห้ามใส่ `--include-all` ไว้ใน workflow ถาวร (เว็บจริงจะลงไฟล์ย้อนหลังเงียบๆ โดยไม่มีใครเช็ก)
+   - เคยเกิดแล้วครั้งหนึ่ง (5 พ.ย. 2569): TF-20 `20261103000000` merge หลัง TF-49 `20261104201201` ลงที่ dev ไปแล้ว แก้ด้วย `--include-all` เพราะไม่ชนกัน
+6. แก้แล้วกด **Re-run jobs → Re-run failed jobs** ที่งานเดิมในหน้า Actions ได้ (ไม่ต้อง push ใหม่ ถ้าปัญหาอยู่ที่ secret หรือ project ถูกพัก)
+7. **ถ้า production ล้ม** ไม่ต้องรีบ: ขั้น deploy ไม่ได้รัน เว็บจริงยังเป็นรุ่นเดิมที่ใช้กับฐานข้อมูลเดิมได้ แก้ตามข้อ 3–5 แล้วรอบที่ผ่านจะ deploy ให้เอง
 
 ---
 
-## เช็กลิสต์ตั้งค่าครั้งแรก (ต้องกดเองในเว็บ)
+## บันทึกการตั้งค่า (ทำแล้ว 5 พ.ย. 2569)
 
-ทำตามลำดับ A → E ใช้เวลาประมาณ 1 ชั่วโมง **ต้องทำให้ครบก่อน merge TF-64 เข้า `main`** เพราะ `vercel.json` ปิด auto deploy ของ main ถ้ายังไม่ตั้ง Deploy Hook เว็บจริงจะไม่ deploy เลย ระหว่างทางจะได้ค่าลับหลายตัว (รหัสผ่านฐานข้อมูล, คีย์, token)
-**เก็บไว้ในที่ปลอดภัย เช่น password manager ห้ามวางในแชท ห้ามใส่ในไฟล์ที่ขึ้น git ห้ามแคปหน้าจอที่เห็นค่า**
+ตั้งค่าครั้งแรกเสร็จแล้วตามรายการข้างล่าง เก็บไว้ดูเวลาต้องแก้ ต้องตั้งใหม่ หรือต้องเปลี่ยนคีย์
+**ค่าลับทุกตัวห้ามวางในแชท/Discord ห้ามใส่ไฟล์ที่ขึ้น git ห้ามแคปหน้าจอตอนค่าแสดงอยู่** เก็บใน password manager หรือ Notes ที่ล็อกไว้
 
-### A. Supabase — สร้าง project 1 สำหรับ dev/uat
+### A. Supabase
 
-1. เข้า https://supabase.com/dashboard → เลือกองค์กร **Jupiter** → กด **New project**
-   - Name: `namjaithai-dev`
-   - Database Password: กด **Generate a password** แล้ว **คัดลอกเก็บไว้ทันที** (ดูย้อนหลังไม่ได้) เรียกว่า `DEV_DB_PASSWORD`
-   - Region: **Northeast Asia (Tokyo)** ให้ตรงกับ production
-   - กด **Create new project** แล้วรอ 1–2 นาที
-2. เมนูซ้าย **Project Settings → General** → คัดลอก **Project ID** (ตัวอักษร 20 ตัว) เรียกว่า `DEV_REF`
-3. **Project Settings → API Keys** → คัดลอก
-   - **Publishable key** (`sb_publishable_…`) เรียกว่า `DEV_PUBLISHABLE_KEY`
-   - **Secret keys** → กด **Add new secret key** ตั้งชื่อ `vercel` → คัดลอก (`sb_secret_…`) เรียกว่า `DEV_SECRET_KEY`
-4. **Authentication → URL Configuration**
-   - Site URL: `https://namjaithai-dev.vercel.app`
-   - Redirect URLs กด **Add URL** ทีละอัน:
-     - `https://namjaithai-dev.vercel.app/auth/callback`
-     - `https://namjaithai-uat.vercel.app/auth/callback`
-     - `https://*-jupiter-f675.vercel.app/**` (ลิงก์ preview ของ PR)
-   - กด **Save**
-5. **ลง migration และข้อมูลจังหวัดครั้งแรก** (ครั้งเดียว ครั้งต่อไป GitHub ทำให้เอง) ใน terminal ของ VS Code ที่โฟลเดอร์โปรเจกต์:
-   ```bash
-   npx supabase db push --project-ref <DEV_REF> --include-seed
-   ```
-   ระบบจะถามรหัสผ่าน → วาง `DEV_DB_PASSWORD` (พิมพ์แล้วไม่ขึ้นบนจอเป็นเรื่องปกติ) → ตอบ `Y` ทุกคำถาม
-   เสร็จแล้วจะขึ้น `Finished supabase db push.`
-6. **Access token สำหรับ GitHub**: กดรูปโปรไฟล์มุมขวาบน → **Account preferences → Access Tokens** → **Generate new token** ตั้งชื่อ `github-deploy-db` → คัดลอก (`sbp_…`) เรียกว่า `SUPABASE_ACCESS_TOKEN`
-   (token นี้ใช้ได้ทุก project ในบัญชี ใช้ตัวเดียวกันทั้ง dev และ production)
-7. หา **รหัสผ่านฐานข้อมูลของ production** (`uucczpzmpnfzqbxnghwp`) ที่ตั้งไว้ตอนสร้าง project เรียกว่า `PROD_DB_PASSWORD`
-   ถ้าจำไม่ได้: เปิด project production → **Project Settings → Database → Reset database password** (เว็บจริงไม่กระทบ เพราะเว็บต่อผ่าน API key ไม่ได้ใช้รหัสนี้)
-8. **ตรวจประวัติ migration ของ production ครั้งแรก** (project นี้เคยลง migration ด้วยมือมาก่อน) ใน terminal:
-   ```bash
-   npx supabase db push --project-ref uucczpzmpnfzqbxnghwp --dry-run
-   ```
-   วาง `PROD_DB_PASSWORD` เมื่อถูกถาม คำสั่งนี้**แค่แสดงรายการ ไม่ได้ลงจริง**
-   - **ปกติ**: ขึ้นรายการไฟล์ที่ยังไม่ได้ลง เป็นไฟล์ที่ merge หลังจากลงมือครั้งล่าสุด (ตั้งแต่ `..._tf19_...` เป็นต้นไป) → ไม่ต้องทำอะไร GitHub จะลงให้ตอน merge เข้า main
-   - **ไม่ตรง**: ขึ้น error `Remote migration versions not found in local migrations directory` หรือรายการมีไฟล์ที่รู้ว่าลงไปแล้ว → แก้ด้วย `migration list` / `migration repair` ตามหัวข้อ [เมื่อ migration ล้มเหลว](#เมื่อ-migration-ล้มเหลว) ข้อ 4 แล้วรัน dry run ซ้ำจนรายการถูกต้อง
-   - ห้ามรันแบบไม่มี `--dry-run` เอง ให้ GitHub เป็นคนลง production เสมอ (จะได้มีคนกดอนุมัติและมี log)
+|                           | dev/uat (project 1)                                                                                                                          | production (project 2)                                                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| ชื่อ project              | `namjaithai-dev`                                                                                                                             | `namjaithai`                                                                          |
+| project ref               | `nsetseehwiabwqtsmjvv`                                                                                                                       | `uucczpzmpnfzqbxnghwp`                                                                |
+| Region                    | Northeast Asia (Tokyo)                                                                                                                       | Northeast Asia (Tokyo)                                                                |
+| Site URL                  | `https://namjaithai-dev.vercel.app`                                                                                                          | `https://namjaithai.vercel.app`                                                       |
+| Redirect URLs             | `https://namjaithai-dev.vercel.app/auth/callback`, `https://namjaithai-uat.vercel.app/auth/callback`, `https://*-jupiter-f675.vercel.app/**` | `https://namjaithai.vercel.app/auth/callback`, `https://*-jupiter-f675.vercel.app/**` |
+| Secret key ที่ Vercel ใช้ | ชื่อ `vercel`                                                                                                                                | ตัวที่สร้างตอน deploy รอบแรก                                                          |
 
-### B. LINE — ให้ล็อกอินบน dev/uat ได้
+**Access token แยก 2 ตัว** (รูปโปรไฟล์ → Account preferences → Access Tokens → Generate new token):
 
-1. https://developers.line.biz/console/ → channel **Namjaithai** (LINE Login, ID `2012292444`) → แท็บ **LINE Login**
-2. **Callback URL** → **Edit** → เพิ่มบรรทัดใหม่ (ของเดิมเก็บไว้ทั้งหมด):
-   ```
-   https://<DEV_REF>.supabase.co/auth/v1/callback
-   ```
-   → **Update**
-3. ลงทะเบียน LINE ใน project dev: สร้างไฟล์ `.env.dev.local` ที่โฟลเดอร์บนสุดของโปรเจกต์ (ชื่อขึ้นต้น `.env` จึงไม่ขึ้น git)
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=https://<DEV_REF>.supabase.co
-   SUPABASE_SECRET_KEY=<DEV_SECRET_KEY>
-   LINE_CHANNEL_ID=2012292444
-   LINE_CHANNEL_SECRET=<channel secret ตัวปัจจุบัน — LINE console → Basic settings>
-   ```
-   แล้วรัน:
-   ```bash
-   node --env-file=.env.dev.local scripts/auth/setup-line-provider.mjs
-   ```
-   ต้องขึ้น `สร้าง provider custom:line แล้ว`
-   (ถ้าวันหลังกด Issue channel secret ใหม่ ต้องรันคำสั่งนี้กับทุก project: local, dev และ production)
+- `github-deploy-db-dev`: Resource access **Project** → เลือก `namjaithai-dev` อย่างเดียว · Preset **Full access** · หมดอายุ **Never**
+- `github-deploy-db-prod`: เหมือนกันแต่เลือก `namjaithai` อย่างเดียว
+- แยกกันเพื่อให้ token ของ dev หลุดแล้วแตะเว็บจริงไม่ได้ · token แสดงค่าครั้งเดียว ถ้าหายให้ลบแล้วสร้างใหม่
+- token ที่ขึ้นป้าย `LEGACY` ชื่อ `cli_...` คือ token ของ `npx supabase login` ในเครื่องแต่ละคน อย่าลบ
 
-### C. GitHub — branch uat, กฎกันพลาด และ Environments
+**รหัสผ่านฐานข้อมูล** (Project Settings → Database → Reset password) ดูย้อนหลังไม่ได้ ลืมให้ Reset ใหม่แล้วอัปเดต secret ใน GitHub (เว็บไม่กระทบ เพราะเว็บต่อผ่าน API key)
+หน้าตา: ตัวอักษรมั่วๆ ไม่มีคำนำหน้า (ต่างจากคีย์ที่ขึ้นต้น `sbp_` / `sb_secret_` / `sb_publishable_`)
 
-1. **สร้าง branch `uat` จาก `main`**: หน้า repo → ปุ่มเลือก branch (มุมซ้ายบนของรายการไฟล์) → **View all branches** → **New branch** → ชื่อ `uat`, Source: `main` → **Create branch**
-2. **ป้องกัน uat แบบเดียวกับ main/develop**: **Settings → Rules → Rulesets** → เปิด `protect main & develop` → ส่วน **Target branches** → **Add target → Include by pattern** → พิมพ์ `uat` → **Save changes**
-3. **Environment `dev`**: **Settings → Environments → New environment** → ชื่อ `dev` → **Configure environment**
-   - **Deployment branches and tags** → เลือก **Selected branches and tags** → **Add deployment branch or tag rule** → `develop`
-   - **Environment secrets → Add environment secret** ทีละตัว:
-     | Name                    | Value                            |
-     | ----------------------- | -------------------------------- |
-     | `SUPABASE_ACCESS_TOKEN` | `SUPABASE_ACCESS_TOKEN` (ข้อ A6) |
-     | `SUPABASE_PROJECT_REF`  | `DEV_REF`                        |
-     | `SUPABASE_DB_PASSWORD`  | `DEV_DB_PASSWORD`                |
-4. **Environment `production`**: **New environment** → ชื่อ `production`
-   - ติ๊ก **Required reviewers** → เพิ่ม `mosmos-tech` → **Save protection rules**
-   - **Deployment branches and tags** → **Selected branches and tags** → เพิ่ม `main`
-   - **Environment secrets**:
+**ลง migration + ข้อมูลจังหวัดให้ project ใหม่ครั้งแรก** (ทำครั้งเดียว ครั้งต่อไป Deploy DB ทำให้):
 
-     | Name                    | Value                       |
-     | ----------------------- | --------------------------- |
-     | `SUPABASE_ACCESS_TOKEN` | ตัวเดียวกับข้อ A6           |
-     | `SUPABASE_PROJECT_REF`  | `uucczpzmpnfzqbxnghwp`      |
-     | `SUPABASE_DB_PASSWORD`  | `PROD_DB_PASSWORD` (ข้อ A7) |
+```bash
+git checkout develop && git pull   # ต้องเป็น develop ล่าสุด
+npx supabase db push --project-ref <PROJECT_REF> --include-seed
+```
 
-     secret ตัวที่ 4 `VERCEL_DEPLOY_HOOK_PRODUCTION` ได้จาก Vercel ในข้อ D6 ค่อยกลับมาเพิ่มตอนนั้น
+### B. LINE
 
-### D. Vercel — ค่า env แยกตาม branch และโดเมน
+LINE Login channel `2012292444` → แท็บ LINE Login → Callback URL มี 3 บรรทัด:
 
-Vercel แบบฟรีสร้าง environment ชื่อ dev/uat เองไม่ได้ จึงใช้ **Preview** แล้วระบุ branch แทน
+```
+http://127.0.0.1:54321/auth/v1/callback
+https://uucczpzmpnfzqbxnghwp.supabase.co/auth/v1/callback
+https://nsetseehwiabwqtsmjvv.supabase.co/auth/v1/callback
+```
 
-1. https://vercel.com → project **namjaithai** → **Settings → Environment Variables**
-2. **Production** (ของเดิมมี 4 ตัวแล้ว) เพิ่มอีกตัว:
-   | Key                   | Value        | Type   | Environments |
-   | --------------------- | ------------ | ------ | ------------ |
-   | `NEXT_PUBLIC_APP_ENV` | `production` | Config | Production   |
-3. **Preview ทุก branch → project dev** (ใช้กับ develop และ PR ทุกใบ) กด **Add Environment Variable** ทีละตัว Environments เลือก **Preview** อย่างเดียว ไม่ต้องเลือก branch:
-   | Key                                    | Value                                           | Type       |
-   | -------------------------------------- | ----------------------------------------------- | ---------- |
-   | `NEXT_PUBLIC_SUPABASE_URL`             | `https://<DEV_REF>.supabase.co`                 | Config     |
-   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `DEV_PUBLISHABLE_KEY`                           | Config     |
-   | `SUPABASE_SECRET_KEY`                  | `DEV_SECRET_KEY`                                | **Secret** |
-   | `SUPER_ADMIN_LINE_IDS`                 | LINE user ID ของแอดมิน (ตัวเดียวกับ production) | Secret     |
-   | `NEXT_PUBLIC_APP_ENV`                  | `dev`                                           | Config     |
-4. **uat ใช้แถบสีส้ม**: เพิ่มอีกตัว Environments เลือก **Preview** แล้วกดช่อง **Git branch** พิมพ์ `uat`:
+ลงทะเบียน LINE ใน Supabase แต่ละ project ด้วยสคริปต์ (ไฟล์ `.env*` ไม่ขึ้น git):
 
-   | Key                   | Value | Type   |
-   | --------------------- | ----- | ------ |
-   | `NEXT_PUBLIC_APP_ENV` | `uat` | Config |
+| project    | คำสั่ง                                                                  |
+| ---------- | ----------------------------------------------------------------------- |
+| local      | `npm run auth:setup-line` (อ่าน `.env.local`)                           |
+| dev/uat    | `node --env-file=.env.dev.local scripts/auth/setup-line-provider.mjs`   |
+| production | `node --env-file=.env.cloud.local scripts/auth/setup-line-provider.mjs` |
 
-   (ค่าที่ระบุ branch ชนะค่า Preview ทั่วไป ตัวอื่นของ uat ใช้ของ dev เพราะฐานข้อมูลเดียวกัน)
+ไฟล์ `.env.dev.local` / `.env.cloud.local` มี `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY` (ของ project นั้น), `LINE_CHANNEL_ID`, `LINE_CHANNEL_SECRET`
+ถ้า `Invalid API key` = secret key ผิด project หรือมีช่องว่างติดมา · **ถ้ากด Issue channel secret ใหม่ ต้องรันครบทั้ง 3 project**
 
-5. **ผูกโดเมนกับ branch**: **Settings → Domains → Add Domain**
-   - พิมพ์ `namjaithai-dev.vercel.app` → **Add** → เปิดโดเมนที่เพิ่ง add → **Edit** → **Connect to an environment: Preview** → Git Branch: `develop` → **Save**
-   - ทำซ้ำกับ `namjaithai-uat.vercel.app` → Git Branch: `uat`
-6. **Deploy Hook สำหรับ production** (ให้ GitHub สั่ง deploy หลัง migration ผ่าน):
-   - **Settings → Git → Deploy Hooks** → Name: `github-deploy-db`, Branch: `main` → **Create Hook**
-   - คัดลอก URL ที่ได้ (`https://api.vercel.com/v1/integrations/deploy/…`) **URL นี้เป็นค่าลับ** ใครมีก็สั่ง deploy ได้
-   - กลับไป GitHub → **Settings → Environments → production → Add environment secret**
-     Name: `VERCEL_DEPLOY_HOOK_PRODUCTION` · Value: URL ที่คัดลอก
-7. **ปิด Vercel Authentication ของ Preview** (ต้องทำ): **Settings → Deployment Protection → Vercel Authentication** → เปลี่ยนเป็น **Disabled** → **Save**
-   Vercel แบบฟรีเชิญเพื่อนเข้าทีมไม่ได้ ถ้าเปิดไว้ เพื่อนและอาจารย์จะเปิดเว็บ dev/uat ไม่ได้ (ต้องล็อกอินเป็นเจ้าของ project)
-   ปิดแล้วใครมีลิงก์ก็เปิด dev/uat ได้ ข้อมูลบน dev/uat จึงต้องเป็น**ข้อมูลทดสอบเท่านั้น ห้ามใส่ข้อมูลคนจริง**
-8. **Deploy ใหม่ให้ค่ามีผล**: **Deployments** → หา deployment ล่าสุดของ `develop` → **⋯ → Redeploy** แล้วทำซ้ำกับ `uat` (ค่า env ใหม่มีผลเฉพาะ deployment ที่สร้างหลังตั้งค่า)
+### C. GitHub
+
+- branch `uat` สร้างจาก `main` · ruleset `protect main & develop` ครอบ `main`, `develop`, `uat` (Settings → Rulesets)
+- **Environments** (Settings → Environments):
+
+|                                 | `dev`                        | `production`                                |
+| ------------------------------- | ---------------------------- | ------------------------------------------- |
+| Deployment branches             | Selected → `develop`         | Selected → `main`                           |
+| Required reviewers              | —                            | `mosmos-tech` (ไม่ติ๊ก Prevent self-review) |
+| Allow administrators to bypass  | ติ๊กได้                      | **ไม่ติ๊ก** (ทุกครั้งต้องกดอนุมัติ)         |
+| `SUPABASE_ACCESS_TOKEN`         | token `github-deploy-db-dev` | token `github-deploy-db-prod`               |
+| `SUPABASE_PROJECT_REF`          | `nsetseehwiabwqtsmjvv`       | `uucczpzmpnfzqbxnghwp`                      |
+| `SUPABASE_DB_PASSWORD`          | รหัสผ่าน project dev         | รหัสผ่าน project production                 |
+| `VERCEL_DEPLOY_HOOK_PRODUCTION` | —                            | URL จาก Vercel Deploy Hook (ข้อ D)          |
+
+ชื่อ secret ต้องตรงตามตารางเป๊ะ (ไม่มี `_DEV`/`_PROD` ต่อท้าย) เพราะ workflow เรียกด้วยชื่อนี้
+
+### D. Vercel (project `namjaithai`)
+
+Vercel ฟรีไม่มี environment ชื่อ dev/uat จึงใช้ **Preview** แทน · หน้า Settings → Environment Variables
+ฟอร์ม Add Environment Variable: **Type ที่เลือกด้านบนใช้กับทุกแถวในฟอร์ม** จึงต้องแยกกรอก Config กับ Secret คนละรอบ
+ช่อง Environments มี 2 ชั้น: **Environments** (Production / Preview / Development) และ **Preview Branches** (เลือกเฉพาะ branch)
+
+| Key                                    | Production     | Preview (ทุก branch)                       | Preview branch `uat` | Type       |
+| -------------------------------------- | -------------- | ------------------------------------------ | -------------------- | ---------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | URL project 2  | `https://nsetseehwiabwqtsmjvv.supabase.co` | —                    | Config     |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ของ project 2  | ของ project 1                              | —                    | Config     |
+| `SUPABASE_SECRET_KEY`                  | ของ project 2  | ของ project 1 (ชื่อ `vercel`)              | —                    | **Secret** |
+| `SUPER_ADMIN_LINE_IDS`                 | LINE ID แอดมิน | LINE ID แอดมิน                             | —                    | Secret     |
+| `NEXT_PUBLIC_APP_ENV`                  | `production`   | `dev`                                      | `uat`                | Config     |
+
+ค่าที่ระบุ branch ชนะค่า Preview ทั่วไป · ตัวแปรที่ขึ้นต้น `NEXT_PUBLIC_` ต้องเป็น Config (Vercel ไม่ยอมให้เป็น Secret)
+ตั้งค่าใหม่แล้วมีผลเฉพาะ deployment ถัดไป (Deployments → ⋯ → Redeploy)
+
+- **Domains** → Add Existing → Connect to an environment: **Preview** + เลือก branch
+  `namjaithai-dev.vercel.app` → `develop` · `namjaithai-uat.vercel.app` → `uat`
+- **Settings → Git → Deploy Hooks**: Name `github-deploy-db`, Branch `main` (พิมพ์เอง ตัวจางในช่องเป็นแค่ตัวอย่าง) → URL เป็นค่าลับ ใส่ GitHub secret `VERCEL_DEPLOY_HOOK_PRODUCTION`
+- **Settings → Deployment Protection → Vercel Authentication**: ปิดสวิตช์ **Require Log In** (Vercel ฟรีเชิญเพื่อนเข้าทีมไม่ได้ ถ้าเปิดไว้คนอื่นเปิด dev/uat ไม่ได้) → dev/uat ใครมีลิงก์ก็เปิดได้ **ใส่ได้แค่ข้อมูลทดสอบ**
 
 ### E. ตรวจว่าครบ
 
-| เปิด                                         | ต้องเห็น                                   |
-| -------------------------------------------- | ------------------------------------------ |
-| https://namjaithai-dev.vercel.app            | แถบฟ้า "DEV · ข้อมูลทดสอบ" บนสุด           |
-| https://namjaithai-dev.vercel.app/dev/db     | "เชื่อมต่อฐานข้อมูลสำเร็จ"                 |
-| https://namjaithai-uat.vercel.app            | แถบส้ม "UAT · ตรวจก่อนขึ้นจริง"            |
-| https://namjaithai.vercel.app                | ไม่มีแถบ                                   |
-| กด "เข้าสู่ระบบด้วย LINE" บน dev             | ล็อกอินผ่าน กลับมาหน้าเว็บ dev             |
-| GitHub → Actions → Deploy DB                 | รอบถัดไปที่ merge เข้า develop เป็นสีเขียว |
-| เปิด dev จากมือถือเพื่อน (ไม่ล็อกอิน Vercel) | เปิดได้ ไม่ถูกถามให้ล็อกอิน Vercel         |
+| เปิด                                     | ต้องเห็น                                          | สถานะ                          |
+| ---------------------------------------- | ------------------------------------------------- | ------------------------------ |
+| https://namjaithai-dev.vercel.app        | แถบฟ้า "DEV · ข้อมูลทดสอบ" บนสุด ไม่บังแถบสายด่วน | ✅                             |
+| https://namjaithai-dev.vercel.app/dev/db | "เชื่อมต่อฐานข้อมูลสำเร็จ"                        | ✅                             |
+| ล็อกอิน LINE บน dev                      | กลับมาเว็บ dev เป็นแอดมิน                         | ✅                             |
+| GitHub → Actions → Deploy DB (develop)   | สีเขียว                                           | ✅                             |
+| https://namjaithai.vercel.app            | ไม่มีแถบ                                          | ✅                             |
+| https://namjaithai-uat.vercel.app        | แถบส้ม "UAT · ตรวจก่อนขึ้นจริง"                   | รอ PR `develop → uat` ครั้งแรก |
 
-**ครั้งแรกที่ merge `uat → main`** (หลังตั้งค่าครบแล้ว):
+**ครั้งแรกที่ merge `uat → main`:**
 
 1. Vercel จะ**ไม่** deploy เองทันที (ถูกต้อง เพราะ `vercel.json` ปิดไว้)
-2. GitHub → Actions → Deploy DB ขึ้น **Waiting** → กด **Review deployments** → ติ๊ก `production` → ดูรายการในขั้น dry run ให้ตรงกับข้อ A8 → **Approve and deploy**
-3. migration ผ่าน → ขั้น "Deploy production" สั่ง Vercel → Vercel → **Deployments** มีรายการใหม่ของ `main` ภายในไม่กี่วินาที
+2. GitHub → Actions → Deploy DB ขึ้น **Waiting** → **Review deployments** → ติ๊ก `production` → ดูรายการในขั้น dry run (production ยังขาด migration ตั้งแต่ `..._tf19_...` เป็นต้นไป) → **Approve and deploy**
+3. migration ผ่าน → ขั้น "Deploy production" สั่ง Vercel → Vercel → **Deployments** มีรายการใหม่ของ `main`
 4. เปิด https://namjaithai.vercel.app/dev/db ต้องขึ้น "เชื่อมต่อฐานข้อมูลสำเร็จ"
