@@ -65,6 +65,9 @@ begin
     v_user := (p_input->>'userId')::uuid;
     if p_input->>'status' not in ('ACTIVE','SUSPENDED') then raise exception 'invalid status' using errcode='22023'; end if;
     v_status := (p_input->>'status')::public.user_status;
+    if v_user = v_actor and v_status = 'SUSPENDED' then
+      raise exception 'cannot suspend own account' using errcode = '42501';
+    end if;
     select status::text into v_previous from public.users where id=v_user for update;
     if not found then raise exception 'user missing' using errcode='22023'; end if;
     update public.users set status=v_status where id=v_user;
@@ -89,6 +92,10 @@ begin
     v_code := p_input->>'code';
     if jsonb_typeof(p_input->'enabled') is distinct from 'boolean' then raise exception 'invalid enabled flag' using errcode='22023'; end if;
     v_enabled := (p_input->>'enabled')::boolean;
+    -- TF-54 must approve content before other incident forms can be enabled.
+    if v_enabled and v_code <> 'FLOOD' then
+      raise exception 'incident content not ready' using errcode = '22023';
+    end if;
     update public.incident_types set is_enabled=v_enabled where code=v_code;
     if not found then raise exception 'invalid incident type' using errcode='22023'; end if;
     insert into public.audit_logs(actor_user_id,action,target_type,metadata)

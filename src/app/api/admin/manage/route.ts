@@ -34,7 +34,8 @@ async function isAdmin() {
   return user?.status === "ACTIVE" && user.role === "ADMIN";
 }
 export async function GET(request: NextRequest) {
-  if (!(await isAdmin()))
+  const actor = await getCurrentAppUser();
+  if (!actor || actor.status !== "ACTIVE" || actor.role !== "ADMIN")
     return NextResponse.json({ error: "forbidden" }, { status: 403, headers: noStore });
   const search = request.nextUrl.searchParams.get("q")?.trim().slice(0, 100) ?? "";
   const db = await createClient();
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "load_failed" }, { status: 500, headers: noStore });
   return NextResponse.json(
     {
+      currentUserId: actor.id,
       users: users.data,
       units: units.data,
       capabilities: capabilities.data,

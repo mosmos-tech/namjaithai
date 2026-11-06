@@ -88,12 +88,6 @@ test.describe("TF-30 admin", () => {
     let unitId: string | undefined;
     const incidentCode = isMobile ? "FIRE" : "MEDICAL";
     const incidentName = isMobile ? "ไฟไหม้" : "เจ็บป่วยฉุกเฉิน";
-    const originalIncident = await db
-      .from("incident_types")
-      .select("is_enabled")
-      .eq("code", incidentCode)
-      .single();
-    expect(originalIncident.error).toBeNull();
     try {
       await applySession(context, user);
       await page.goto("/admin");
@@ -109,7 +103,29 @@ test.describe("TF-30 admin", () => {
       await applySession(context, admin);
       if (isMobile) await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/admin");
-      await expect(page.getByRole("heading", { name: "จัดการหน่วยและผู้ใช้" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "ห้องสั่งการ" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "ออกจากระบบ" })).toBeVisible();
+      expect(
+        (
+          await page.request.post("/api/admin/manage", {
+            data: { action: "user_status", userId: admin.id, status: "SUSPENDED" },
+          })
+        ).status(),
+      ).toBe(403);
+      expect(
+        (
+          await page.request.post("/api/admin/manage", {
+            data: { action: "incident_type", code: incidentCode, enabled: true },
+          })
+        ).status(),
+      ).toBe(400);
+      await page.getByLabel("ค้นหาผู้ใช้").fill(admin.displayName);
+      await page.getByRole("button", { name: "ค้นหา" }).click();
+      const ownRow = page
+        .getByRole("list", { name: "รายการผู้ใช้" })
+        .getByRole("listitem")
+        .filter({ hasText: admin.displayName });
+      await expect(ownRow.getByRole("button", { name: "ระงับผู้ใช้" })).toBeDisabled();
       await page.getByLabel("ค้นหาผู้ใช้").fill(user.displayName);
       await page.getByRole("button", { name: "ค้นหา" }).click();
       await expect(page.getByLabel("หัวหน้าหน่วย", { exact: true })).toContainText(
@@ -144,14 +160,8 @@ test.describe("TF-30 admin", () => {
         .getByRole("region", { name: "ประเภทเหตุที่เปิดรับ" })
         .getByRole("listitem")
         .filter({ hasText: incidentName });
-      await incident
-        .getByRole("button", { name: originalIncident.data!.is_enabled ? "ปิดรับ" : "เปิดรับ" })
-        .click();
-      await expect(page.getByRole("status")).toContainText("เปลี่ยนสถานะประเภทเหตุแล้ว");
-      expect(
-        (await db.from("incident_types").select("is_enabled").eq("code", incidentCode).single())
-          .data?.is_enabled,
-      ).toBe(!originalIncident.data!.is_enabled);
+      await expect(incident.getByText("รอเนื้อหาผ่านการตรวจ")).toBeVisible();
+      await expect(incident.getByRole("button", { name: "เปิดรับ" })).toBeDisabled();
       const row = page
         .getByRole("list", { name: "รายการผู้ใช้" })
         .getByRole("listitem")
@@ -167,10 +177,6 @@ test.describe("TF-30 admin", () => {
       await expect(page).toHaveURL(/\/login\?error=inactive/);
       expect((await page.request.get("/api/admin/manage")).status()).toBe(403);
     } finally {
-      await db
-        .from("incident_types")
-        .update({ is_enabled: originalIncident.data!.is_enabled })
-        .eq("code", incidentCode);
       if (unitId) await db.from("units").delete().eq("id", unitId);
       for (const account of [admin, user]) {
         await db

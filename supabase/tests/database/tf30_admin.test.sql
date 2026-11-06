@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(17);
+select plan(25);
 select ok(not has_function_privilege('anon','public.admin_manage(text,jsonb)','execute'),'anon cannot invoke admin RPC');
 insert into auth.users(id) values ('a3000000-0000-0000-0000-000000000001'),('a3000000-0000-0000-0000-000000000002'),('a3000000-0000-0000-0000-000000000003');
 insert into public.users(id,auth_user_id,display_name,role,status) values
@@ -23,8 +23,10 @@ select is((select role::text from public.users where id='b3000000-0000-0000-0000
 select lives_ok(format($$select public.admin_manage('capabilities',jsonb_build_object('unitId',%L,'capabilities',jsonb_build_array('BOAT','EMS')))$$,(select id from public.units where name='TF30 unit')),'admin sets capabilities');
 select is((select count(*)::int from public.unit_capabilities where unit_id=(select id from public.units where name='TF30 unit')),2,'capabilities stored');
 select throws_ok(format($$select public.admin_manage('capabilities',jsonb_build_object('unitId',%L,'capabilities',jsonb_build_array('INVALID')))$$,(select id from public.units where name='TF30 unit')),'22023',null,'unknown capability rejected');
-select lives_ok($$select public.admin_manage('incident_type','{"code":"FIRE","enabled":true}')$$,'admin can enable incident type');
-select ok((select is_enabled from public.incident_types where code='FIRE'),'incident enabled');
+select throws_ok(format($$select public.admin_manage('incident_type',jsonb_build_object('code',%L,'enabled',true))$$,code),'22023',null,'unfinished incident cannot be enabled: ' || code) from (values ('FIRE'),('ROAD_ACCIDENT'),('MEDICAL'),('WATER_RESCUE'),('COLLAPSE'),('ANIMAL'),('OTHER')) as unfinished(code);
+select ok(not (select is_enabled from public.incident_types where code='FIRE'),'unfinished incident stays disabled');
+select lives_ok($$select public.admin_manage('incident_type','{"code":"FLOOD","enabled":true}')$$,'ready flood incident can be enabled');
+select throws_ok($$select public.admin_manage('user_status','{"userId":"b3000000-0000-0000-0000-000000000001","status":"SUSPENDED"}')$$,'42501',null,'admin cannot suspend own account');
 select lives_ok($$select public.admin_manage('user_status','{"userId":"b3000000-0000-0000-0000-000000000002","status":"SUSPENDED"}')$$,'admin suspends user');
 select set_config('request.jwt.claims','{"sub":"a3000000-0000-0000-0000-000000000002","role":"authenticated"}',true);
 select is(rls.current_user_id(),null::uuid,'suspension immediately removes access on existing session');

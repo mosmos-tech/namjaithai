@@ -12,6 +12,7 @@ type Unit = {
   is_active: boolean;
 };
 type Data = {
+  currentUserId: string;
   users: User[];
   units: Unit[];
   capabilities: { unit_id: string; capability: string }[];
@@ -212,7 +213,8 @@ export function AdminManagement() {
               <button
                 type="button"
                 className={buttonClass}
-                disabled={busy}
+                disabled={busy || user.id === data.currentUserId}
+                title={user.id === data.currentUserId ? "ไม่สามารถระงับบัญชีของตัวเอง" : undefined}
                 onClick={() =>
                   void send(
                     {
@@ -337,10 +339,11 @@ export function AdminManagement() {
               <span>
                 {INCIDENT_REGISTRY[incident.code]?.label.th ?? incident.code} ·{" "}
                 {incident.is_enabled ? "เปิด" : "ปิด"}
+                {incident.code !== "FLOOD" && !incident.is_enabled && " · รอเนื้อหาผ่านการตรวจ"}
               </span>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || (incident.code !== "FLOOD" && !incident.is_enabled)}
                 className={buttonClass}
                 onClick={() =>
                   void send(
