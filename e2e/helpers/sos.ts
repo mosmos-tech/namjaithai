@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { randomBangkokPoint } from "./db";
+import { uniqueTestPoint } from "./db";
 
 const DRAFT_KEY = "namjaithai-sos-draft-v1";
 
@@ -49,7 +49,7 @@ export async function answerStep1(
  * TODO(TF-09): เปลี่ยนเป็นกดดึง GPS / ปักหมุดจริงเมื่อขั้นตำแหน่งเสร็จ
  */
 export async function seedLocationIntoDraft(page: Page) {
-  const point = randomBangkokPoint();
+  const point = uniqueTestPoint();
   const currentStep = await page.evaluate(
     ({ key, point }) => {
       const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
