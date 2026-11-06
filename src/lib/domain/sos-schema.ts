@@ -3,6 +3,7 @@ import "./zod-locale";
 import { WaterLevel, Need } from "./enums";
 import { latSchema, lngSchema } from "./geo";
 import {
+  FORBIDDEN_DETAIL_KEYS,
   INCIDENT_REGISTRY,
   IncidentType,
   UNIVERSAL_DANGER_SIGNS,
@@ -148,3 +149,149 @@ export type Step2Data = z.infer<typeof step2Schema>;
 export type Step3Data = z.infer<typeof step3Schema>;
 export type Step4Data = z.infer<typeof step4Schema>;
 export type Step5Data = z.infer<typeof step5Schema>;
+
+// ── TF-51: ตรวจ details ตามประเภทเหตุด้วย Zod และแยกข้อมูลสุขภาพ ──────────────
+export function incidentDetailsSchema(incidentType: IncidentType) {
+  const def = INCIDENT_REGISTRY[incidentType];
+  const shape: Record<string, z.ZodTypeAny> = {};
+
+  for (const q of def.questions) {
+    let fieldSchema: z.ZodTypeAny;
+    if (q.kind === "choice") {
+      const optionValues = q.options.map((o) => o.value) as [string, ...string[]];
+      fieldSchema = z.enum(optionValues, {
+        error: `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`,
+      });
+    } else if (q.kind === "number") {
+      fieldSchema = z
+        .number({ error: `กรุณาระบุ "${q.label.th}" เป็นตัวเลข` })
+        .int(`"${q.label.th}" ต้องเป็นจำนวนเต็ม`)
+        .min(q.min, `"${q.label.th}" ต้องไม่น้อยกว่า ${q.min}`)
+        .max(q.max, `"${q.label.th}" ต้องไม่เกิน ${q.max}`);
+    } else {
+      fieldSchema = z.boolean({ error: `กรุณาตอบคำถาม "${q.label.th}"` });
+    }
+
+    shape[q.key] = q.required ? fieldSchema : fieldSchema.optional();
+  }
+
+  return z.strictObject(shape, {
+    error: `ข้อมูล details ไม่ตรงกับประเภทเหตุ ${def.label.th}`,
+  });
+}
+
+export interface ValidatedIncidentDetailsSuccess {
+  ok: true;
+  publicDetails: Record<string, string | number | boolean>;
+  sensitiveDetails: Record<string, string | number | boolean>;
+}
+
+export interface ValidatedIncidentDetailsError {
+  ok: false;
+  error: string;
+  fieldErrors: Record<string, string[]>;
+  fields: string[];
+}
+
+export type ValidatedIncidentDetailsResult =
+  | ValidatedIncidentDetailsSuccess
+  | ValidatedIncidentDetailsError;
+
+export function validateAndSplitIncidentDetails(
+  incidentType: IncidentType,
+  rawDetails: unknown,
+  topLevel?: {
+    waterLevel?: WaterLevel;
+    canSelfEvacuate?: boolean;
+    hasInjured?: boolean;
+  },
+): ValidatedIncidentDetailsResult {
+  if (
+    rawDetails !== undefined &&
+    (typeof rawDetails !== "object" || rawDetails === null || Array.isArray(rawDetails))
+  ) {
+    return {
+      ok: false,
+      error: "ข้อมูล details ต้องเป็น JSON Object",
+      fieldErrors: { details: ["ข้อมูล details ต้องเป็น JSON Object"] },
+      fields: ["details"],
+    };
+  }
+
+  const candidate: Record<string, unknown> = {
+    ...(rawDetails as Record<string, unknown> | undefined),
+  };
+
+  if (incidentType === IncidentType.FLOOD) {
+    if (candidate.canSelfEvacuate === undefined && topLevel?.canSelfEvacuate !== undefined) {
+      candidate.canSelfEvacuate = topLevel.canSelfEvacuate;
+    }
+    if (candidate.waterLevel === undefined && topLevel?.waterLevel !== undefined) {
+      candidate.waterLevel = topLevel.waterLevel;
+    }
+    if (candidate.hasInjured === undefined && topLevel?.hasInjured === true) {
+      candidate.hasInjured = true;
+    }
+  } else {
+    // ถ้าส่ง waterLevel มาที่ระดับบนสุดแต่ประเภทเหตุไม่ใช่ FLOOD ให้นำมาตรวจด้วยเพื่อตีกลับ 400
+    if (candidate.waterLevel === undefined && topLevel?.waterLevel !== undefined) {
+      candidate.waterLevel = topLevel.waterLevel;
+    }
+  }
+
+  const schema = incidentDetailsSchema(incidentType);
+  const parsed = schema.safeParse(candidate);
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string[]> = {};
+    const detailsMessages: string[] = [];
+
+    for (const issue of parsed.error.issues) {
+      const msg = issue.message || "ข้อมูล details ไม่ตรงกับประเภทเหตุ";
+      detailsMessages.push(msg);
+      if (issue.path.length > 0) {
+        const key = `details.${String(issue.path[0])}`;
+        fieldErrors[key] = [...(fieldErrors[key] ?? []), msg];
+      }
+    }
+
+    fieldErrors.details =
+      detailsMessages.length > 0
+        ? detailsMessages
+        : [`ข้อมูล details ไม่ตรงกับประเภทเหตุ ${INCIDENT_REGISTRY[incidentType].label.th}`];
+
+    return {
+      ok: false,
+      error: `ข้อมูล details ไม่ตรงกับประเภทเหตุ ${INCIDENT_REGISTRY[incidentType].label.th}`,
+      fieldErrors,
+      fields: Object.keys(fieldErrors),
+    };
+  }
+
+  const publicDetails: Record<string, string | number | boolean> = {};
+  const sensitiveDetails: Record<string, string | number | boolean> = {};
+  const data = parsed.data as Record<string, string | number | boolean | undefined>;
+
+  for (const q of INCIDENT_REGISTRY[incidentType].questions) {
+    const val = data[q.key];
+    if (val === undefined) continue;
+
+    if (q.sensitive || (FORBIDDEN_DETAIL_KEYS as readonly string[]).includes(q.key)) {
+      if (q.kind === "boolean") {
+        if (val === true) sensitiveDetails[q.key] = true;
+      } else if (q.kind === "number") {
+        if (typeof val === "number" && val > 0) sensitiveDetails[q.key] = val;
+      } else if (typeof val === "string" && val.length > 0) {
+        sensitiveDetails[q.key] = val;
+      }
+    } else {
+      publicDetails[q.key] = val;
+    }
+  }
+
+  return {
+    ok: true,
+    publicDetails,
+    sensitiveDetails,
+  };
+}

@@ -44,7 +44,7 @@ import { DangerCallBar } from "./DangerCallBar";
 import { Step1Situation } from "./Step1Situation";
 import { Step2Location } from "./Step2Location";
 import { Step3People, type PeopleGroupKey } from "./Step3People";
-import { Step4Needs } from "./Step4Needs";
+import { Step4Needs, getNeedOptionsForIncident } from "./Step4Needs";
 import { Step5Contact } from "./Step5Contact";
 
 /**
@@ -117,12 +117,30 @@ export function SosWizard() {
     setSubmitError(null);
     const next = updateDraft((prev) => {
       const merged: SosDraft = { ...prev, ...patch };
-      if (patch.incidentType && Array.isArray(merged.dangerSigns)) {
-        const registrySigns = INCIDENT_REGISTRY[patch.incidentType].dangerSigns;
-        const validKeys = (registrySigns.length > 0 ? registrySigns : UNIVERSAL_DANGER_SIGNS).map(
-          (s) => s.key,
+      if (patch.incidentType && patch.incidentType !== prev.incidentType) {
+        if (Array.isArray(merged.dangerSigns)) {
+          const registrySigns = INCIDENT_REGISTRY[patch.incidentType].dangerSigns;
+          const validKeys = (registrySigns.length > 0 ? registrySigns : UNIVERSAL_DANGER_SIGNS).map(
+            (s) => s.key,
+          );
+          merged.dangerSigns = merged.dangerSigns.filter((k) => validKeys.includes(k));
+        }
+        const allowedNeeds = new Set(
+          getNeedOptionsForIncident(patch.incidentType).map((opt) => opt.value),
         );
-        merged.dangerSigns = merged.dangerSigns.filter((k) => validKeys.includes(k));
+        merged.needs = merged.needs.filter((need) => allowedNeeds.has(need));
+        merged.details = {};
+        if (patch.incidentType !== IncidentType.FLOOD) {
+          merged.waterLevel = undefined;
+        }
+      }
+      if (typeof patch.canSelfEvacuate === "boolean") {
+        merged.details = {
+          ...merged.details,
+          ...((merged.incidentType ?? IncidentType.FLOOD) === IncidentType.FLOOD
+            ? { canSelfEvacuate: patch.canSelfEvacuate }
+            : {}),
+        };
       }
       return merged;
     });
@@ -135,7 +153,15 @@ export function SosWizard() {
   function handleSelectWaterLevel(waterLevel: WaterLevel | undefined) {
     setSubmitSuccessMessage(null);
     setSubmitError(null);
-    const next = updateDraft((prev) => ({ ...prev, waterLevel }));
+    const next = updateDraft((prev) => {
+      const nextDetails = { ...(prev.details ?? {}) };
+      if (waterLevel === undefined) {
+        delete nextDetails.waterLevel;
+      } else {
+        nextDetails.waterLevel = waterLevel;
+      }
+      return { ...prev, waterLevel, details: nextDetails };
+    });
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -202,7 +228,36 @@ export function SosWizard() {
     }));
   }
 
-  // ── ขั้นที่ 3: ผู้ติดค้าง ──────────────────────────────────────────────────
+  // ── ขั้นที่ 3: คำถามเฉพาะประเภทเหตุ + ผู้ติดค้าง ──────────────────────────────
+  function handleChangeDetail(key: string, value: string | number | boolean | undefined) {
+    const next = updateDraft((prev) => {
+      const nextDetails = { ...(prev.details ?? {}) };
+      if (value === undefined) {
+        delete nextDetails[key];
+      } else {
+        nextDetails[key] = value;
+      }
+
+      const patch: Partial<SosDraft> = { details: nextDetails };
+      if (key === "waterLevel") {
+        patch.waterLevel = value as WaterLevel | undefined;
+      } else if (key === "canSelfEvacuate" && typeof value === "boolean") {
+        patch.canSelfEvacuate = value;
+      } else if (key === "hasInjured" && typeof value === "boolean") {
+        patch.hasInjured = value;
+      }
+
+      return {
+        ...prev,
+        ...patch,
+      };
+    });
+
+    if (step3Attempted) {
+      setStep3Errors(validateStep3Draft(next).errors);
+    }
+  }
+
   function handleChangePeopleCount(group: PeopleGroupKey, nextValue: number) {
     const next = updateDraft((prev) => ({
       ...prev,
@@ -516,6 +571,10 @@ export function SosWizard() {
 
           {draft.currentStep === 3 && (
             <Step3People
+              incidentType={draft.incidentType ?? IncidentType.FLOOD}
+              details={draft.details}
+              waterLevel={draft.waterLevel}
+              canSelfEvacuate={draft.canSelfEvacuate}
               adults={draft.adults}
               elderly={draft.elderly}
               bedridden={draft.bedridden}
@@ -523,6 +582,7 @@ export function SosWizard() {
               pets={draft.pets}
               hasInjured={draft.hasInjured}
               errors={step3Errors}
+              onChangeDetail={handleChangeDetail}
               onChangeCount={handleChangePeopleCount}
               onToggleInjured={(hasInjured) => updateDraft((prev) => ({ ...prev, hasInjured }))}
               onPrev={() => handleGoToStep(2)}
@@ -532,6 +592,7 @@ export function SosWizard() {
 
           {draft.currentStep === 4 && (
             <Step4Needs
+              incidentType={draft.incidentType ?? IncidentType.FLOOD}
               needs={draft.needs}
               otherDetail={draft.otherDetail}
               errors={step4Errors}

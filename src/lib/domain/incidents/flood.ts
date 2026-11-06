@@ -43,13 +43,6 @@ export const flood: IncidentDefinition = {
       required: true,
     },
     {
-      key: "hasDisabled",
-      kind: "boolean",
-      label: { th: "มีผู้พิการ" },
-      required: false,
-      sensitive: true,
-    },
-    {
       key: "hasInjured",
       kind: "boolean",
       label: { th: "มีผู้บาดเจ็บ (ยังรู้สึกตัว)" },

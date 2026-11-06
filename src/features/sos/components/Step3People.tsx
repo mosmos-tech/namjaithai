@@ -1,7 +1,13 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { User, HeartHandshake, Bed, Baby, PawPrint, Minus, Plus, Bandage, Check } from "lucide-react";
+import { User, HeartHandshake, Bed, Baby, PawPrint, Minus, Plus } from "lucide-react";
+import {
+  INCIDENT_REGISTRY,
+  IncidentType,
+  type IncidentQuestion,
+  type WaterLevel,
+} from "../../../lib/domain";
 import { getTotalPeopleCount, type Step3ValidationErrors } from "../draft-storage";
 
 export type PeopleGroupKey = "adults" | "elderly" | "bedridden" | "children" | "pets";
@@ -57,6 +63,10 @@ export const PEOPLE_GROUPS: readonly PeopleGroupConfig[] = [
 ];
 
 interface Step3PeopleProps {
+  incidentType?: IncidentType;
+  details?: Record<string, string | number | boolean | undefined>;
+  waterLevel?: WaterLevel;
+  canSelfEvacuate?: boolean;
   adults: number;
   elderly: number;
   bedridden: number;
@@ -64,6 +74,7 @@ interface Step3PeopleProps {
   pets: number;
   hasInjured: boolean;
   errors: Step3ValidationErrors;
+  onChangeDetail?: (key: string, value: string | number | boolean | undefined) => void;
   onChangeCount: (group: PeopleGroupKey, nextValue: number) => void;
   onToggleInjured: (next: boolean) => void;
   onPrev: () => void;
@@ -71,12 +82,17 @@ interface Step3PeopleProps {
 }
 
 /**
- * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 3: ระบุจำนวนผู้ติดค้างและสัตว์เลี้ยง
- * - ทุกกลุ่มมีไอคอนชัดเจน
+ * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 3 (TF-11, TF-51):
+ * - วาดคำถามเฉพาะประเภทจากทะเบียน INCIDENT_REGISTRY (เลือก/ตัวเลข/ใช่-ไม่ใช่) ไม่เกิน 3 คำถาม
+ * - ต่อด้วยตัวนับจำนวนผู้ติดค้างและสัตว์เลี้ยง 5 กลุ่ม
  * - ปุ่ม + และ − ขนาด 48x48px (min-h-[48px] min-w-[48px]) กดง่ายสำหรับผู้สูงอายุ
  * - จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน
  */
 export function Step3People({
+  incidentType = IncidentType.FLOOD,
+  details = {},
+  waterLevel,
+  canSelfEvacuate,
   adults,
   elderly,
   bedridden,
@@ -84,11 +100,30 @@ export function Step3People({
   pets,
   hasInjured,
   errors,
+  onChangeDetail,
   onChangeCount,
   onToggleInjured,
   onPrev,
   onNext,
 }: Step3PeopleProps) {
+  const incident = INCIDENT_REGISTRY[incidentType];
+  const questions = incident.questions;
+
+  function getQuestionValue(q: IncidentQuestion): string | number | boolean | undefined {
+    const fromDetails = details[q.key];
+    if (fromDetails !== undefined) return fromDetails;
+    if (q.key === "waterLevel") return waterLevel;
+    if (q.key === "canSelfEvacuate") return canSelfEvacuate;
+    if (q.key === "hasInjured") return hasInjured ? true : undefined;
+    return undefined;
+  }
+
+  function handleAnswer(q: IncidentQuestion, nextValue: string | number | boolean | undefined) {
+    if (q.key === "hasInjured" && typeof nextValue === "boolean") {
+      onToggleInjured(nextValue);
+    }
+    onChangeDetail?.(q.key, nextValue);
+  }
   const counts: Record<PeopleGroupKey, number> = {
     adults,
     elderly,
@@ -112,6 +147,195 @@ export function Step3People({
 
   return (
     <div className="space-y-6">
+      {/* คำถามเฉพาะประเภทเหตุจากทะเบียน INCIDENT_REGISTRY (TF-51: ไม่เกิน 3 คำถาม) */}
+      {questions.length > 0 && (
+        <section
+          aria-labelledby="step3-questions-heading"
+          data-testid="step3-incident-questions"
+          className="rounded-[14px] border border-border-default bg-bg-surface p-5 sm:p-6"
+        >
+          <div className="mb-4">
+            <h2
+              id="step3-questions-heading"
+              className="font-heading text-xl font-bold text-text-primary sm:text-[22px]"
+            >
+              รายละเอียดเหตุ{incident.label.th}
+            </h2>
+            <p className="mt-1 text-base text-text-secondary">
+              ตอบคำถามสั้นๆ เพื่อให้ทีมกู้ภัยเตรียมอุปกรณ์ช่วยเหลือได้ตรงกับสถานการณ์
+            </p>
+          </div>
+
+          <div className="space-y-5">
+            {questions.map((q) => {
+              const currentValue = getQuestionValue(q);
+              const questionError = errors.questionErrors?.[q.key];
+
+              return (
+                <div
+                  key={q.key}
+                  data-testid={`incident-question-${q.key}`}
+                  className="rounded-[12px] border border-border-default bg-bg-subtle/30 p-4"
+                >
+                  <p className="font-heading text-base font-bold text-text-primary sm:text-lg">
+                    {q.label.th}{" "}
+                    {q.required ? (
+                      <span className="text-red-600">*</span>
+                    ) : (
+                      <span className="text-sm font-normal text-text-secondary">(ไม่บังคับ)</span>
+                    )}
+                  </p>
+
+                  {q.kind === "choice" && (
+                    <div
+                      role="radiogroup"
+                      aria-label={q.label.th}
+                      className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2"
+                    >
+                      {q.options.map((opt) => {
+                        const selected = currentValue === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            data-testid={`question-${q.key}-option-${opt.value}`}
+                            onClick={() =>
+                              handleAnswer(q, !q.required && selected ? undefined : opt.value)
+                            }
+                            className={`flex min-h-[48px] items-center justify-between gap-3 rounded-[10px] px-4 py-3 text-left font-heading text-base font-semibold transition-colors ${
+                              selected
+                                ? "border-2 border-primary-600 bg-primary-50 text-primary-700"
+                                : "border border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
+                            }`}
+                          >
+                            <span>{opt.label.th}</span>
+                            <span
+                              aria-hidden="true"
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                                selected
+                                  ? "border-primary-600 bg-primary-600 text-white"
+                                  : "border-border-strong"
+                              }`}
+                            >
+                              {selected && <span className="h-2 w-2 rounded-full bg-white" />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {q.kind === "number" && (
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        data-testid={`question-${q.key}-decrease`}
+                        aria-label={`ลด${q.label.th}`}
+                        disabled={typeof currentValue === "number" && currentValue <= q.min}
+                        onClick={() => {
+                          const next =
+                            typeof currentValue === "number"
+                              ? Math.max(q.min, currentValue - 1)
+                              : q.min;
+                          handleAnswer(q, next);
+                        }}
+                        className="flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-border-strong bg-bg-surface text-text-primary transition-colors hover:bg-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Minus className="h-5 w-5" aria-hidden="true" />
+                      </button>
+
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={q.min}
+                        max={q.max}
+                        aria-label={q.label.th}
+                        data-testid={`question-${q.key}-input`}
+                        value={typeof currentValue === "number" ? String(currentValue) : ""}
+                        placeholder={`${q.min}–${q.max}`}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === "") {
+                            handleAnswer(q, undefined);
+                            return;
+                          }
+                          const parsed = Number.parseInt(raw, 10);
+                          if (!Number.isNaN(parsed)) {
+                            handleAnswer(q, Math.max(q.min, Math.min(q.max, parsed)));
+                          }
+                        }}
+                        className="h-12 min-h-[48px] w-28 rounded-[10px] border border-border-strong bg-bg-surface px-3 text-center font-mono text-xl font-bold text-text-primary focus:border-primary-600 focus:outline-none"
+                      />
+
+                      <button
+                        type="button"
+                        data-testid={`question-${q.key}-increase`}
+                        aria-label={`เพิ่ม${q.label.th}`}
+                        disabled={typeof currentValue === "number" && currentValue >= q.max}
+                        onClick={() => {
+                          const next =
+                            typeof currentValue === "number"
+                              ? Math.min(q.max, currentValue + 1)
+                              : Math.max(q.min, 1);
+                          handleAnswer(q, next);
+                        }}
+                        className="flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-primary-600 text-text-on-primary transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Plus className="h-5 w-5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
+
+                  {q.kind === "boolean" && (
+                    <div
+                      role="radiogroup"
+                      aria-label={q.label.th}
+                      className="mt-3 grid grid-cols-2 gap-3"
+                    >
+                      {[
+                        { value: true, text: "ใช่", testId: `question-${q.key}-yes` },
+                        { value: false, text: "ไม่ใช่", testId: `question-${q.key}-no` },
+                      ].map((opt) => {
+                        const selected = currentValue === opt.value;
+                        return (
+                          <button
+                            key={opt.text}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            data-testid={opt.testId}
+                            onClick={() => handleAnswer(q, opt.value)}
+                            className={`flex min-h-[48px] items-center justify-center rounded-[10px] px-4 py-3 font-heading text-base font-semibold transition-colors ${
+                              selected
+                                ? "border-2 border-primary-600 bg-primary-50 text-primary-700"
+                                : "border border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
+                            }`}
+                          >
+                            {opt.text}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {questionError && (
+                    <p
+                      role="alert"
+                      data-testid={`error-question-${q.key}`}
+                      className="mt-2 font-heading text-sm font-semibold text-red-600"
+                    >
+                      • {questionError}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section
         aria-labelledby="step3-people-heading"
         className="rounded-[14px] border border-border-default bg-bg-surface p-5 sm:p-6"
@@ -237,49 +461,21 @@ export function Step3People({
           })}
         </div>
 
-        {/* TF-55: ใช้คำนวณความเร่งด่วน (ผู้พิการนับรวมในแถวผู้ป่วยติดเตียง / พิการ ด้านบนแล้ว) */}
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={hasInjured}
-          data-testid="toggle-injured"
-          onClick={() => onToggleInjured(!hasInjured)}
-          className={`mt-3.5 flex min-h-[48px] w-full items-center gap-3.5 rounded-[14px] border p-4 text-left transition-colors ${
-            hasInjured
-              ? "border-primary-600 bg-bg-subtle/60"
-              : "border-border-default bg-bg-surface hover:border-border-strong"
-          }`}
-        >
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-primary-50">
-            <Bandage className="h-6 w-6 text-red-600" aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="font-heading text-text-primary block text-lg font-bold">
-              มีผู้บาดเจ็บ (ยังรู้สึกตัว)
-            </span>
-            <span className="text-text-secondary block text-sm leading-relaxed sm:text-base">
-              ถ้ามีคนหมดสติ ให้ย้อนไปติ๊กในขั้นที่ 1 และโทร 1669 ทันที
-            </span>
-          </span>
-          <span
-            aria-hidden="true"
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 ${
-              hasInjured ? "border-primary-600 bg-primary-600 text-white" : "border-border-strong"
-            }`}
-          >
-            {hasInjured && <Check className="h-5 w-5" />}
-          </span>
-        </button>
-
-        {/* ข้อความแจ้งเตือนเมื่อจำนวนคนรวมเป็น 0 */}
-        {errors.totalPeople && (
+        {/* ข้อความแจ้งเตือนเมื่อจำนวนคนรวมเป็น 0 หรือยังไม่ได้ตอบคำถามบังคับ */}
+        {(errors.totalPeople || errors.missingSummary.length > 0) && (
           <div
             role="alert"
             data-testid="step3-missing-alert"
             className="mt-5 rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
           >
             <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
-            <p className="mt-1 font-medium">• {errors.totalPeople}</p>
+            {errors.totalPeople && <p className="mt-1 font-medium">• {errors.totalPeople}</p>}
+            {errors.questionErrors &&
+              Object.values(errors.questionErrors).map((msg) => (
+                <p key={msg} className="mt-1 font-medium">
+                  • {msg}
+                </p>
+              ))}
           </div>
         )}
       </section>
