@@ -25,9 +25,8 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   // TF-55: ระดับคำนวณที่เซิร์ฟเวอร์ ไม่เชื่อค่าที่ส่งมาจากเบราว์เซอร์
   urgency: Urgency;
   triageReasons: TriageReason[];
-  // TF-51: คำตอบเฉพาะประเภทเหตุที่ไม่ใช่ข้อมูลสุขภาพ (ลง cases.details)
+  consentVersion: string;
   details?: Record<string, string | number | boolean>;
-  // ส่งมาเฉพาะเมื่อมีคำตอบด้านสุขภาพอย่างน้อย 1 ข้อ (ลง case_sensitive_details)
   sensitive?: {
     dangerSigns?: string[];
     hasDisabled?: true;
@@ -333,8 +332,8 @@ export async function handleCreateSosCase(params: {
     incidentType,
     waterLevel: effectiveWaterLevel,
     canSelfEvacuate: effectiveCanSelfEvacuate,
-    // TF-65: ปักเอง/วางลิงก์ไม่มีค่าความคลาดเคลื่อน ไม่ว่าคำขอจะส่งอะไรมา
     accuracyM: accuracyForLocationSource(answers.locationSource, answers.accuracyM),
+    consentVersion: "2026-11-06",
     urgency: triage.level,
     triageReasons: triage.reasons,
     ...(Object.keys(detailsCheck.publicDetails).length > 0

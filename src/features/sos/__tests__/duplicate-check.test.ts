@@ -18,6 +18,8 @@ import {
 } from "../server/create-case";
 
 const baseIncomingPayload = {
+  consent: true,
+  healthConsent: true,
   dangerSigns: [],
   canSelfEvacuate: false,
   waterLevel: WaterLevel.ROOF,
@@ -165,12 +167,7 @@ describe("TF-16: ตรวจเคสซ้ำ (Duplicate Case Check)", () => {
   it("เกณฑ์ข้อ 1 (ต่อ): มีเคสเปิดอยู่ห่างไม่ถึง 50 ม. ภายใน 24 ชม. (แม้คนละเบอร์) จะถามผู้แจ้งว่าเป็นการอัปเดตเคสเดิมหรือไม่", async () => {
     // ขยับละติจูด ~0.00027 องศา ≈ ห่างประมาณ 30 เมตร (< 50 ม.)
     const nearbyLat = 13.7563 + 0.00027;
-    const distance = calculateDistanceMeters(
-      13.7563,
-      100.5018,
-      nearbyLat,
-      100.5018,
-    );
+    const distance = calculateDistanceMeters(13.7563, 100.5018, nearbyLat, 100.5018);
     expect(distance).toBeGreaterThan(25);
     expect(distance).toBeLessThan(35);
 

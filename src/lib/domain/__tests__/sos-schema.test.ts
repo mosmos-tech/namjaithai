@@ -3,6 +3,8 @@ import { sosSchema, step2Schema, step3Schema, step4Schema, step5Schema } from ".
 import { WaterLevel, Need } from "../enums";
 
 const validBase = {
+  consent: true,
+  healthConsent: true,
   dangerSigns: [],
   canSelfEvacuate: false,
   waterLevel: WaterLevel.WAIST_CHEST,
@@ -68,7 +70,9 @@ describe("step2Schema — ขอบเขตประเทศไทย", () => 
 
   it("accuracyM เป็น optional", () => {
     expect(step2Schema.safeParse({ lat: 13.75, lng: 100.52, landmark: "วัด" }).success).toBe(true);
-    expect(step2Schema.safeParse({ lat: 13.75, lng: 100.52, landmark: "วัด", accuracyM: 50 }).success).toBe(true);
+    expect(
+      step2Schema.safeParse({ lat: 13.75, lng: 100.52, landmark: "วัด", accuracyM: 50 }).success,
+    ).toBe(true);
   });
 
   it("landmark ที่มีช่องว่างขอบถูก trim แล้วผ่าน", () => {
@@ -90,19 +94,28 @@ describe("step3Schema — ผู้ติดค้าง", () => {
   });
 
   it("มีแค่สัตว์เลี้ยง (ไม่มีคน) ไม่ผ่าน", () => {
-    expect(step3Schema.safeParse({ adults: 0, elderly: 0, bedridden: 0, children: 0, pets: 3 }).success).toBe(false);
+    expect(
+      step3Schema.safeParse({ adults: 0, elderly: 0, bedridden: 0, children: 0, pets: 3 }).success,
+    ).toBe(false);
   });
 
   it("มีผู้สูงอายุ 1 คน ผ่าน", () => {
-    expect(step3Schema.safeParse({ adults: 0, elderly: 1, bedridden: 0, children: 0, pets: 0 }).success).toBe(true);
+    expect(
+      step3Schema.safeParse({ adults: 0, elderly: 1, bedridden: 0, children: 0, pets: 0 }).success,
+    ).toBe(true);
   });
 
   it("จำนวนเกิน 99 ไม่ผ่าน", () => {
-    expect(step3Schema.safeParse({ adults: 100, elderly: 0, bedridden: 0, children: 0, pets: 0 }).success).toBe(false);
+    expect(
+      step3Schema.safeParse({ adults: 100, elderly: 0, bedridden: 0, children: 0, pets: 0 })
+        .success,
+    ).toBe(false);
   });
 
   it("จำนวน 99 ผ่าน (max)", () => {
-    expect(step3Schema.safeParse({ adults: 99, elderly: 0, bedridden: 0, children: 0, pets: 0 }).success).toBe(true);
+    expect(
+      step3Schema.safeParse({ adults: 99, elderly: 0, bedridden: 0, children: 0, pets: 0 }).success,
+    ).toBe(true);
   });
 });
 
@@ -118,15 +131,20 @@ describe("step4Schema — สิ่งที่ต้องการ", () => {
   it("เลือก OTHER โดยไม่กรอกรายละเอียด ไม่ผ่าน", () => {
     const r = step4Schema.safeParse({ needs: [Need.OTHER], otherDetail: "" });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0].message).toBe("กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ");
+    if (!r.success)
+      expect(r.error.issues[0].message).toBe("กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ");
   });
 
   it("เลือก OTHER พร้อมรายละเอียด ผ่าน", () => {
-    expect(step4Schema.safeParse({ needs: [Need.OTHER], otherDetail: "ต้องการเต็นท์" }).success).toBe(true);
+    expect(
+      step4Schema.safeParse({ needs: [Need.OTHER], otherDetail: "ต้องการเต็นท์" }).success,
+    ).toBe(true);
   });
 
   it("otherDetail เกิน 200 ตัวอักษร ไม่ผ่าน", () => {
-    expect(step4Schema.safeParse({ needs: [Need.OTHER], otherDetail: "x".repeat(201) }).success).toBe(false);
+    expect(
+      step4Schema.safeParse({ needs: [Need.OTHER], otherDetail: "x".repeat(201) }).success,
+    ).toBe(false);
   });
 });
 
