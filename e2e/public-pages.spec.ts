@@ -2,9 +2,9 @@ import { test, expect } from "@playwright/test";
 
 // B. หน้าแรก · C. /hotlines · D. /survival · K. /dev/db (TF-02, TF-06)
 
-test("หน้าแรกเปิดได้ (ยังเป็นหน้าชั่วคราวของ TF-46)", async ({ page }) => {
+test("หน้าแรกเปิดได้และแสดงปุ่มขอความช่วยเหลือ", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "น้ำใจไทย SOS" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /ต้องการความช่วยเหลือ/ })).toBeVisible();
 });
 
 test.describe("/hotlines เบอร์สายด่วน", () => {

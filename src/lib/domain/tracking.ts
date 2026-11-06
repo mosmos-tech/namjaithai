@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CaseStatus } from "./case-status";
+import type { IncidentType } from "./incidents/types";
 
 // ── ข้อมูลที่ผู้แจ้งพิมพ์/ส่งมาเพื่อเปิดหน้าติดตาม ───────────────────────────────
 // รหัสเคสจาก create_sos_case(): FL-YYMM-NNNN (เลขรันเกิน 9999 ได้ เลยรับ 4 หลักขึ้นไป)
@@ -39,6 +40,7 @@ export type CaseEventType =
 
 export type TrackedCase = {
   caseCode: string;
+  incidentType?: IncidentType;
   trackingToken: string;
   status: CaseStatus;
   // ไม่มีระดับความเร่งด่วน: ผู้แจ้งไม่เห็นระดับที่ระบบคำนวณ (TF-55)
@@ -72,7 +74,7 @@ const STATUS_VIEW: Record<CaseStatus, ReporterStatusView> = {
   NEW: {
     badge: "รอทีมรับเคส",
     title: "กำลังหาทีมกู้ภัยที่ใกล้คุณที่สุด",
-    description: "ระบบแจ้งทีมในพื้นที่แล้ว ระหว่างรอให้ขึ้นที่สูงและเปิดเสียงโทรศัพท์ไว้",
+    description: "ระบบแจ้งทีมในพื้นที่แล้ว ระหว่างรอให้เปิดเสียงโทรศัพท์ไว้",
     tone: "waiting",
     progress: { done: 1, active: true },
   },

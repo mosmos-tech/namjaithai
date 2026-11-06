@@ -75,6 +75,10 @@ jobs:
 
       - run: npm run e2e
 
+      # TF-41: service-worker/offline behavior must run against a production build.
+      - run: npm run build
+      - run: npm run e2e:pwa
+
       - name: Upload videos and report
         if: failure()
         uses: actions/upload-artifact@v4

@@ -52,7 +52,15 @@ test.describe("แถบสายด่วนและ navbar", () => {
 
   test("ปุ่มเข้าสู่ระบบ (ไม่ล็อกอิน) พาไปหน้า /login", async ({ page, isMobile }) => {
     await page.goto("/hotlines");
-    if (isMobile) await page.getByRole("button", { name: "เปิดเมนู" }).click();
+    if (isMobile) {
+      const menu = page.getByRole("button", { name: "เปิดเมนู" });
+      await expect(menu).toBeEnabled();
+      await menu.click();
+      await expect(page.getByRole("button", { name: "ปิดเมนู" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    }
     await page
       .getByRole("link", { name: "เข้าสู่ระบบ", exact: true })
       .filter({ visible: true })

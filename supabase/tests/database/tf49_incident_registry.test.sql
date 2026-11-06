@@ -23,9 +23,9 @@ select is(
   'incident_types มีครบ 8 ประเภทตามลำดับในโค้ด'
 );
 select is(
-  (select string_agg(code, ',') from public.incident_types where is_enabled),
+  (select string_agg(code, ',' order by sort_order) from public.incident_types where is_enabled),
   'FLOOD',
-  'เปิดให้เลือกได้แค่ FLOOD จนกว่าเนื้อหาประเภทอื่นจะผ่าน TF-54'
+  'เปิดเฉพาะน้ำท่วมจนกว่าจะตรวจสอบประเภทเหตุอื่นครบ'
 );
 
 -- ---------- cases ----------

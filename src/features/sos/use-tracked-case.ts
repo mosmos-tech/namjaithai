@@ -17,7 +17,7 @@ type State =
  * - หยุดดึงตอนแท็บถูกซ่อน ประหยัดแบตและเน็ต แล้วดึงทันทีเมื่อกลับมาเปิดแท็บ
  * - เน็ตหลุดชั่วคราว: เก็บข้อมูลเดิมไว้และบอกว่า stale แล้วลองใหม่รอบถัดไป
  */
-export function useTrackedCase(caseCode: string, token: string): State {
+export function useTrackedCase(caseCode: string, token: string, revision = 0): State {
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export function useTrackedCase(caseCode: string, token: string): State {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [caseCode, token]);
+  }, [caseCode, token, revision]);
 
   return state;
 }

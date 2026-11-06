@@ -6,7 +6,7 @@ import {
   type SosCaseRpcClient,
   type CreateSosCaseRpcRow,
 } from "../server/create-case";
-import { Urgency, WaterLevel, Need, CaseStatus } from "../../../lib/domain";
+import { Urgency, WaterLevel, Need, CaseStatus, IncidentType } from "../../../lib/domain";
 
 const validPayload = {
   consent: true,
@@ -287,5 +287,56 @@ describe("handleCreateSosCase — ระดับความเร่งด่�
     expect(result.status).toBe(400);
     if (result.status !== 400) throw new Error("Expected 400");
     expect(result.body.fields).toEqual(expect.arrayContaining(["dangerSigns", "canSelfEvacuate"]));
+  });
+
+  it("TF-51: ส่ง details ไม่ตรงกับประเภทเหตุ ตอบ 400", async () => {
+    // ส่ง vehicleType ของอุบัติเหตุทางถนนมาในเหตุน้ำท่วม
+    const { result: floodMismatch } = await send({
+      ...validPayload,
+      incidentType: IncidentType.FLOOD,
+      details: { vehicleType: "CAR" },
+    });
+    expect(floodMismatch.status).toBe(400);
+    if (floodMismatch.status === 400) {
+      expect(floodMismatch.body.fields).toContain("details");
+    }
+
+    // ส่ง waterLevel ของน้ำท่วมมาในอุบัติเหตุทางถนน
+    const { result: roadMismatch } = await send({
+      ...validPayload,
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      waterLevel: undefined,
+      details: { waterLevel: "ROOF" },
+    });
+    expect(roadMismatch.status).toBe(400);
+    if (roadMismatch.status === 400) {
+      expect(roadMismatch.body.fields).toContain("details");
+    }
+  });
+
+  it("TF-51: ส่ง details ของ ROAD_ACCIDENT ครบถ้วน ตอบ 201 และแยกข้อมูลสุขภาพ (injuredCount) ไปอยู่ใน sensitive", async () => {
+    const { waterLevel: _w, ...withoutWaterLevel } = validPayload;
+    void _w;
+    const { result, payload } = await send({
+      ...withoutWaterLevel,
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      needs: [Need.MEDICINE],
+      details: {
+        injuredCount: 3,
+        vehicleType: "MOTORCYCLE",
+        isTrapped: true,
+      },
+    });
+
+    expect(result.status).toBe(201);
+    expect(payload?.incidentType).toBe(IncidentType.ROAD_ACCIDENT);
+    expect(payload?.details).toEqual({
+      vehicleType: "MOTORCYCLE",
+      isTrapped: true,
+    });
+    expect(payload?.details).not.toHaveProperty("injuredCount");
+    expect(payload?.sensitive).toEqual({
+      injuredCount: 3,
+    });
   });
 });

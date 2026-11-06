@@ -12,13 +12,7 @@ import {
   type SentCase,
 } from "../sent-case";
 import { SuccessCheck } from "./SuccessCheck";
-
-const WAITING_TIPS = [
-  "ขึ้นไปอยู่ที่สูงที่สุดที่ปลอดภัย",
-  "สับคัตเอาต์ไฟถ้าน้ำเริ่มเข้าบ้าน",
-  "ประหยัดแบตมือถือ ลดแสงหน้าจอ ปิดแอปที่ไม่ใช้",
-  "โบกผ้าสีสด หรือใช้ไฟฉายส่งสัญญาณเมื่อได้ยินเสียงเรือ",
-];
+import { WaitingAdvice } from "./WaitingAdvice";
 
 /**
  * หน้าส่งสำเร็จ (TF-13): ติ๊กถูก รหัสเคสตัวใหญ่ ปุ่มคัดลอก ติดตามเคส แชร์ LINE
@@ -63,7 +57,7 @@ function SentCaseCard({ sent }: { sent: SentCase }) {
           ส่งถึงระบบแล้ว
         </h1>
         <p className="text-text-secondary mx-auto mt-3 max-w-lg text-lg">
-          ตอนนี้รอทีมกู้ภัยกดรับเคส อยู่ในที่สูงและเปิดเสียงโทรศัพท์ไว้
+          ตอนนี้รอทีมกู้ภัยกดรับเคส โปรดเปิดเสียงโทรศัพท์ไว้
         </p>
 
         <div className="border-primary-100 bg-primary-50 mt-8 rounded-[12px] border px-4 py-6">
@@ -114,21 +108,7 @@ function SentCaseCard({ sent }: { sent: SentCase }) {
         </Link>
       </section>
 
-      <section className="border-border-default bg-bg-surface rounded-[14px] border p-5 sm:p-8">
-        <h2 className="font-heading text-text-primary text-[22px] font-semibold">
-          ระหว่างรอทีมกู้ภัย
-        </h2>
-        <ul className="mt-4 flex flex-col gap-3">
-          {WAITING_TIPS.map((tip) => (
-            <li key={tip} className="text-text-primary flex items-start gap-3 text-lg">
-              <span className="bg-primary-50 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full">
-                <Check className="text-primary-600 size-4" aria-hidden="true" />
-              </span>
-              {tip}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <WaitingAdvice incidentType={sent.incidentType ?? "FLOOD"} />
     </div>
   );
 }

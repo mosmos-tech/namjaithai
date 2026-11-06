@@ -1,9 +1,12 @@
 import { z } from "zod";
 import {
   sosSchema,
+  validateAndSplitIncidentDetails,
   priorityScore,
   computeTriage,
+  accuracyForLocationSource,
   IncidentType,
+  WaterLevel,
   duplicateResolutionSchema,
   duplicateActionLabels,
   formatAdminDuplicateNotice,
@@ -258,37 +261,76 @@ export async function handleCreateSosCase(params: {
     };
   }
 
-  // 3. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
+  // 3. ตรวจ details เฉพาะประเภทเหตุด้วย Zod และแยกข้อมูลสุขภาพออกจาก cases.details (TF-51)
   const { dangerSigns, hasDisabled, hasInjured, atScene: _atScene, ...answers } = parsed.data;
   void _atScene;
-  const triage = computeTriage({
-    incidentType: answers.incidentType ?? IncidentType.FLOOD,
-    dangerSigns,
+  const incidentType = answers.incidentType ?? IncidentType.FLOOD;
+  const rawDetails = (rawBody as Record<string, unknown>).details;
+
+  const detailsCheck = validateAndSplitIncidentDetails(incidentType, rawDetails, {
     waterLevel: answers.waterLevel,
     canSelfEvacuate: answers.canSelfEvacuate,
+    hasInjured,
+  });
+  if (!detailsCheck.ok) {
+    return {
+      status: 400,
+      body: {
+        error: detailsCheck.error,
+        fieldErrors: detailsCheck.fieldErrors,
+        formErrors: [detailsCheck.error],
+        fields: detailsCheck.fields,
+      },
+    };
+  }
+
+  const effectiveWaterLevel =
+    incidentType === IncidentType.FLOOD
+      ? ((detailsCheck.publicDetails.waterLevel as WaterLevel | undefined) ?? answers.waterLevel)
+      : undefined;
+  const effectiveCanSelfEvacuate =
+    typeof detailsCheck.publicDetails.canSelfEvacuate === "boolean"
+      ? detailsCheck.publicDetails.canSelfEvacuate
+      : answers.canSelfEvacuate;
+  const effectiveHasInjured = Boolean(
+    hasInjured ||
+      detailsCheck.sensitiveDetails.hasInjured === true ||
+      (typeof detailsCheck.sensitiveDetails.injuredCount === "number" &&
+        detailsCheck.sensitiveDetails.injuredCount > 0) ||
+      detailsCheck.sensitiveDetails.hasBittenOrStung === true,
+  );
+
+  // 4. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
+  const triage = computeTriage({
+    incidentType,
+    dangerSigns,
+    waterLevel: effectiveWaterLevel,
+    canSelfEvacuate: effectiveCanSelfEvacuate,
     elderly: answers.elderly,
     bedridden: answers.bedridden,
     children: answers.children,
     hasDisabled,
-    hasInjured,
+    hasInjured: effectiveHasInjured,
     needs: answers.needs,
   });
-  const hasSensitive = dangerSigns.length > 0 || hasDisabled || hasInjured;
+
+  const sensitivePayload: NonNullable<CreateSosCasePayload["sensitive"]> = {
+    ...(dangerSigns.length > 0 ? { dangerSigns } : {}),
+    ...(hasDisabled ? { hasDisabled: true as const } : {}),
+    ...(hasInjured ? { hasInjured: true as const } : {}),
+    ...detailsCheck.sensitiveDetails,
+  };
+  const hasSensitive = Object.keys(sensitivePayload).length > 0;
 
   const formData: CreateSosCasePayload = {
     ...answers,
     consentVersion: "2026-11-06",
     urgency: triage.level,
     triageReasons: triage.reasons,
-    ...(hasSensitive
-      ? {
-          sensitive: {
-            ...(dangerSigns.length > 0 ? { dangerSigns } : {}),
-            ...(hasDisabled ? { hasDisabled: true as const } : {}),
-            ...(hasInjured ? { hasInjured: true as const } : {}),
-          },
-        }
+    ...(Object.keys(detailsCheck.publicDetails).length > 0
+      ? { details: detailsCheck.publicDetails }
       : {}),
+    ...(hasSensitive ? { sensitive: sensitivePayload } : {}),
     ...(dupResolution.data.duplicateAction
       ? { duplicateAction: dupResolution.data.duplicateAction }
       : {}),
@@ -299,6 +341,7 @@ export async function handleCreateSosCase(params: {
   const score = priorityScore(
     {
       urgency: formData.urgency,
+      incidentType: formData.incidentType ?? IncidentType.FLOOD,
       waterLevel: formData.waterLevel,
       bedridden: formData.bedridden,
       elderly: formData.elderly,
