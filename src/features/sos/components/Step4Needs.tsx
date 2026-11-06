@@ -14,7 +14,7 @@ import {
   ZapOff,
   MessageSquarePlus,
 } from "lucide-react";
-import { Need, needLabel } from "../../../lib/domain";
+import { INCIDENT_REGISTRY, IncidentType, Need, needLabel } from "../../../lib/domain";
 import type { Step4ValidationErrors } from "../draft-storage";
 
 export interface NeedOptionConfig {
@@ -97,7 +97,20 @@ export const NEED_OPTIONS: readonly NeedOptionConfig[] = [
   },
 ];
 
+/**
+ * คืนรายการความต้องการตามประเภทเหตุจากทะเบียน INCIDENT_REGISTRY พร้อมตัวเลือก "อื่นๆ (พิมพ์เอง)" เสมอ (TF-51)
+ */
+export function getNeedOptionsForIncident(
+  incidentType: IncidentType = IncidentType.FLOOD,
+): readonly NeedOptionConfig[] {
+  const registryNeeds = INCIDENT_REGISTRY[incidentType]?.needs ?? [];
+  const baseNeeds = registryNeeds.length > 0 ? registryNeeds : Object.values(Need);
+  const allowedSet = new Set<Need>([...baseNeeds, Need.OTHER]);
+  return NEED_OPTIONS.filter((opt) => allowedSet.has(opt.value));
+}
+
 interface Step4NeedsProps {
+  incidentType?: IncidentType;
   needs: Need[];
   otherDetail: string;
   errors: Step4ValidationErrors;
@@ -108,11 +121,12 @@ interface Step4NeedsProps {
 }
 
 /**
- * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 4: เลือกสิ่งที่ต้องการ 10 อย่าง + "อื่นๆ (พิมพ์เอง)"
+ * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 4: เลือกสิ่งที่ต้องการตามประเภทเหตุ + "อื่นๆ (พิมพ์เอง)" (TF-11, TF-51)
  * - เลือกได้หลายข้อ (หรือข้ามได้ถ้ายังไม่แน่ใจ)
  * - ถ้าเลือก "อื่นๆ (พิมพ์เอง)" จะแสดงช่องพิมพ์ (ไม่เกิน 200 ตัวอักษร) และต้องพิมพ์ก่อนกดถัดไป
  */
 export function Step4Needs({
+  incidentType = IncidentType.FLOOD,
   needs,
   otherDetail,
   errors,
@@ -122,6 +136,7 @@ export function Step4Needs({
   onNext,
 }: Step4NeedsProps) {
   const isOtherSelected = needs.includes(Need.OTHER);
+  const visibleNeedOptions = getNeedOptionsForIncident(incidentType);
 
   return (
     <div className="space-y-6">
@@ -147,9 +162,9 @@ export function Step4Needs({
           </span>
         </div>
 
-        {/* ตัวเลือก 10 อย่าง + อื่นๆ */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {NEED_OPTIONS.map((option) => {
+        {/* ตัวเลือกความต้องการตามประเภทเหตุ + อื่นๆ */}
+        <div data-testid="step4-needs-grid" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {visibleNeedOptions.map((option) => {
             const isSelected = needs.includes(option.value);
             const isOtherOption = option.value === Need.OTHER;
 

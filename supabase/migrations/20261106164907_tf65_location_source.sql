@@ -2,7 +2,7 @@
 -- TF-65: ความแม่นยำและที่มาของพิกัดเคส SOS
 --   1. cases.location_source  วิธีได้พิกัด GPS / MANUAL_PIN (ปักเอง) / GMAPS_LINK (วางลิงก์)
 --      เคสก่อน TF-65 เป็น null = ไม่ทราบ
---   2. create_sos_case(): คัดลอกจาก TF-55 (20261104205245) แก้เฉพาะ
+--   2. create_sos_case(): คัดลอกจาก TF-51 (20261106160000) แก้เฉพาะ
 --      - บันทึก location_source
 --      - ปักเอง/วางลิงก์ → accuracy_m = null เสมอ (ผู้แจ้งยืนยันจุดเองแล้ว)
 --      - บันทึกที่อยู่ละเอียด (addressLine) ลง case_contacts.detailed_address
@@ -46,13 +46,10 @@ as $$
 -- ก่อนหน้านี้ทางเลือก UPDATE_EXISTING พังด้วย "column reference case_id is ambiguous"
 #variable_conflict use_column
 declare
-  -- กติกา rate limit: ช่วงเวลา 1 ชั่วโมง
-  -- เบอร์เดียวกันส่งได้ 5 เคส / IP เดียวกันส่งได้ 20 เคส
   c_window constant interval := interval '1 hour';
   c_phone_limit constant integer := 5;
   c_ip_limit constant integer := 20;
 
-  -- กติกาตรวจเคสซ้ำ (TF-16): ห่างไม่ถึง 50 เมตร ภายใน 24 ชั่วโมง
   c_dup_distance_m constant double precision := 50.0;
   c_dup_window constant interval := interval '24 hours';
 
@@ -62,7 +59,6 @@ declare
   v_point geography(Point, 4326);
   v_duplicate_action text := coalesce(nullif(btrim(p_payload ->> 'duplicateAction'), ''), 'ASK');
   v_target_case_id uuid := nullif(btrim(p_payload ->> 'targetCaseId'), '')::uuid;
-  -- TF-49: ไม่ส่งมา = น้ำท่วม (ฟอร์มเดิมยังไม่ได้ส่งประเภทเหตุ)
   v_incident_type text := coalesce(nullif(btrim(p_payload ->> 'incidentType'), ''), 'FLOOD');
   -- TF-65: วิธีได้พิกัด / ความคลาดเคลื่อน (ปักเอง/วางลิงก์ = null เสมอ) / ที่อยู่ละเอียด
   v_location_source text := nullif(btrim(p_payload ->> 'locationSource'), '');
@@ -71,10 +67,16 @@ declare
     else (p_payload ->> 'accuracyM')::double precision
   end;
   v_address text := nullif(btrim(p_payload ->> 'addressLine'), '');
-  -- TF-55: เหตุผลของระดับที่ระบบคำนวณ และคำตอบด้านสุขภาพ (ไป case_sensitive_details)
   v_triage_reasons text[] := array(
     select jsonb_array_elements_text(coalesce(p_payload -> 'triageReasons', '[]'::jsonb))
   );
+  v_details jsonb := coalesce(
+    case when jsonb_typeof(p_payload -> 'details') = 'object' then p_payload -> 'details' end,
+    '{}'::jsonb
+  ) || jsonb_strip_nulls(jsonb_build_object(
+    'waterLevel', nullif(btrim(p_payload ->> 'waterLevel'), ''),
+    'canSelfEvacuate', p_payload -> 'canSelfEvacuate'
+  ));
   v_sensitive jsonb := case
     when jsonb_typeof(p_payload -> 'sensitive') = 'object' and p_payload -> 'sensitive' <> '{}'::jsonb
       then p_payload -> 'sensitive'
@@ -109,7 +111,6 @@ begin
     raise exception 'payload.triageReasons is required' using errcode = '22023';
   end if;
 
-  -- TF-49: รับเฉพาะประเภทเหตุที่เปิดใช้ (ตอนนี้เปิดแค่ FLOOD จนกว่าเนื้อหาประเภทอื่นจะผ่าน TF-54)
   if not exists (
     select 1 from public.incident_types t where t.code = v_incident_type and t.is_enabled
   ) then
@@ -176,7 +177,7 @@ begin
     end if;
   end if;
 
-  -- (3) ตรวจหาเคสซ้ำที่ยังเปิดอยู่ (เบอร์เดียวกัน หรือ ห่างไม่ถึง 50 ม. ภายใน 24 ชม.)
+  -- (3) ตรวจหาเคสซ้ำที่ยังเปิดอยู่
   v_point := ST_SetSRID(ST_MakePoint(v_lng, v_lat), 4326)::geography;
 
   select c.* into v_dup_case
@@ -223,7 +224,7 @@ begin
     end;
   end if;
 
-  -- (3.1) ถ้าพบเคสซ้ำและผู้แจ้งยังไม่ได้เลือก (ASK) → โยน SOS49 ให้หน้าเว็บถามผู้แจ้ง
+  -- (3.1) ถ้าพบเคสซ้ำและผู้แจ้งยังไม่ได้เลือก (ASK) → โยน SOS49
   if v_dup_found and v_duplicate_action = 'ASK' then
     raise exception 'duplicate case candidate detected'
       using errcode = 'SOS49',
@@ -239,21 +240,16 @@ begin
             )::text;
   end if;
 
-  -- (3.2) ถ้าผู้แจ้งเลือก "อัปเดตเคสเดิม" (UPDATE_EXISTING) และเคสเดิมยังเปิดอยู่
+  -- (3.2) ถ้าผู้แจ้งเลือก "อัปเดตเคสเดิม" (UPDATE_EXISTING)
   if v_dup_found and v_duplicate_action = 'UPDATE_EXISTING' then
     update public.cases c
     set urgency = (p_payload ->> 'urgency')::public.urgency_level,
-        -- TF-55: ผู้แจ้งตอบใหม่ = ระบบคำนวณใหม่ ล้างการปรับระดับของกู้ภัยครั้งก่อน
         triage_reasons = v_triage_reasons,
         system_urgency = null,
         urgency_override_reason = null,
         urgency_overridden_by = null,
         urgency_overridden_at = null,
-        -- ส่งระดับน้ำมาใหม่ก็ทับค่าเดิม ไม่ส่งมาก็คงค่าเดิมไว้
-        details = c.details || jsonb_strip_nulls(jsonb_build_object(
-          'waterLevel', nullif(btrim(p_payload ->> 'waterLevel'), ''),
-          'canSelfEvacuate', p_payload -> 'canSelfEvacuate'
-        )),
+        details = c.details || v_details,
         priority_score = greatest(c.priority_score, p_priority_score),
         lat = v_lat,
         lng = v_lng,
@@ -312,7 +308,6 @@ begin
       );
     end if;
 
-    -- คำตอบด้านสุขภาพชุดใหม่แทนชุดเดิมทั้งหมด (ไม่มีแล้ว = ลบแถวทิ้ง)
     if v_sensitive is null then
       delete from public.case_sensitive_details where case_id = v_case.id;
     else
@@ -358,8 +353,7 @@ begin
     return;
   end if;
 
-  -- (4) สร้างเคสใหม่ (กรณีไม่ซ้ำ หรือผู้แจ้งยืนยันเลือก "สร้างใหม่" CREATE_NEW)
-  --     ถ้ามีเคสใกล้กันใน 50 ม. หรือเบอร์ซ้ำ จะทำเครื่องหมาย is_potential_duplicate = true ให้แอดมินเห็น
+  -- (4) สร้างเคสใหม่
   begin
     v_period := to_char(now() at time zone 'Asia/Bangkok', 'YYMM');
 
@@ -383,10 +377,7 @@ begin
       (p_payload ->> 'urgency')::public.urgency_level,
       v_triage_reasons,
       v_incident_type,
-      jsonb_strip_nulls(jsonb_build_object(
-        'waterLevel', nullif(btrim(p_payload ->> 'waterLevel'), ''),
-        'canSelfEvacuate', p_payload -> 'canSelfEvacuate'
-      )),
+      v_details,
       p_priority_score,
       v_lat,
       v_lng,
@@ -503,10 +494,6 @@ begin
     v_dup_dist_m;
 end;
 $$;
-
-comment on function public.create_sos_case(text, jsonb, integer, text, uuid) is
-  'สร้างเคส SOS พร้อมตรวจเคสซ้ำ (เบอร์เดียวกันที่เปิดอยู่ หรือห่างไม่ถึง 50 ม. ภายใน 24 ชม.) '
-  'รองรับตัวเลือกอัปเดตเคสเดิม (UPDATE_EXISTING) หรือสร้างใหม่พร้อมทำเครื่องหมายให้แอดมินเห็น (CREATE_NEW)';
 
 revoke all on function public.create_sos_case(text, jsonb, integer, text, uuid) from public, anon, authenticated;
 grant execute on function public.create_sos_case(text, jsonb, integer, text, uuid) to service_role;
