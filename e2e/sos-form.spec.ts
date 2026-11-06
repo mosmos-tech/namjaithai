@@ -51,7 +51,13 @@ test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-55
       await expect(bar).toBeVisible();
       // แถบต้องอยู่บนสุดของจอ แม้เลื่อนลงล่างสุด
       await page.mouse.wheel(0, 4000);
-      expect((await bar.boundingBox())!.y).toBeLessThanOrEqual(1);
+      await expect.poll(async () => (await bar.boundingBox())?.y).toBeLessThanOrEqual(1);
+      const callButton = bar.getByRole("link", { name: /โทร 1669/ });
+      await expect.poll(() => callButton.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const topmost = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return topmost === element || element.contains(topmost);
+      })).toBe(true);
     }
   });
 
