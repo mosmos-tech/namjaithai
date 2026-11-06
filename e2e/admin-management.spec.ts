@@ -126,8 +126,13 @@ test.describe("TF-30 admin", () => {
         .getByRole("listitem")
         .filter({ hasText: admin.displayName });
       await expect(ownRow.getByRole("button", { name: "ระงับผู้ใช้" })).toBeDisabled();
+      // รอผลค้นหาแรกจริง ๆ ก่อนเริ่มค้นหาอีกคน เพื่อไม่ให้ response เก่ามาทับผลใหม่
+      const userList = page.getByRole("list", { name: "รายการผู้ใช้" });
+      await expect(userList).not.toContainText(user.displayName);
       await page.getByLabel("ค้นหาผู้ใช้").fill(user.displayName);
       await page.getByRole("button", { name: "ค้นหา" }).click();
+      await expect(userList).toContainText(user.displayName);
+      await expect(ownRow).toHaveCount(0);
       await expect(page.getByLabel("หัวหน้าหน่วย", { exact: true })).toContainText(
         user.displayName,
       );
