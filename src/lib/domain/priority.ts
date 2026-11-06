@@ -1,12 +1,14 @@
 import { Urgency, WaterLevel, WATER_LEVEL_ORDER } from "./enums";
+import { IncidentType } from "./incidents/types";
 
 export interface PriorityInput {
   urgency: Urgency;
+  incidentType?: IncidentType; // เคสเดิมเป็นน้ำท่วม; เหตุใหม่ต้องระบุประเภท
   waterLevel?: WaterLevel; // ไม่บังคับ (มือถือไม่ได้ถาม) ไม่ระบุ = ไม่มีโบนัสระดับน้ำ
   bedridden: number; // ผู้ป่วยติดเตียง
-  elderly: number;   // ผู้สูงอายุ
-  children: number;  // เด็กเล็ก
-  createdAt: Date;   // เวลาที่แจ้งเคส
+  elderly: number; // ผู้สูงอายุ
+  children: number; // เด็กเล็ก
+  createdAt: Date; // เวลาที่แจ้งเคส
 }
 
 // คะแนนฐาน — เว้นช่องห่าง 10x เพื่อรับประกัน RED > YELLOW > GREEN แม้บวกโบนัสเต็ม
@@ -32,9 +34,14 @@ const WAIT_BONUS_PER_10_MIN = 1;
 // YELLOW_MAX = 1000 + 899 = 1899 < 10000 (RED_MIN) ✓
 const MAX_BONUS = 899;
 
+/** ใช้เฉพาะเกณฑ์น้ำท่วมเดิม; เหตุอื่นเป็นกลางจนกว่าทีมกำหนดกติกาที่ตรวจแล้ว */
+export function severityBonus(incidentType: IncidentType, waterLevel?: WaterLevel): number {
+  if (incidentType !== IncidentType.FLOOD || !waterLevel) return 0;
+  return Math.max(0, WATER_LEVEL_ORDER.indexOf(waterLevel)) * WATER_LEVEL_BONUS_PER_STEP;
+}
+
 export function priorityScore(input: PriorityInput, now: Date = new Date()): number {
-  const waterIndex = input.waterLevel ? WATER_LEVEL_ORDER.indexOf(input.waterLevel) : 0;
-  const waterBonus = waterIndex * WATER_LEVEL_BONUS_PER_STEP;
+  const typeBonus = severityBonus(input.incidentType ?? IncidentType.FLOOD, input.waterLevel);
 
   const waitMinutes = Math.max(0, (now.getTime() - input.createdAt.getTime()) / 60_000);
   const waitBonus = Math.floor(waitMinutes / 10) * WAIT_BONUS_PER_10_MIN;
@@ -43,7 +50,7 @@ export function priorityScore(input: PriorityInput, now: Date = new Date()): num
     input.bedridden * BEDRIDDEN_BONUS +
     input.elderly * ELDERLY_BONUS +
     input.children * CHILD_BONUS +
-    waterBonus +
+    typeBonus +
     waitBonus;
 
   return BASE_SCORE[input.urgency] + Math.min(rawBonus, MAX_BONUS);

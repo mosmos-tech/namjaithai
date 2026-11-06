@@ -2,6 +2,9 @@
 
 import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { rememberSentCase } from "../sent-case";
+import { WaitingAdvice } from "./WaitingAdvice";
 import {
   INCIDENT_REGISTRY,
   IncidentType,
@@ -95,6 +98,8 @@ export function SosWizard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
+  const [submittedType, setSubmittedType] = useState<IncidentType | null>(null);
+  const [hasSentDetails, setHasSentDetails] = useState(false);
 
   function updateDraft(updater: (prev: SosDraft) => SosDraft): SosDraft {
     const latest = getSosDraftSnapshot();
@@ -106,9 +111,7 @@ export function SosWizard() {
   // ── ขั้นที่ 1 ───────────────────────────────────────────────────────────────
   // TF-50 / TF-55: เลือกประเภทเหตุ + อยู่ที่จุดเกิดเหตุไหม + ตอบคำถามสัญญาณอันตราย
   function handleChangeStep1(
-    patch: Partial<
-      Pick<SosDraft, "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate">
-    >,
+    patch: Partial<Pick<SosDraft, "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate">>,
   ) {
     setSubmitSuccessMessage(null);
     setSubmitError(null);
@@ -116,9 +119,9 @@ export function SosWizard() {
       const merged: SosDraft = { ...prev, ...patch };
       if (patch.incidentType && Array.isArray(merged.dangerSigns)) {
         const registrySigns = INCIDENT_REGISTRY[patch.incidentType].dangerSigns;
-        const validKeys = (
-          registrySigns.length > 0 ? registrySigns : UNIVERSAL_DANGER_SIGNS
-        ).map((s) => s.key);
+        const validKeys = (registrySigns.length > 0 ? registrySigns : UNIVERSAL_DANGER_SIGNS).map(
+          (s) => s.key,
+        );
         merged.dangerSigns = merged.dangerSigns.filter((k) => validKeys.includes(k));
       }
       return merged;
@@ -156,11 +159,7 @@ export function SosWizard() {
   }
 
   // ── ขั้นที่ 2: พิกัดและที่อยู่ ──────────────────────────────────────────────
-  function handleGpsPosition(coords: {
-    latitude: number;
-    longitude: number;
-    accuracy?: number;
-  }) {
+  function handleGpsPosition(coords: { latitude: number; longitude: number; accuracy?: number }) {
     const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
     if (step2Attempted) {
       setStep2Errors(validateStep2Draft(next).errors);
@@ -232,9 +231,7 @@ export function SosWizard() {
   // ── ขั้นที่ 4: สิ่งที่ต้องการ ──────────────────────────────────────────────
   function handleToggleNeed(need: Need) {
     const exists = draft.needs.includes(need);
-    const nextNeeds = exists
-      ? draft.needs.filter((item) => item !== need)
-      : [...draft.needs, need];
+    const nextNeeds = exists ? draft.needs.filter((item) => item !== need) : [...draft.needs, need];
 
     const next = updateDraft((prev) => ({
       ...prev,
@@ -273,10 +270,7 @@ export function SosWizard() {
   }
 
   // ── ขั้นที่ 5: ข้อมูลติดต่อและแนบรูป ───────────────────────────────────────
-  function handleChangeContactField(
-    field: "name" | "phone" | "lineId" | "notes",
-    value: string,
-  ) {
+  function handleChangeContactField(field: "name" | "phone" | "lineId" | "notes", value: string) {
     setSubmitError(null);
     setSubmitSuccessMessage(null);
 
@@ -373,6 +367,17 @@ export function SosWizard() {
       }
 
       if (result.status === "submitted") {
+        const incidentType = draft.incidentType ?? IncidentType.FLOOD;
+        setSubmittedType(incidentType);
+        if (result.caseCode && result.trackingToken) {
+          rememberSentCase({
+            caseCode: result.caseCode,
+            trackingToken: result.trackingToken,
+            phoneLast4: draft.phone.replace(/\D/g, "").slice(-4),
+            incidentType,
+          });
+          setHasSentDetails(true);
+        } else setHasSentDetails(false);
         setStep1Attempted(false);
         setStep1Errors({ missingSummary: [] });
         setStep3Attempted(false);
@@ -452,7 +457,7 @@ export function SosWizard() {
         <SosProgressSegments currentStep={draft.currentStep} />
 
         {/* การ์ดฟอร์ม: มือถือเต็มจอ จอคอมเป็นการ์ดขาวมีขอบ */}
-        <div className="flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:border-border-default lg:bg-bg-surface lg:px-14 lg:py-12">
+        <div className="lg:border-border-default lg:bg-bg-surface flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:px-14 lg:py-12">
           <SosProgressBar currentStep={draft.currentStep} />
 
           {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
@@ -466,9 +471,18 @@ export function SosWizard() {
               <div>
                 <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
                 <p className="mt-0.5">{submitSuccessMessage}</p>
+                {hasSentDetails && (
+                  <Link
+                    href="/sos/sent"
+                    className="mt-2 inline-flex min-h-12 items-center font-semibold underline"
+                  >
+                    ดูรายละเอียดการแจ้งและติดตามเคส
+                  </Link>
+                )}
               </div>
             </div>
           )}
+          {submitSuccessMessage && submittedType && <WaitingAdvice incidentType={submittedType} />}
 
           {draft.currentStep === 1 && (
             <Step1Situation

@@ -290,15 +290,14 @@ export async function handleCreateSosCase(params: {
     ...(dupResolution.data.duplicateAction
       ? { duplicateAction: dupResolution.data.duplicateAction }
       : {}),
-    ...(dupResolution.data.targetCaseId
-      ? { targetCaseId: dupResolution.data.targetCaseId }
-      : {}),
+    ...(dupResolution.data.targetCaseId ? { targetCaseId: dupResolution.data.targetCaseId } : {}),
   };
 
   // 4. คำนวณคะแนนจัดลำดับด้วยฟังก์ชันกลาง priorityScore() โดยใช้ระดับที่ระบบคำนวณ
   const score = priorityScore(
     {
       urgency: formData.urgency,
+      incidentType: formData.incidentType ?? IncidentType.FLOOD,
       waterLevel: formData.waterLevel,
       bedridden: formData.bedridden,
       elderly: formData.elderly,
@@ -365,7 +364,8 @@ export async function handleCreateSosCase(params: {
     return {
       status: 500,
       body: {
-        error: "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
+        error:
+          "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
       },
     };
   }
@@ -394,9 +394,7 @@ export async function handleCreateSosCase(params: {
       status: row.status,
       createdAt: row.created_at,
       replayed: row.replayed,
-      ...(row.updated_existing !== undefined
-        ? { updatedExisting: row.updated_existing }
-        : {}),
+      ...(row.updated_existing !== undefined ? { updatedExisting: row.updated_existing } : {}),
       ...(row.is_potential_duplicate !== undefined
         ? {
             isPotentialDuplicate,
