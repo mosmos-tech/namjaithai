@@ -13,7 +13,6 @@ export default function Page({ searchParams }: PageProps<"/unit">) {
       <SignedInShell
         pathname="/unit"
         title="หน่วยของฉัน"
-        comingIn="TF-21"
         denied={searchParams.then((p) => p.denied === "1")}
       >
         <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">

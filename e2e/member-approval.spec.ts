@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
-import { adminDb } from "./helpers/db";
+import { adminDb, createCaseViaApi } from "./helpers/db";
 
 type TestAccount = {
   id: string;
@@ -138,6 +138,63 @@ test.describe("TF-20 คิวอนุมัติและระงับส�
     }
   });
 
+  test("TF-21 แสดงสถานะและเคสเฉพาะหน่วย", async ({ page, context, baseURL, isMobile }) => {
+    const db = adminDb();
+    const { error: memberError } = await db
+      .from("unit_members")
+      .update({ status: "APPROVED", is_on_duty: true, duty_status: "EN_ROUTE" })
+      .eq("id", m1Id);
+    expect(memberError).toBeNull();
+    const { data: otherUnit, error: otherError } = await db
+      .from("units")
+      .insert({ name: `หน่วยอื่น ${crypto.randomUUID()}`, province: "กรุงเทพมหานคร" })
+      .select("id, name")
+      .single();
+    expect(otherError).toBeNull();
+    const own = await createCaseViaApi(baseURL!);
+    const other = await createCaseViaApi(baseURL!);
+    try {
+      for (const [code, assignedUnit] of [
+        [own.caseCode, unitId],
+        [other.caseCode, otherUnit!.id],
+      ]) {
+        const { error } = await db
+          .from("cases")
+          .update({
+            status: "EN_ROUTE",
+            assigned_unit_id: assignedUnit,
+            assigned_rescuer_id: applicant1.id,
+          })
+          .eq("case_code", code);
+        expect(error).toBeNull();
+      }
+      await applySession(context, lead);
+      if (isMobile) await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/unit");
+      const row = page
+        .getByRole("list", { name: "รายการสมาชิกในหน่วย" })
+        .getByRole("listitem")
+        .filter({ hasText: applicant1.displayName });
+      await expect(row).toContainText("กำลังเดินทาง");
+      await expect(row).toContainText(own.caseCode);
+      await expect(page.getByText(other.caseCode)).toHaveCount(0);
+      await expect(page.getByText(otherUnit!.name)).toHaveCount(0);
+      await page.screenshot({ path: test.info().outputPath("unit-mobile.png"), fullPage: true });
+      const response = await page.request.get("/api/unit-members");
+      expect(response.status()).toBe(200);
+      const body = await response.json();
+      expect(JSON.stringify(body)).not.toContain(other.caseCode);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+    } finally {
+      await db
+        .from("cases")
+        .update({ assigned_unit_id: null, assigned_rescuer_id: null })
+        .in("case_code", [own.caseCode, other.caseCode]);
+      await db.from("units").delete().eq("id", otherUnit!.id);
+    }
+  });
   test("อนุมัติหลายคนพร้อมกัน ปฏิเสธ และระงับสมาชิกบนจอ 375px พร้อมตรวจสิทธิ์ /rescue, อายุ 90 วัน, audit_logs และคิว LINE", async ({
     page,
     context,
@@ -169,7 +226,9 @@ test.describe("TF-20 คิวอนุมัติและระงับส�
     await page.getByRole("checkbox", { name: `เลือก ${applicant1.displayName}` }).check();
     await page.getByRole("checkbox", { name: `เลือก ${applicant2.displayName}` }).check();
     await page.getByRole("button", { name: "อนุมัติที่เลือก (2)" }).click();
-    await expect(page.getByRole("status")).toContainText("อนุมัติสมาชิก 2 คนแล้ว (สิทธิ์ใช้งาน 90 วัน)");
+    await expect(page.getByRole("status")).toContainText(
+      "อนุมัติสมาชิก 2 คนแล้ว (สิทธิ์ใช้งาน 90 วัน)",
+    );
 
     // 4. ปฏิเสธคนที่ 3 แบบรายคน
     const row3 = pendingList.getByRole("listitem").filter({ hasText: applicant3.displayName });

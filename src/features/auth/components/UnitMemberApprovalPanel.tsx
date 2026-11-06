@@ -22,6 +22,7 @@ type UnitMemberItem = {
   has_line: boolean;
   status: UnitMemberStatus;
   duty_status: string;
+  cases: { code: string; status: string }[];
   is_on_duty: boolean;
   approved_at: string | null;
   expires_at: string | null;
@@ -71,12 +72,13 @@ export function UnitMemberApprovalPanel() {
   }, []);
 
   const unitMembers = members.filter((m) => m.unit_id === selectedUnitId);
+  const activeMembers = unitMembers.filter((member) =>
+    isMembershipActive({ status: member.status, expiresAt: member.expires_at, unitIsActive: true }),
+  );
   const pendingMembers = unitMembers.filter((m) => m.status === "PENDING");
   const reviewedMembers = unitMembers.filter((m) => m.status !== "PENDING");
 
-  const validSelectedIds = selectedIds.filter((id) =>
-    pendingMembers.some((m) => m.id === id),
-  );
+  const validSelectedIds = selectedIds.filter((id) => pendingMembers.some((m) => m.id === id));
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) =>
@@ -138,11 +140,15 @@ export function UnitMemberApprovalPanel() {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 id="approval-queue-heading" className="font-heading text-text-primary text-xl font-bold">
+          <h2
+            id="approval-queue-heading"
+            className="font-heading text-text-primary text-xl font-bold"
+          >
             คิวอนุมัติและระงับสมาชิก
           </h2>
           <p className="text-text-secondary mt-1">
-            อนุมัติหรือปฏิเสธผู้ที่สมัครผ่านลิงก์ใน LINE ได้ทีละคนหรือหลายคน (สิทธิ์กู้ภัยมีอายุ 90 วัน)
+            อนุมัติหรือปฏิเสธผู้ที่สมัครผ่านลิงก์ใน LINE ได้ทีละคนหรือหลายคน (สิทธิ์กู้ภัยมีอายุ 90
+            วัน)
           </p>
         </div>
         {units.length > 1 && (
@@ -167,6 +173,35 @@ export function UnitMemberApprovalPanel() {
         )}
       </div>
 
+      {selectedUnitId && (
+        <div className="mt-5">
+          <h3 className="font-heading text-text-primary text-xl font-semibold">
+            {units.find((unit) => unit.id === selectedUnitId)?.name}
+          </h3>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
+            <div className="rounded-xl bg-blue-50 p-3">
+              <strong className="block text-xl">{activeMembers.length}</strong>
+              สมาชิก
+            </div>
+            <div className="rounded-xl bg-emerald-50 p-3">
+              <strong className="block text-xl">
+                {
+                  activeMembers.filter(
+                    (member) => member.is_on_duty && member.duty_status !== "OFFLINE",
+                  ).length
+                }
+              </strong>
+              ออนไลน์
+            </div>
+            <div className="rounded-xl bg-amber-50 p-3">
+              <strong className="block text-xl">
+                {activeMembers.filter((member) => member.cases?.length).length}
+              </strong>
+              กำลังทำเคส
+            </div>
+          </div>
+        </div>
+      )}
       {statusMessage && (
         <p
           role="status"
@@ -257,11 +292,12 @@ export function UnitMemberApprovalPanel() {
                           className="mt-1 h-5 w-5 shrink-0 accent-blue-600"
                         />
                         <div className="min-w-0">
-                          <p className="text-text-primary break-words font-semibold">
+                          <p className="text-text-primary font-semibold break-words">
                             {member.display_name}
                           </p>
                           <p className="text-text-secondary text-sm">
-                            สมัครผ่าน LINE เมื่อ {formatThaiDate(member.created_at)} · สถานะ รออนุมัติ
+                            สมัครผ่าน LINE เมื่อ {formatThaiDate(member.created_at)} · สถานะ
+                            รออนุมัติ
                           </p>
                         </div>
                       </label>
@@ -328,7 +364,7 @@ export function UnitMemberApprovalPanel() {
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-text-primary break-words font-semibold">
+                          <p className="text-text-primary font-semibold break-words">
                             {member.display_name}
                           </p>
                           <span
@@ -337,6 +373,29 @@ export function UnitMemberApprovalPanel() {
                             {badgeText}
                           </span>
                         </div>
+                        {active && (
+                          <div className="text-text-secondary mt-2 text-sm">
+                            <p>
+                              สถานะ:{" "}
+                              {member.is_on_duty
+                                ? ((
+                                    {
+                                      AVAILABLE: "ว่าง",
+                                      EN_ROUTE: "กำลังเดินทาง",
+                                      ON_SITE: "ถึงจุดเกิดเหตุ",
+                                      OFFLINE: "ออฟไลน์",
+                                    } as Record<string, string>
+                                  )[member.duty_status] ?? "ออฟไลน์")
+                                : "ออฟไลน์"}
+                            </p>
+                            <p>
+                              เคสที่กำลังทำ:{" "}
+                              {member.cases?.length
+                                ? member.cases.map((item) => item.code).join(", ")
+                                : "ไม่มี"}
+                            </p>
+                          </div>
+                        )}
                         <p className="text-text-secondary mt-1 text-sm">
                           {member.status === "APPROVED" && member.expires_at
                             ? `สิทธิ์หมดอายุ ${formatThaiDate(member.expires_at)} (อายุสิทธิ์ 90 วัน)`

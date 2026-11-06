@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(20);
+select plan(21);
 insert into auth.users(id) values
  ('f4300000-0000-0000-0000-000000000001'), ('f4300000-0000-0000-0000-000000000002'), ('f4300000-0000-0000-0000-000000000003');
 insert into public.users(id, auth_user_id, display_name, role, status, line_user_id) values
@@ -34,6 +34,10 @@ select set_config('request.jwt.claims','{"sub":"f4300000-0000-0000-0000-00000000
 select is((select count(*)::int from public.get_my_cases()), 0, 'inactive user cannot read account cases');
 reset role;
 update public.users set status='ACTIVE' where id='f4300000-0000-0000-0000-000000000001';
+update public.cases set status='ACCEPTED' where case_code='TF43-A';
+select is((select count(*)::int from public.case_line_notifications where case_id::text like 'f431%'),0,'default deployment does not queue LINE jobs');
+update public.cases set status='NEW' where case_code='TF43-A';
+alter table public.cases enable trigger trg_case_line_notification;
 update public.cases set status='ACCEPTED' where case_code like 'TF43-%';
 select is((select count(*)::int from public.case_line_notifications where case_id::text like 'f431%'),1,'queue only actual LINE recipients, not guest or missing LINE identity');
 update public.cases set status='ACCEPTED' where case_code='TF43-A';
