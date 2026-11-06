@@ -24,6 +24,7 @@ import {
   subscribeSosDraft,
   getSosDraftSnapshot,
   getSosDraftServerSnapshot,
+  type ManualLocationSource,
   type SosDraft,
   type SosDraftPhoto,
   type SosStepNumber,
@@ -167,8 +168,8 @@ export function SosWizard() {
     }
   }
 
-  function handleManualPin(coords: { lat: number; lng: number }) {
-    const next = updateDraft((prev) => applyManualPinToDraft(prev, coords));
+  function handleManualPin(coords: { lat: number; lng: number }, source?: ManualLocationSource) {
+    const next = updateDraft((prev) => applyManualPinToDraft(prev, coords, source));
     if (step2Attempted) {
       setStep2Errors(validateStep2Draft(next).errors);
     }
