@@ -3,7 +3,10 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import {
+  INCIDENT_REGISTRY,
+  IncidentType,
   Need,
+  UNIVERSAL_DANGER_SIGNS,
   type LocatedArea,
   type WaterLevel,
 } from "../../../lib/domain";
@@ -101,11 +104,25 @@ export function SosWizard() {
   }
 
   // ── ขั้นที่ 1 ───────────────────────────────────────────────────────────────
-  // TF-55: ผู้แจ้งตอบคำถาม ระบบคำนวณระดับเองที่เซิร์ฟเวอร์
-  function handleChangeStep1(patch: Partial<Pick<SosDraft, "dangerSigns" | "canSelfEvacuate">>) {
+  // TF-50 / TF-55: เลือกประเภทเหตุ + อยู่ที่จุดเกิดเหตุไหม + ตอบคำถามสัญญาณอันตราย
+  function handleChangeStep1(
+    patch: Partial<
+      Pick<SosDraft, "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate">
+    >,
+  ) {
     setSubmitSuccessMessage(null);
     setSubmitError(null);
-    const next = updateDraft((prev) => ({ ...prev, ...patch }));
+    const next = updateDraft((prev) => {
+      const merged: SosDraft = { ...prev, ...patch };
+      if (patch.incidentType && Array.isArray(merged.dangerSigns)) {
+        const registrySigns = INCIDENT_REGISTRY[patch.incidentType].dangerSigns;
+        const validKeys = (
+          registrySigns.length > 0 ? registrySigns : UNIVERSAL_DANGER_SIGNS
+        ).map((s) => s.key);
+        merged.dangerSigns = merged.dangerSigns.filter((k) => validKeys.includes(k));
+      }
+      return merged;
+    });
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -132,6 +149,8 @@ export function SosWizard() {
 
     updateDraft((prev) => ({
       ...prev,
+      incidentType: prev.incidentType ?? IncidentType.FLOOD,
+      atScene: true,
       currentStep: 2,
     }));
   }
@@ -453,10 +472,14 @@ export function SosWizard() {
 
           {draft.currentStep === 1 && (
             <Step1Situation
+              incidentType={draft.incidentType}
+              atScene={draft.atScene}
               dangerSigns={draft.dangerSigns}
               canSelfEvacuate={draft.canSelfEvacuate}
               waterLevel={draft.waterLevel}
               errors={step1Errors}
+              onSelectIncidentType={(incidentType) => handleChangeStep1({ incidentType })}
+              onSelectAtScene={(atScene) => handleChangeStep1({ atScene })}
               onChangeDangerSigns={(dangerSigns) => handleChangeStep1({ dangerSigns })}
               onSelectCanSelfEvacuate={(canSelfEvacuate) => handleChangeStep1({ canSelfEvacuate })}
               onSelectWaterLevel={handleSelectWaterLevel}
