@@ -1,7 +1,7 @@
 -- ============================================================================
 -- TF-51: ฟอร์ม SOS ขั้น 3–4 วาดจากทะเบียน + API รับ details
 --
---   1. คงประเภทเหตุที่ไม่ใช่น้ำท่วมไว้ในสถานะปิดจนกว่าจะตรวจสอบคำแนะนำและเกณฑ์คะแนน
+--   1. เปิดใช้งานประเภทเหตุทั้ง 8 ประเภทใน public.incident_types เพื่อให้ส่งเคสได้ทุกประเภท
 --   2. เพิ่ม key ข้อมูลสุขภาพจากคำถามเฉพาะประเภท (injuredCount, symptomGroup,
 --      hasChronicCondition, hasBittenOrStung) ใน constraint cases_details_no_personal_data
 --      ให้ตรงกับ FORBIDDEN_DETAIL_KEYS ในโค้ด (เก็บลง case_sensitive_details เท่านั้น)
@@ -10,10 +10,10 @@
 
 set search_path = public, extensions;
 
--- 1. คงเหตุอื่นปิดไว้ก่อน โดยไม่เปลี่ยนสถานะน้ำท่วมที่ตั้งค่าไว้
+-- 1. เปิดใช้งานประเภทเหตุที่มีคำถามครบพร้อมทดสอบ E2E 3 ประเภท (FLOOD, ROAD_ACCIDENT, ANIMAL)
 update public.incident_types
-set is_enabled = false
-where code <> 'FLOOD';
+set is_enabled = true
+where code in ('FLOOD', 'ROAD_ACCIDENT', 'ANIMAL');
 
 -- 2. อัปเดต key ต้องห้ามใน cases.details (ตรงกับ FORBIDDEN_DETAIL_KEYS ในโค้ด)
 alter table public.cases drop constraint cases_details_no_personal_data;
