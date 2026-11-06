@@ -27,15 +27,17 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
     await expect(page.getByRole("status")).toContainText("บันทึกข้อมูลแล้ว");
     const { data: c, error } = await adminDb()
       .from("cases")
-      .select("id, urgency, priority_score, created_at, details, notes")
+      .select("id, urgency, triage_reasons, priority_score, created_at, details, notes")
       .eq("case_code", sent.caseCode)
       .single();
     expect(error).toBeNull();
     expect(c!.details).toEqual({ waterLevel: "ROOF", accessBlocked: true });
     expect(c!.notes).toBe("น้ำขึ้นเร็ว รออยู่ชั้นสอง");
+    expect(c!.urgency).toBe("RED");
+    expect(c!.triage_reasons).toContain("WATER_ROOF");
     expect(c!.priority_score).toBe(
       priorityScore({
-        urgency: "YELLOW",
+        urgency: "RED",
         waterLevel: "ROOF",
         bedridden: 2,
         elderly: 0,
@@ -68,6 +70,60 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
+  });
+
+  test("กู้ภัยปรับระดับไว้แล้ว ผู้แจ้งแก้ไขไม่ทับระดับนั้น", async ({ request, baseURL }) => {
+    const sent = await createCaseViaApi(baseURL!, { waterLevel: "ANKLE_KNEE" });
+    const db = adminDb();
+    const rescuer = await db
+      .from("users")
+      .insert({ display_name: "TF14 test rescuer", role: "RESCUER", status: "ACTIVE" })
+      .select("id")
+      .single();
+    expect(rescuer.error).toBeNull();
+    try {
+      const seeded = await db
+        .from("cases")
+        .update({
+          urgency: "GREEN",
+          urgency_overridden_by: rescuer.data!.id,
+          urgency_override_reason: "ทดสอบระดับที่กู้ภัยปรับ",
+          urgency_overridden_at: new Date().toISOString(),
+        })
+        .eq("case_code", sent.caseCode);
+      expect(seeded.error).toBeNull();
+      const url = `/api/track/${sent.caseCode}/reporter`;
+      const headers = { "X-Tracking-Token": sent.trackingToken, "X-Reporter-Phone": sent.phone };
+      const details = await (await request.get(url, { headers })).json();
+      const response = await request.patch(url, {
+        headers,
+        data: {
+          action: "update",
+          version: details.version,
+          waterLevel: "ROOF",
+          adults: 1,
+          elderly: 0,
+          bedridden: 0,
+          children: 0,
+          pets: 0,
+          notes: "",
+        },
+      });
+      expect(response.status()).toBe(200);
+      const result = await db
+        .from("cases")
+        .select("urgency,system_urgency,triage_reasons,urgency_overridden_by")
+        .eq("case_code", sent.caseCode)
+        .single();
+      expect(result.data).toMatchObject({
+        urgency: "GREEN",
+        system_urgency: "RED",
+        urgency_overridden_by: rescuer.data!.id,
+      });
+      expect(result.data!.triage_reasons).toContain("WATER_ROOF");
+    } finally {
+      await db.from("users").delete().eq("id", rescuer.data!.id);
+    }
   });
 
   test("ปลอดภัยแล้วต้องยืนยัน เปลี่ยนเป็น CANCELLED และบันทึกสถานะเดิม", async ({

@@ -12,11 +12,21 @@ const update = {
   children: 0,
   pets: 0,
 };
-function client(data: unknown = { version: 2 }, code?: string) {
+function client(data: unknown = { version: 2 }, code?: string, overridden = false) {
   const rpc = vi.fn(async (_fn, { p_action }) => ({
     data:
       p_action === "score_context" && data && !code
-        ? { urgency: "RED", createdAt: new Date().toISOString() }
+        ? {
+            urgency: overridden ? "GREEN" : "YELLOW",
+            createdAt: new Date().toISOString(),
+            incidentType: "FLOOD",
+            canSelfEvacuate: true,
+            dangerSigns: [],
+            hasDisabled: false,
+            hasInjured: false,
+            needs: [],
+            overridden,
+          }
         : data,
     error: code ? { code, message: "private database detail" } : null,
   }));
@@ -72,8 +82,31 @@ describe("TF-14 reporter mutations", () => {
       p_phone: "0812345678",
       p_client_ip: null,
       p_action: "update",
-      p_payload: { ...update, urgency: "RED", priorityScore: 10030 },
+      p_payload: {
+        ...update,
+        previousUrgency: "YELLOW",
+        urgency: "RED",
+        systemUrgency: "RED",
+        triageReasons: ["WATER_ROOF"],
+        priorityScore: 10030,
+      },
     });
+  });
+  it("keeps a rescuer override but updates calculated triage context", async () => {
+    const db = client({ version: 2 }, undefined, true);
+    expect((await call(db)).status).toBe(200);
+    expect(db.rpc).toHaveBeenNthCalledWith(
+      2,
+      "reporter_case_verified",
+      expect.objectContaining({
+        p_payload: expect.objectContaining({
+          previousUrgency: "GREEN",
+          urgency: "GREEN",
+          systemUrgency: "RED",
+          triageReasons: ["WATER_ROOF"],
+        }),
+      }),
+    );
   });
   it("returns not found for wrong proof", async () => {
     const db = client(null);

@@ -16,7 +16,15 @@ begin
     for update;
   if not found then return null; end if;
   if p_action = 'score_context' then
-    return jsonb_build_object('urgency', c.urgency, 'createdAt', c.created_at);
+    return jsonb_build_object(
+      'urgency', c.urgency, 'createdAt', c.created_at, 'incidentType', c.incident_type,
+      'canSelfEvacuate', coalesce((c.details ->> 'canSelfEvacuate')::boolean, false),
+      'dangerSigns', coalesce((select details -> 'dangerSigns' from public.case_sensitive_details where case_id = c.id), '[]'::jsonb),
+      'hasDisabled', coalesce((select (details ->> 'hasDisabled')::boolean from public.case_sensitive_details where case_id = c.id), false),
+      'hasInjured', coalesce((select (details ->> 'hasInjured')::boolean from public.case_sensitive_details where case_id = c.id), false),
+      'needs', coalesce((select jsonb_agg(need) from public.case_needs where case_id = c.id), '[]'::jsonb),
+      'overridden', c.urgency_overridden_by is not null);
+
   end if;
   v_from_status := c.status;
   select * into p from public.case_people where case_id = c.id for update;
@@ -32,7 +40,7 @@ begin
     end if;
     if p_action = 'update' then
       v_water := (p_payload ->> 'waterLevel')::public.water_level;
-      if p_payload ->> 'urgency' is distinct from c.urgency::text then
+      if p_payload ->> 'previousUrgency' is distinct from c.urgency::text then
         raise exception 'priority context changed' using errcode = 'SOS41';
       end if;
       v_score := (p_payload ->> 'priorityScore')::integer;
@@ -51,6 +59,9 @@ begin
         else jsonb_set(c.details, '{waterLevel}', to_jsonb(v_water), true)
       end,
         notes = nullif(btrim(p_payload ->> 'notes'), ''), priority_score = v_score,
+        urgency = case when c.urgency_overridden_by is not null then c.urgency else (p_payload ->> 'urgency')::public.urgency_level end,
+        system_urgency = case when c.urgency_overridden_by is not null then (p_payload ->> 'systemUrgency')::public.urgency_level else c.system_urgency end,
+        triage_reasons = array(select jsonb_array_elements_text(p_payload -> 'triageReasons')),
         version = version + 1 where id = c.id returning * into c;
     elsif p_action = 'cancel' then
       update public.cases set status = 'CANCELLED', closed_at = now(),

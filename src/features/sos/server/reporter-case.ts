@@ -5,6 +5,9 @@ import {
   trackingTokenSchema,
   step3BaseSchema,
   priorityScore,
+  computeTriage,
+  type IncidentType,
+  type Need,
   type Urgency,
   WaterLevel,
 } from "../../../lib/domain";
@@ -37,7 +40,17 @@ export type ReporterDetails = {
   pets: number;
 };
 
-type ReporterScoreContext = { urgency: Urgency; createdAt: string };
+type ReporterScoreContext = {
+  urgency: Urgency;
+  createdAt: string;
+  incidentType: IncidentType;
+  canSelfEvacuate: boolean;
+  dangerSigns: string[];
+  hasDisabled: boolean;
+  hasInjured: boolean;
+  needs: Need[];
+  overridden: boolean;
+};
 
 export interface ReporterRpcClient {
   rpc(
@@ -93,8 +106,21 @@ export async function handleReporterCase(input: {
   if (mutation?.action === "update" && data && !error) {
     if (!("urgency" in data))
       return { status: 500, body: { error: "บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" }, headers };
+    const triage = computeTriage({
+      incidentType: data.incidentType,
+      dangerSigns: data.dangerSigns,
+      waterLevel: mutation.waterLevel ?? undefined,
+      canSelfEvacuate: data.canSelfEvacuate,
+      elderly: mutation.elderly,
+      bedridden: mutation.bedridden,
+      children: mutation.children,
+      hasDisabled: data.hasDisabled,
+      hasInjured: data.hasInjured,
+      needs: data.needs,
+    });
+    const urgency = data.overridden ? data.urgency : triage.level;
     const score = priorityScore({
-      urgency: data.urgency,
+      urgency,
       createdAt: new Date(data.createdAt),
       waterLevel: mutation.waterLevel ?? undefined,
       bedridden: mutation.bedridden,
@@ -103,7 +129,10 @@ export async function handleReporterCase(input: {
     });
     ({ data, error } = await call("update", {
       ...mutation,
-      urgency: data.urgency,
+      previousUrgency: data.urgency,
+      urgency,
+      systemUrgency: triage.level,
+      triageReasons: triage.reasons,
       priorityScore: score,
     }));
   }
