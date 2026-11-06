@@ -112,8 +112,12 @@ export const FORBIDDEN_DETAIL_KEYS = [
   "lineId",
   "detailedAddress",
   "health",
-  // TF-55: คำตอบเรื่องสุขภาพที่ใช้คำนวณระดับ เก็บใน case_sensitive_details เท่านั้น
+  // TF-55 & TF-51: คำตอบเรื่องสุขภาพที่ใช้คำนวณระดับและคำถามเฉพาะประเภท เก็บใน case_sensitive_details เท่านั้น
   "dangerSigns",
   "hasDisabled",
   "hasInjured",
+  "injuredCount",
+  "symptomGroup",
+  "hasChronicCondition",
+  "hasBittenOrStung",
 ] as const;

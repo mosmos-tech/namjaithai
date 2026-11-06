@@ -395,41 +395,43 @@ export function Step1Situation({
             </div>
           </section>
 
-          {/* ระดับน้ำ: TF-55 ถามทั้งมือถือและจอคอม (ใช้คำนวณระดับ) แต่ไม่บังคับ */}
-          <section aria-labelledby="water-level-heading" className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h2 id="water-level-heading" className={headingClass}>
-                ระดับน้ำรอบตัวคุณตอนนี้
-              </h2>
-              <p className="text-text-secondary text-base">ไม่แน่ใจข้ามได้</p>
-            </div>
-            <div
-              role="radiogroup"
-              aria-labelledby="water-level-heading"
-              className="flex flex-wrap gap-3"
-            >
-              {WATER_LEVEL_DISPLAY_ORDER.map((level) => {
-                const selected = waterLevel === level;
-                return (
-                  <button
-                    key={level}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    // ไม่บังคับ: กดตัวที่เลือกอยู่ซ้ำเพื่อยกเลิก
-                    onClick={() => onSelectWaterLevel(selected ? undefined : level)}
-                    className={`min-h-12 rounded-full border-[1.5px] px-5 py-3 text-base leading-[1.4] font-medium transition-colors ${
-                      selected
-                        ? "border-primary-600 bg-primary-600 text-text-on-primary"
-                        : "border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
-                    }`}
-                  >
-                    {waterLevelLabel[level]}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+          {/* ระดับน้ำ: TF-55 ถามเฉพาะกรณีน้ำท่วม ทั้งมือถือและจอคอม (ใช้คำนวณระดับ) แต่ไม่บังคับ */}
+          {activeType === IncidentType.FLOOD && (
+            <section aria-labelledby="water-level-heading" className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h2 id="water-level-heading" className={headingClass}>
+                  ระดับน้ำรอบตัวคุณตอนนี้
+                </h2>
+                <p className="text-text-secondary text-base">ไม่แน่ใจข้ามได้</p>
+              </div>
+              <div
+                role="radiogroup"
+                aria-labelledby="water-level-heading"
+                className="flex flex-wrap gap-3"
+              >
+                {WATER_LEVEL_DISPLAY_ORDER.map((level) => {
+                  const selected = waterLevel === level;
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      // ไม่บังคับ: กดตัวที่เลือกอยู่ซ้ำเพื่อยกเลิก
+                      onClick={() => onSelectWaterLevel(selected ? undefined : level)}
+                      className={`min-h-12 rounded-full border-[1.5px] px-5 py-3 text-base leading-[1.4] font-medium transition-colors ${
+                        selected
+                          ? "border-primary-600 bg-primary-600 text-text-on-primary"
+                          : "border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
+                      }`}
+                    >
+                      {waterLevelLabel[level]}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <SosStepActions onNext={onNext} mobileLabel="ถัดไป" desktopLabel="ถัดไป: ตำแหน่ง" />
         </>
