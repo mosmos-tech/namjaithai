@@ -11,6 +11,11 @@ import {
   IncidentType,
   INCIDENT_REGISTRY,
   UNIVERSAL_DANGER_SIGNS,
+  LocationSource,
+  INACCURATE_LOCATION_MESSAGE,
+  ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE,
+  accuracyForLocationSource,
+  isInaccurateGps,
   type LocatedArea,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
@@ -113,6 +118,9 @@ export interface SosDraft {
   lat?: number;
   lng?: number;
   accuracyM?: number;
+  // TF-65: ได้พิกัดมาจาก GPS / ปักเอง / ลิงก์ และผู้แจ้งเลือก "ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน" หรือยัง
+  locationSource?: LocationSource;
+  addressFallback?: boolean;
   provinceCode?: string;
   districtCode?: string;
   subdistrictCode?: string;
@@ -283,6 +291,7 @@ export function validateStep1Draft(
 
 export interface Step2ValidationErrors {
   location?: string;
+  addressLine?: string;
   landmark?: string;
   missingSummary: string[];
 }
@@ -295,7 +304,16 @@ export interface Step2ValidationErrors {
 export function validateStep2Draft(
   draft: Pick<
     SosDraft,
-    "lat" | "lng" | "accuracyM" | "province" | "district" | "subdistrict" | "landmark"
+    | "lat"
+    | "lng"
+    | "accuracyM"
+    | "locationSource"
+    | "addressFallback"
+    | "addressLine"
+    | "province"
+    | "district"
+    | "subdistrict"
+    | "landmark"
   >,
 ): {
   valid: boolean;
@@ -305,13 +323,22 @@ export function validateStep2Draft(
     lat: draft.lat,
     lng: draft.lng,
     accuracyM: draft.accuracyM,
+    locationSource: draft.locationSource,
+    addressLine: draft.addressLine,
     province: draft.province,
     district: draft.district,
     subdistrict: draft.subdistrict,
     landmark: draft.landmark,
   });
 
-  if (result.success) {
+  // TF-65: GPS คลาดเคลื่อนเกิน 1000 ม. ไปต่อได้ 2 ทาง คือปักหมุดเอง/วางลิงก์ (accuracy ถูกล้าง)
+  // หรือกด "ส่งพร้อมที่อยู่แทน" แล้วกรอกที่อยู่ — ไม่บล็อกการขอความช่วยเหลือ
+  const inaccurateGps = isInaccurateGps(draft.accuracyM);
+  const needsPinOrFallback = inaccurateGps && draft.addressFallback !== true;
+  const needsAddress =
+    inaccurateGps && draft.addressFallback === true && !draft.addressLine?.trim();
+
+  if (result.success && !needsPinOrFallback && !needsAddress) {
     return {
       valid: true,
       errors: { missingSummary: [] },
@@ -325,6 +352,9 @@ export function validateStep2Draft(
   if (typeof draft.lat !== "number" || typeof draft.lng !== "number") {
     errors.location = "กรุณาดึงพิกัด GPS หรือแตะปักหมุดตำแหน่งบนแผนที่";
     errors.missingSummary.push("พิกัดตำแหน่ง");
+  } else if (needsPinOrFallback) {
+    errors.location = INACCURATE_LOCATION_MESSAGE;
+    errors.missingSummary.push("พิกัดตำแหน่ง");
   } else {
     const latCheck = latSchema.safeParse(draft.lat);
     const lngCheck = lngSchema.safeParse(draft.lng);
@@ -335,6 +365,11 @@ export function validateStep2Draft(
         "พิกัดอยู่นอกประเทศไทย";
       errors.missingSummary.push("พิกัดตำแหน่ง");
     }
+  }
+
+  if (needsAddress) {
+    errors.addressLine = ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE;
+    errors.missingSummary.push("ที่อยู่");
   }
 
   if (!draft.landmark || draft.landmark.trim().length === 0) {
@@ -361,6 +396,7 @@ export function isLowGpsAccuracy(accuracyM?: number): boolean {
 
 /**
  * นำพิกัดจาก GPS ของอุปกรณ์มาอัปเดตลงร่างฟอร์ม พร้อมบันทึกค่าความแม่นยำ (accuracyM)
+ * เก็บไว้แม้คลาดเคลื่อนเกิน 1000 ม. (ใช้ตอนผู้แจ้งเลือกส่งพร้อมที่อยู่แทน) แต่หน้าจอจะไม่ปักหมุดให้ (TF-65)
  */
 export function applyGpsPositionToDraft(
   draft: SosDraft,
@@ -374,24 +410,33 @@ export function applyGpsPositionToDraft(
       typeof coords.accuracy === "number" && Number.isFinite(coords.accuracy)
         ? Math.round(coords.accuracy)
         : undefined,
+    locationSource: LocationSource.GPS,
+    addressFallback: false,
   };
 }
 
 /**
  * นำพิกัดจากการปักหมุดเองบนแผนที่หรือลิงก์ Google Maps มาอัปเดตลงร่างฟอร์ม
- * ล้างค่า accuracyM ออกเพราะเป็นจุดที่ผู้ใช้ปักยืนยันด้วยตัวเองแล้ว
+ * ล้างค่า accuracyM ออกเพราะเป็นจุดที่ผู้ใช้ปักยืนยันด้วยตัวเองแล้ว (เคสเก็บ accuracy_m = null)
  */
 export function applyManualPinToDraft(
   draft: SosDraft,
   coords: { lat: number; lng: number },
+  source: ManualLocationSource = LocationSource.MANUAL_PIN,
 ): SosDraft {
   return {
     ...draft,
     lat: Number(coords.lat.toFixed(6)),
     lng: Number(coords.lng.toFixed(6)),
     accuracyM: undefined,
+    locationSource: source,
+    addressFallback: false,
   };
 }
+
+export type ManualLocationSource =
+  | typeof LocationSource.MANUAL_PIN
+  | typeof LocationSource.GMAPS_LINK;
 
 /**
  * นำผลลัพธ์จาก API แปลงพิกัดเป็นที่อยู่ (/api/geo/reverse) มาเติมจังหวัด/อำเภอ/ตำบลในร่างฟอร์มอัตโนมัติ
@@ -409,7 +454,7 @@ export function applyLocatedAreaToDraft(draft: SosDraft, area: LocatedArea): Sos
 }
 
 export interface GpsStatusBanner {
-  tone: "success" | "warning";
+  tone: "success" | "warning" | "error";
   desktopText: string;
   mobileText: string;
 }
@@ -444,6 +489,15 @@ export function getGpsStatusMessage(params: {
   }
 
   if (typeof params.lat === "number" && typeof params.lng === "number") {
+    if (isInaccurateGps(params.accuracyM)) {
+      const rounded = Math.round(params.accuracyM!).toLocaleString("th-TH");
+      return {
+        tone: "error",
+        desktopText: `${INACCURATE_LOCATION_MESSAGE} (คลาดเคลื่อน ±${rounded} เมตร)`,
+        mobileText: INACCURATE_LOCATION_MESSAGE,
+      };
+    }
+
     if (isLowGpsAccuracy(params.accuracyM)) {
       const rounded = Math.round(params.accuracyM!);
       return {
@@ -812,6 +866,12 @@ export function loadSosDraft(
     const canSelfEvacuate =
       typeof parsed.canSelfEvacuate === "boolean" ? parsed.canSelfEvacuate : undefined;
 
+    const locationSource =
+      typeof parsed.locationSource === "string" &&
+      (Object.values(LocationSource) as string[]).includes(parsed.locationSource)
+        ? (parsed.locationSource as LocationSource)
+        : undefined;
+
     const waterLevel =
       typeof parsed.waterLevel === "string" && validWaterLevels.includes(parsed.waterLevel)
         ? (parsed.waterLevel as WaterLevel)
@@ -870,6 +930,8 @@ export function loadSosDraft(
       hasInjured: parsed.hasInjured === true,
       waterLevel,
       details,
+      locationSource,
+      addressFallback: parsed.addressFallback === true,
       needs,
       photos,
       idempotencyKey,
@@ -1149,7 +1211,9 @@ export async function submitSosDraft(
           details: detailsPayload,
           lat: nextDraft.lat,
           lng: nextDraft.lng,
-          accuracyM: nextDraft.accuracyM,
+          accuracyM: accuracyForLocationSource(nextDraft.locationSource, nextDraft.accuracyM),
+          locationSource: nextDraft.locationSource,
+          addressLine: nextDraft.addressLine?.trim() || undefined,
           province: nextDraft.province,
           district: nextDraft.district,
           subdistrict: nextDraft.subdistrict,

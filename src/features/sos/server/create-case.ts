@@ -4,6 +4,7 @@ import {
   validateAndSplitIncidentDetails,
   priorityScore,
   computeTriage,
+  accuracyForLocationSource,
   IncidentType,
   WaterLevel,
   duplicateResolutionSchema,
@@ -332,6 +333,8 @@ export async function handleCreateSosCase(params: {
     incidentType,
     waterLevel: effectiveWaterLevel,
     canSelfEvacuate: effectiveCanSelfEvacuate,
+    // TF-65: ปักเอง/วางลิงก์ไม่มีค่าความคลาดเคลื่อน ไม่ว่าคำขอจะส่งอะไรมา
+    accuracyM: accuracyForLocationSource(answers.locationSource, answers.accuracyM),
     urgency: triage.level,
     triageReasons: triage.reasons,
     ...(Object.keys(detailsCheck.publicDetails).length > 0

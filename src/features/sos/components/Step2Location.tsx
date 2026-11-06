@@ -5,12 +5,16 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import {
   parseGoogleMapsUrl,
+  isInaccurateGps,
+  LocationSource,
   type AdminArea,
+  type AreaBounds,
   type LocatedArea,
 } from "../../../lib/domain";
 import {
   getGpsStatusMessage,
   type GpsErrorCode,
+  type ManualLocationSource,
   type SosDraft,
   type Step2ValidationErrors,
 } from "../draft-storage";
@@ -40,7 +44,7 @@ export interface Step2LocationProps {
     longitude: number;
     accuracy?: number;
   }) => void;
-  onManualPin: (coords: { lat: number; lng: number }) => void;
+  onManualPin: (coords: { lat: number; lng: number }, source?: ManualLocationSource) => void;
   onAutoFillArea: (area: LocatedArea) => void;
   onUpdateField: (patch: Partial<SosDraft>) => void;
   onPrev: () => void;
@@ -53,6 +57,8 @@ export interface Step2LocationProps {
  * - แจ้งเตือนเมื่อความแม่นยำเกิน 100 ม. ให้ปักหมุดเพิ่มบนแผนที่
  * - แม้ไม่อนุญาต GPS ก็ยังแตะหรือลากหมุดปักเองบนแผนที่ได้
  * - กรอกจังหวัด/อำเภอ/ตำบลอัตโนมัติจากพิกัดผ่าน /api/geo/reverse และแก้เองได้
+ * - TF-65: GPS คลาดเคลื่อนเกิน 1000 ม. ไม่ปักหมุดให้ ผู้แจ้งต้องปักเอง วางลิงก์ หรือกด
+ *   "ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน" แล้วกรอกที่อยู่ (ไม่บล็อกการขอความช่วยเหลือ)
  * - ช่องจุดสังเกต (บังคับ)
  */
 export function Step2Location({
@@ -69,6 +75,8 @@ export function Step2Location({
   const [gpsError, setGpsError] = useState<GpsErrorCode | null>(null);
   const [gmapsError, setGmapsError] = useState<string | null>(null);
   const [isResolvingGmaps, setIsResolvingGmaps] = useState(false);
+  // กรอบตำบลที่ผู้แจ้งเลือกเอง ให้แผนที่เลื่อนไปที่นั่น (TF-65)
+  const [focusBounds, setFocusBounds] = useState<AreaBounds | undefined>();
 
   const [provinces, setProvinces] = useState<AdminArea[]>([]);
   const [districts, setDistricts] = useState<AdminArea[]>([]);
@@ -182,7 +190,8 @@ export function Step2Location({
         setGpsError(null);
         const { latitude, longitude, accuracy } = position.coords;
         onGpsPosition({ latitude, longitude, accuracy });
-        void reverseGeocodeCoordinates(latitude, longitude);
+        // พิกัดคลาดเคลื่อนหลายกิโลเมตรอาจเติมตำบลผิด ให้ผู้แจ้งเลือกเอง (TF-65)
+        if (!isInaccurateGps(accuracy)) void reverseGeocodeCoordinates(latitude, longitude);
       },
       (error) => {
         setIsLocating(false);
@@ -218,7 +227,7 @@ export function Step2Location({
     const direct = parseGoogleMapsUrl(trimmed);
     if (direct.ok) {
       setGpsError(null);
-      onManualPin({ lat: direct.lat, lng: direct.lng });
+      onManualPin({ lat: direct.lat, lng: direct.lng }, LocationSource.GMAPS_LINK);
       void reverseGeocodeCoordinates(direct.lat, direct.lng);
       return;
     }
@@ -245,7 +254,7 @@ export function Step2Location({
         return;
       }
       setGpsError(null);
-      onManualPin({ lat: data.lat, lng: data.lng });
+      onManualPin({ lat: data.lat, lng: data.lng }, LocationSource.GMAPS_LINK);
       void reverseGeocodeCoordinates(data.lat, data.lng);
     } catch {
       setGmapsError(
@@ -287,6 +296,18 @@ export function Step2Location({
       subdistrictCode: code || undefined,
       subdistrict: found?.nameTh ?? undefined,
     });
+    if (code) void focusMapOnSubdistrict(code);
+  }
+
+  // TF-65: เลือกตำบลเองแล้วเลื่อนแผนที่ไปที่ตำบลนั้น ผู้แจ้งยังต้องแตะปักจุดเอง
+  async function focusMapOnSubdistrict(code: string) {
+    try {
+      const res = await fetch(`/api/geo/subdistricts/${encodeURIComponent(code)}/bounds`);
+      if (!res.ok) return;
+      setFocusBounds((await res.json()) as AreaBounds);
+    } catch {
+      // ออฟไลน์: แผนที่อยู่ที่เดิม ผู้แจ้งยังเลื่อนและแตะเองได้
+    }
   }
 
   const statusBanner = getGpsStatusMessage({
@@ -297,6 +318,14 @@ export function Step2Location({
   });
 
   const hasCoordinates = typeof draft.lat === "number" && typeof draft.lng === "number";
+  // TF-65: GPS ไม่แม่น = มีพิกัดแต่ไม่ถือเป็นหมุด แสดงแค่วงความคลาดเคลื่อน
+  const inaccurateGps = hasCoordinates && isInaccurateGps(draft.accuracyM);
+  const addressRequired = inaccurateGps && draft.addressFallback === true;
+  const mapPin = hasCoordinates && !inaccurateGps ? { lat: draft.lat!, lng: draft.lng! } : undefined;
+  const accuracyCircle =
+    hasCoordinates && typeof draft.accuracyM === "number" && draft.accuracyM > 0
+      ? { lat: draft.lat!, lng: draft.lng!, radiusM: draft.accuracyM }
+      : undefined;
 
   // รวมรายการในตัวเลือกกับค่าที่ได้จาก reverse geocode เพื่อให้แสดงชื่อทันทีแม้รายชื่อเต็มยังโหลดไม่เสร็จ
   const provinceOptions =
@@ -413,7 +442,9 @@ export function Step2Location({
             className={`order-2 flex w-full items-center gap-3 rounded-[12px] px-4 py-[14px] lg:order-2 lg:px-5 ${
               statusBanner.tone === "success"
                 ? "bg-green-50 text-green-700"
-                : "border border-amber-500/40 bg-amber-50 text-amber-700"
+                : statusBanner.tone === "error"
+                  ? "border border-red-600/30 bg-red-50 text-red-600"
+                  : "border border-amber-500/40 bg-amber-50 text-amber-700"
             }`}
           >
             {statusBanner.tone === "success" && (
@@ -435,11 +466,35 @@ export function Step2Location({
         {/* แผนที่ MapLibre โหลดเฉพาะเมื่อเปิดขั้นที่ 2 */}
         <div className="order-1 w-full lg:order-3">
           <LazyStep2LocationMap
-            lat={draft.lat}
-            lng={draft.lng}
+            pin={mapPin}
+            accuracyCircle={accuracyCircle}
+            focusBounds={focusBounds}
             onPinChange={handleMapPinChange}
           />
         </div>
+
+        {/* TF-65: ทางออกเมื่อปักหมุดไม่ได้ — ห้ามบล็อก SOS ทั้งหมด */}
+        {inaccurateGps && (
+          <div className="order-3 flex flex-col gap-2 lg:order-4">
+            {addressRequired ? (
+              <p
+                data-testid="address-fallback-notice"
+                className="text-text-primary rounded-[12px] border border-amber-500/40 bg-amber-50 px-4 py-3 text-base leading-[1.55] font-medium"
+              >
+                จะส่งพร้อมที่อยู่แทนหมุด กรุณากรอกที่อยู่และจุดสังเกตด้านล่างให้ละเอียด
+                (ยังแตะปักหมุดบนแผนที่ได้ถ้าทำได้)
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onUpdateField({ addressFallback: true })}
+                className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle font-heading min-h-12 w-full rounded-full border px-5 py-3 text-base font-semibold"
+              >
+                ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ช่องวางลิงก์ Google Maps (Figma B2: หรือวางลิงก์ Google Maps (ถ้ามี)) */}
         <div className="order-4 flex flex-col gap-2.5">
@@ -614,8 +669,13 @@ export function Step2Location({
               className="text-text-primary text-base leading-[1.4] font-medium"
             >
               บ้านเลขที่ / หมู่ / ซอย
+              {addressRequired && <span className="text-red-600"> *</span>}
             </label>
-            <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface flex min-h-[60px] w-full items-center gap-3 rounded-[12px] border px-5 py-4 transition-shadow focus-within:shadow-[0px_0px_0px_5px_rgba(31,112,209,0.18)]">
+            <div
+              className={`focus-within:border-primary-600 focus-within:bg-bg-surface flex min-h-[60px] w-full items-center gap-3 rounded-[12px] border px-5 py-4 transition-shadow focus-within:shadow-[0px_0px_0px_5px_rgba(31,112,209,0.18)] ${
+                errors.addressLine ? "border-2 border-red-600 bg-red-50/40" : "border-border-default bg-bg-page"
+              }`}
+            >
               <img
                 src="/brand/icon-home.svg"
                 alt=""
@@ -629,9 +689,16 @@ export function Step2Location({
                 value={draft.addressLine ?? ""}
                 onChange={(event) => onUpdateField({ addressLine: event.target.value })}
                 placeholder="เช่น 99/1 หมู่ 3 ซอยวัดไร่ขิง"
+                aria-required={addressRequired}
+                aria-invalid={Boolean(errors.addressLine)}
                 className="text-text-primary placeholder:text-text-secondary min-w-0 flex-1 bg-transparent text-lg leading-[1.65] outline-none"
               />
             </div>
+            {errors.addressLine && (
+              <p role="alert" className="text-base font-medium text-red-600">
+                {errors.addressLine}
+              </p>
+            )}
           </div>
         </div>
 
