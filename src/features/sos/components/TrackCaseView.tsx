@@ -17,6 +17,7 @@ import {
   caseCodeSchema,
   formatThaiDateTime,
   formatThaiTime,
+  isClosedStatus,
   reporterStatusView,
   timelineLabel,
   type CaseStatus,
@@ -26,6 +27,7 @@ import {
 import { useTrackedCase } from "../use-tracked-case";
 import { TrackLookupForm } from "./TrackLookupForm";
 import { ReporterCaseActions } from "./ReporterCaseActions";
+import { WaitingAdvice } from "./WaitingAdvice";
 
 /**
  * หน้าติดตามเคส /track/รหัสเคส?t=token (TF-13)
@@ -98,6 +100,9 @@ function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string 
       {state.kind === "ready" && (
         <>
           <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
+          {!isClosedStatus(state.data.status) && (
+            <WaitingAdvice incidentType={state.data.incidentType} />
+          )}
           <ReporterCaseActions
             caseCode={caseCode}
             token={token}
@@ -149,7 +154,7 @@ function TrackedCaseDetail({
         {data.status === "NEW" && (
           <div className="text-text-primary mt-6 flex gap-3 rounded-[12px] bg-amber-50 p-4 text-lg">
             <TriangleAlert className="mt-1 size-6 shrink-0 text-amber-700" aria-hidden="true" />
-            <p>ระหว่างรอ: ขึ้นที่สูง เปิดเสียงโทรศัพท์ไว้ ทีมจะโทรหาก่อนออกเดินทาง</p>
+            <p>ระหว่างรอ: เปิดเสียงโทรศัพท์ไว้ ทีมจะโทรหาก่อนออกเดินทาง</p>
           </div>
         )}
 

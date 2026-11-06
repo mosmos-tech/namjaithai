@@ -56,8 +56,21 @@ export const flood: IncidentDefinition = {
     { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ" }, source: TF55_TRIAGE_TABLE_SOURCE },
   ],
   needs: Object.values(Need),
-  waitingAdvice: FLOOD_DURING_TIPS.map((th) => ({
-    text: { th },
-    source: "คู่มือเอาตัวรอดของเว็บ (/survival) — ยังไม่ได้ตรวจกับแหล่งทางการ",
-  })),
+  // FEMA flood guidance; these items are separate from the legacy survival checklist.
+  waitingAdvice: [
+    {
+      text: { th: "หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม" },
+      source: "https://www.ready.gov/floods",
+    },
+    {
+      text: { th: "หากติดในอาคาร ให้ขึ้นไปยังจุดสูงที่ปลอดภัยและส่งสัญญาณขอความช่วยเหลือ" },
+      source: "https://www.ready.gov/floods",
+    },
+    {
+      text: {
+        th: "อย่าสัมผัสอุปกรณ์ไฟฟ้าที่เปียกหรือขณะยืนอยู่ในน้ำ ปิดไฟเฉพาะเมื่อทำได้อย่างปลอดภัย",
+      },
+      source: "https://www.ready.gov/floods",
+    },
+  ],
 };

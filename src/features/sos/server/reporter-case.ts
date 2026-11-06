@@ -121,6 +121,7 @@ export async function handleReporterCase(input: {
     const urgency = data.overridden ? data.urgency : triage.level;
     const score = priorityScore({
       urgency,
+      incidentType: data.incidentType,
       createdAt: new Date(data.createdAt),
       waterLevel: mutation.waterLevel ?? undefined,
       bedridden: mutation.bedridden,

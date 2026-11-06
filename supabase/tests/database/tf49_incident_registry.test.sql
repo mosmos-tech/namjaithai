@@ -24,8 +24,8 @@ select is(
 );
 select is(
   (select string_agg(code, ',' order by sort_order) from public.incident_types where is_enabled),
-  'FLOOD,ROAD_ACCIDENT,ANIMAL',
-  'เปิดให้เลือกได้ 3 ประเภทเหตุ (FLOOD, ROAD_ACCIDENT, ANIMAL) ใน TF-51'
+  'FLOOD',
+  'เปิดเฉพาะน้ำท่วมจนกว่าจะตรวจสอบประเภทเหตุอื่นครบ'
 );
 
 -- ---------- cases ----------
