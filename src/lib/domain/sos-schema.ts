@@ -1,19 +1,48 @@
 import { z } from "zod";
 import "./zod-locale";
-import { Urgency, WaterLevel, Need } from "./enums";
+import { WaterLevel, Need } from "./enums";
 import { latSchema, lngSchema } from "./geo";
+import {
+  INCIDENT_REGISTRY,
+  IncidentType,
+  UNIVERSAL_DANGER_SIGNS,
+} from "./incidents";
 
-const urgencyValues = Object.values(Urgency) as [Urgency, ...Urgency[]];
 const waterLevelValues = Object.values(WaterLevel) as [WaterLevel, ...WaterLevel[]];
 const needValues = Object.values(Need) as [Need, ...Need[]];
+const incidentTypeValues = Object.values(IncidentType) as [
+  IncidentType,
+  ...IncidentType[],
+];
 
 // เบอร์โทรไทย: มือถือ 06x-09x (10 หลัก) หรือบ้าน/สำนักงาน 02x-05x (9-10 หลัก)
 const thaiPhoneRegex = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
 
-// ── ขั้น 1: ความเร่งด่วนและระดับน้ำ ─────────────────────────────────────────
+// สัญญาณอันตรายทั้งหมดจากทะเบียนประเภทเหตุ (TF-49 / TF-50 / TF-55)
+const allDangerSignKeys = Array.from(
+  new Set([
+    ...UNIVERSAL_DANGER_SIGNS.map((s) => s.key),
+    ...Object.values(INCIDENT_REGISTRY).flatMap((def) =>
+      def.dangerSigns.map((s) => s.key),
+    ),
+  ]),
+) as [string, ...string[]];
+
+// ── ขั้น 1: สถานการณ์ (TF-50 / TF-55: เลือกประเภทเหตุ + อยู่ที่จุดเกิดเหตุ + คำถามสัญญาณอันตราย) ──
 export const step1Schema = z.object({
-  urgency: z.enum(urgencyValues, { error: "กรุณาเลือกระดับความเร่งด่วน" }),
-  // ไม่บังคับ: Figma มือถือไม่มีคำถามระดับน้ำ มีเฉพาะจอคอม
+  incidentType: z
+    .enum(incidentTypeValues, { error: "ไม่มีประเภทเหตุนี้" })
+    .optional(),
+  // ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (false) จะไม่ผ่านการตรวจและไม่สร้างเคส (TF-50)
+  atScene: z
+    .literal(true, { error: "แจ้งแทนคนอื่นไม่ได้ กรุณาโทรสายด่วนฉุกเฉินแทน" })
+    .optional(),
+  // ต้องตอบ: ติ๊กสัญญาณอันตราย หรือกด "ไม่มี" (= array ว่าง)
+  dangerSigns: z.array(z.enum(allDangerSignKeys, { error: "ไม่มีตัวเลือกนี้" }), {
+    error: "กรุณาตอบว่ามีสัญญาณอันตรายข้อใดไหม",
+  }),
+  canSelfEvacuate: z.boolean({ error: "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม" }),
+  // ไม่บังคับ แต่ไม่ตอบ = ไม่ทราบระดับน้ำ ระบบจะไม่ให้ระดับเขียว
   waterLevel: z.enum(waterLevelValues, { error: "ไม่มีตัวเลือกระดับน้ำนี้" }).optional(),
 });
 
@@ -48,6 +77,9 @@ export const step3BaseSchema = z.object({
   bedridden: peopleCount,
   children: peopleCount,
   pets: peopleCount,
+  // TF-55: ใช้คำนวณระดับ เป็นข้อมูลสุขภาพ เก็บใน case_sensitive_details
+  hasDisabled: z.boolean().default(false),
+  hasInjured: z.boolean().default(false),
 });
 
 export const step3Schema = step3BaseSchema.refine(

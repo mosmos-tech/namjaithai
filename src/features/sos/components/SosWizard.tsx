@@ -3,17 +3,21 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import {
+  INCIDENT_REGISTRY,
+  IncidentType,
   Need,
-  urgencyLabel,
-  waterLevelLabel,
-  type Urgency,
+  UNIVERSAL_DANGER_SIGNS,
+  type LocatedArea,
   type WaterLevel,
 } from "../../../lib/domain";
 import {
-  SOS_STEPS,
+  applyGpsPositionToDraft,
+  applyLocatedAreaToDraft,
+  applyManualPinToDraft,
   saveSosDraft,
   submitSosDraft,
   validateStep1Draft,
+  validateStep2Draft,
   validateStep3Draft,
   validateStep4Draft,
   validateStep5Draft,
@@ -24,23 +28,25 @@ import {
   type SosDraftPhoto,
   type SosStepNumber,
   type Step1ValidationErrors,
+  type Step2ValidationErrors,
   type Step3ValidationErrors,
   type Step4ValidationErrors,
   type Step5ValidationErrors,
 } from "../draft-storage";
 import { MAX_SOS_PHOTOS } from "../image-compression";
 import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
-import { SosStepActions } from "./SosStepActions";
 import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
-import { Step1UrgencyWater } from "./Step1UrgencyWater";
+import { DangerCallBar } from "./DangerCallBar";
+import { Step1Situation } from "./Step1Situation";
+import { Step2Location } from "./Step2Location";
 import { Step3People, type PeopleGroupKey } from "./Step3People";
 import { Step4Needs } from "./Step4Needs";
 import { Step5Contact } from "./Step5Contact";
 
 /**
  * โครงฟอร์มขอความช่วยเหลือ SOS 5 ขั้น:
- * ขั้นที่ 1: ความเร่งด่วนและระดับน้ำ (TF-08)
+ * ขั้นที่ 1: สถานการณ์ — สัญญาณอันตราย ออกเองได้ไหม ระดับน้ำ (TF-08, TF-55)
  * ขั้นที่ 2: ตำแหน่งที่เกิดเหตุ (TF-09)
  * ขั้นที่ 3: จำนวนผู้ติดค้าง (TF-11)
  * ขั้นที่ 4: สิ่งที่ต้องการ (TF-11)
@@ -61,6 +67,10 @@ export function SosWizard() {
   // สถานะตรวจข้อมูลขั้นที่ 1
   const [step1Attempted, setStep1Attempted] = useState(false);
   const [step1Errors, setStep1Errors] = useState<Step1ValidationErrors>({
+    missingSummary: [],
+  });
+  const [step2Attempted, setStep2Attempted] = useState(false);
+  const [step2Errors, setStep2Errors] = useState<Step2ValidationErrors>({
     missingSummary: [],
   });
 
@@ -87,16 +97,32 @@ export function SosWizard() {
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
 
   function updateDraft(updater: (prev: SosDraft) => SosDraft): SosDraft {
-    const next = updater(draft);
+    const latest = getSosDraftSnapshot();
+    const next = updater(latest);
     saveSosDraft(next);
     return next;
   }
 
   // ── ขั้นที่ 1 ───────────────────────────────────────────────────────────────
-  function handleSelectUrgency(urgency: Urgency) {
+  // TF-50 / TF-55: เลือกประเภทเหตุ + อยู่ที่จุดเกิดเหตุไหม + ตอบคำถามสัญญาณอันตราย
+  function handleChangeStep1(
+    patch: Partial<
+      Pick<SosDraft, "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate">
+    >,
+  ) {
     setSubmitSuccessMessage(null);
     setSubmitError(null);
-    const next = updateDraft((prev) => ({ ...prev, urgency }));
+    const next = updateDraft((prev) => {
+      const merged: SosDraft = { ...prev, ...patch };
+      if (patch.incidentType && Array.isArray(merged.dangerSigns)) {
+        const registrySigns = INCIDENT_REGISTRY[patch.incidentType].dangerSigns;
+        const validKeys = (
+          registrySigns.length > 0 ? registrySigns : UNIVERSAL_DANGER_SIGNS
+        ).map((s) => s.key);
+        merged.dangerSigns = merged.dangerSigns.filter((k) => validKeys.includes(k));
+      }
+      return merged;
+    });
     if (step1Attempted) {
       setStep1Errors(validateStep1Draft(next).errors);
     }
@@ -123,7 +149,57 @@ export function SosWizard() {
 
     updateDraft((prev) => ({
       ...prev,
+      incidentType: prev.incidentType ?? IncidentType.FLOOD,
+      atScene: true,
       currentStep: 2,
+    }));
+  }
+
+  // ── ขั้นที่ 2: พิกัดและที่อยู่ ──────────────────────────────────────────────
+  function handleGpsPosition(coords: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  }) {
+    const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleManualPin(coords: { lat: number; lng: number }) {
+    const next = updateDraft((prev) => applyManualPinToDraft(prev, coords));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleAutoFillArea(area: LocatedArea) {
+    const next = updateDraft((prev) => applyLocatedAreaToDraft(prev, area));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleUpdateStep2Field(patch: Partial<SosDraft>) {
+    const next = updateDraft((prev) => ({ ...prev, ...patch }));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleStep2Next() {
+    setStep2Attempted(true);
+    const check = validateStep2Draft(draft);
+    setStep2Errors(check.errors);
+
+    if (!check.valid) {
+      return;
+    }
+
+    updateDraft((prev) => ({
+      ...prev,
+      currentStep: 3,
     }));
   }
 
@@ -323,6 +399,19 @@ export function SosWizard() {
       }
     }
 
+    // ถ้าจะข้ามไปขั้นที่ 3–5 ต้องผ่านการตรวจขั้นที่ 2 ก่อน
+    if (targetStep > 2) {
+      const check2 = validateStep2Draft(draft);
+      if (!check2.valid) {
+        setStep2Attempted(true);
+        setStep2Errors(check2.errors);
+        if (draft.currentStep !== 2) {
+          updateDraft((prev) => ({ ...prev, currentStep: 2 }));
+        }
+        return;
+      }
+    }
+
     if (targetStep > 3 && draft.currentStep === 3) {
       const check3 = validateStep3Draft(draft);
       if (!check3.valid) {
@@ -347,8 +436,6 @@ export function SosWizard() {
     }));
   }
 
-  const currentStepDef = SOS_STEPS[draft.currentStep - 1];
-
   const goToPrevStep =
     draft.currentStep > 1
       ? () => handleGoToStep((draft.currentStep - 1) as SosStepNumber)
@@ -359,6 +446,8 @@ export function SosWizard() {
       <SosStepperCard currentStep={draft.currentStep} onSelectStep={handleGoToStep} />
 
       <div className="min-w-0 flex-1">
+        {/* TF-55: ติ๊กสัญญาณอันตรายแล้วแถบโทรค้างบนสุดทุกขั้น */}
+        {(draft.dangerSigns?.length ?? 0) > 0 && <DangerCallBar />}
         <SosTopBar onBack={goToPrevStep} />
         <SosProgressSegments currentStep={draft.currentStep} />
 
@@ -382,46 +471,33 @@ export function SosWizard() {
           )}
 
           {draft.currentStep === 1 && (
-            <Step1UrgencyWater
-              urgency={draft.urgency}
+            <Step1Situation
+              incidentType={draft.incidentType}
+              atScene={draft.atScene}
+              dangerSigns={draft.dangerSigns}
+              canSelfEvacuate={draft.canSelfEvacuate}
               waterLevel={draft.waterLevel}
               errors={step1Errors}
-              onSelectUrgency={handleSelectUrgency}
+              onSelectIncidentType={(incidentType) => handleChangeStep1({ incidentType })}
+              onSelectAtScene={(atScene) => handleChangeStep1({ atScene })}
+              onChangeDangerSigns={(dangerSigns) => handleChangeStep1({ dangerSigns })}
+              onSelectCanSelfEvacuate={(canSelfEvacuate) => handleChangeStep1({ canSelfEvacuate })}
               onSelectWaterLevel={handleSelectWaterLevel}
               onNext={handleStep1Next}
             />
           )}
 
           {draft.currentStep === 2 && (
-            <>
-              <section aria-labelledby="step-placeholder-heading" className="flex flex-col gap-4">
-                <h2
-                  id="step-placeholder-heading"
-                  className="font-heading text-[30px] leading-[1.25] font-bold tracking-[-0.3px] text-text-primary lg:text-[22px] lg:leading-[1.3] lg:font-semibold"
-                >
-                  {currentStepDef.title}
-                </h2>
-                <p className="text-lg leading-[1.65] text-text-secondary">
-                  {currentStepDef.description}
-                </p>
-                <div className="rounded-[12px] bg-bg-subtle p-4 text-base text-text-secondary">
-                  ความเร่งด่วน:{" "}
-                  <strong className="text-text-primary">
-                    {draft.urgency ? urgencyLabel[draft.urgency] : "-"}
-                  </strong>{" "}
-                  · ระดับน้ำ:{" "}
-                  <strong className="text-text-primary">
-                    {draft.waterLevel ? waterLevelLabel[draft.waterLevel] : "ไม่ได้ระบุ"}
-                  </strong>
-                </div>
-              </section>
-              <SosStepActions
-                onPrev={goToPrevStep}
-                onNext={() => handleGoToStep(3)}
-                mobileLabel="ถัดไป"
-                desktopLabel={`ถัดไป: ${SOS_STEPS[2].shortLabel}`}
-              />
-            </>
+            <Step2Location
+              draft={draft}
+              errors={step2Errors}
+              onGpsPosition={handleGpsPosition}
+              onManualPin={handleManualPin}
+              onAutoFillArea={handleAutoFillArea}
+              onUpdateField={handleUpdateStep2Field}
+              onPrev={() => handleGoToStep(1)}
+              onNext={handleStep2Next}
+            />
           )}
 
           {draft.currentStep === 3 && (
@@ -431,8 +507,10 @@ export function SosWizard() {
               bedridden={draft.bedridden}
               childrenCount={draft.children}
               pets={draft.pets}
+              hasInjured={draft.hasInjured}
               errors={step3Errors}
               onChangeCount={handleChangePeopleCount}
+              onToggleInjured={(hasInjured) => updateDraft((prev) => ({ ...prev, hasInjured }))}
               onPrev={() => handleGoToStep(2)}
               onNext={handleStep3Next}
             />
