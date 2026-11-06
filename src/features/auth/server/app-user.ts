@@ -1,30 +1,17 @@
 import { connection } from "next/server";
 import { cache } from "react";
 import type { User } from "@supabase/supabase-js";
-import {
-  effectiveUserRole,
-  isMembershipActive,
-  parseSuperAdminLineIds,
-  type UserRole,
-  type UserStatus,
-} from "@/lib/domain";
+import { parseSuperAdminLineIds, type UserRole, type UserStatus } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { lineProfileFromAuthUser, roleOnLogin } from "../line-identity";
+import { getSessionUserRow, type UserRow } from "./session-user";
 
 // แถวใน public.users ที่หน้าเว็บใช้
 export type AppUser = {
   id: string;
   displayName: string;
   avatarUrl: string | null;
-  role: UserRole;
-  status: UserStatus;
-};
-
-type UserRow = {
-  id: string;
-  display_name: string;
-  avatar_url: string | null;
   role: UserRole;
   status: UserStatus;
 };
@@ -87,34 +74,6 @@ export async function upsertAppUserOnLogin(authUser: User): Promise<AppUser> {
 export const getCurrentAppUser = cache(async (): Promise<AppUser | null> => {
   // ผู้ใช้ต่างกันทุก request ห้าม prerender — และ getClaims เช็กวันหมดอายุ token ด้วย Date.now()
   await connection();
-  const supabase = await createClient();
-  const { data: claims } = await supabase.auth.getClaims();
-  const authUserId = claims?.claims.sub;
-  if (!authUserId) return null;
-
-  const { data } = await supabase
-    .from("users")
-    .select("id, display_name, avatar_url, role, status")
-    .eq("auth_user_id", authUserId)
-    .maybeSingle<UserRow>();
-  if (!data) return null;
-
-  let role = data.role;
-  if (role === "RESCUER") {
-    const { data: memberships } = await supabase
-      .from("unit_members")
-      .select("status, expires_at, unit:units(is_active)")
-      .eq("user_id", data.id)
-      .eq("status", "APPROVED");
-    const hasActiveMembership = (memberships ?? []).some((m) =>
-      isMembershipActive({
-        status: m.status,
-        expiresAt: m.expires_at,
-        unitIsActive: (m.unit as unknown as { is_active?: boolean } | null)?.is_active,
-      }),
-    );
-    role = effectiveUserRole(role, hasActiveMembership);
-  }
-
-  return toAppUser({ ...data, role });
+  const data = await getSessionUserRow(await createClient());
+  return data ? toAppUser(data) : null;
 });

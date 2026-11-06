@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- ไอคอน SVG จาก Figma */
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   parseGoogleMapsUrl,
   isInaccurateGps,
@@ -35,6 +35,15 @@ const LazyStep2LocationMap = dynamic(() => import("./Step2LocationMap"), {
     </div>
   ),
 });
+
+function subscribeConnection(onChange: () => void) {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
 
 export interface Step2LocationProps {
   draft: SosDraft;
@@ -71,6 +80,7 @@ export function Step2Location({
   onPrev,
   onNext,
 }: Step2LocationProps) {
+  const online = useSyncExternalStore(subscribeConnection, () => navigator.onLine, () => false);
   const [isLocating, setIsLocating] = useState(false);
   const [gpsError, setGpsError] = useState<GpsErrorCode | null>(null);
   const [gmapsError, setGmapsError] = useState<string | null>(null);
@@ -465,12 +475,18 @@ export function Step2Location({
 
         {/* แผนที่ MapLibre โหลดเฉพาะเมื่อเปิดขั้นที่ 2 */}
         <div className="order-1 w-full lg:order-3">
-          <LazyStep2LocationMap
-            pin={mapPin}
-            accuracyCircle={accuracyCircle}
-            focusBounds={focusBounds}
-            onPinChange={handleMapPinChange}
-          />
+          {online ? (
+            <LazyStep2LocationMap
+              pin={mapPin}
+              accuracyCircle={accuracyCircle}
+              focusBounds={focusBounds}
+              onPinChange={handleMapPinChange}
+            />
+          ) : (
+            <p className="text-text-secondary rounded-[14px] border p-4">
+              แผนที่ต้องใช้อินเทอร์เน็ต คุณยังพิมพ์จุดสังเกตและเก็บร่างได้
+            </p>
+          )}
         </div>
 
         {/* TF-65: ทางออกเมื่อปักหมุดไม่ได้ — ห้ามบล็อก SOS ทั้งหมด */}

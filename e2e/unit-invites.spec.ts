@@ -111,7 +111,12 @@ test.describe("TF-19 ลิงก์สมัครกู้ภัย", () => {
       sameSite: cookie.options?.sameSite === "none" ? "None" : cookie.options?.sameSite === "strict" ? "Strict" : "Lax",
     })));
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto("/unit");
+    await page.goto("/");
+    await page.getByTestId("onboarding-skip").click();
+    await page.getByRole("button", { name: "เปิดเมนู" }).click();
+    const account = page.getByRole("link", { name: "หน้าของฉัน" });
+    await expect(account).toHaveAttribute("href", "/unit");
+    await account.click();
     await expect(page.getByRole("heading", { name: "ลิงก์เชิญกู้ภัยผ่าน LINE" })).toBeVisible();
     await page.getByLabel("จำนวนผู้สมัครสูงสุด").fill("2");
     const expiry = new Date(Date.now() + 2 * 86400000);

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { OnboardingPopup } from "@/components/public/OnboardingPopup";
 import { SituationBoard } from "@/features/home/SituationBoard";
 
-export default function HomePage() {
+// หน้าแรกสาธารณะ (TF-46) แสดงผ่าน src/pages/index.tsx เพื่อให้หน้าแรกเบาตามเกณฑ์ TF-41
+export function HomeContent() {
   return (
     <div className="bg-white px-5 py-10 sm:py-16">
       <div className="mx-auto max-w-6xl">

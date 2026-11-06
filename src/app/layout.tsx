@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { PwaSupport } from "@/features/pwa/PwaSupport";
 import { Bai_Jamjuree, IBM_Plex_Mono, IBM_Plex_Sans_Thai_Looped } from "next/font/google";
 import { EnvBanner } from "@/components/EnvBanner";
 import "./globals.css";
@@ -6,25 +7,29 @@ import "./globals.css";
 const ibmPlexSansThaiLooped = IBM_Plex_Sans_Thai_Looped({
   variable: "--font-sans",
   weight: ["400", "500", "600"],
-  subsets: ["thai", "latin"],
+  preload: false,
 });
 
 const baiJamjuree = Bai_Jamjuree({
   variable: "--font-heading",
   weight: ["400", "600", "700"],
-  subsets: ["thai", "latin"],
+  preload: false,
 });
 
 const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-mono",
   weight: ["600", "700"],
-  subsets: ["latin"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
   title: "น้ำใจไทย SOS",
   description: "ระบบขอและประสานความช่วยเหลือในภาวะวิกฤต",
+  appleWebApp: { capable: true, title: "น้ำใจไทย SOS", statusBarStyle: "default" },
+  icons: { apple: "/pwa/apple-touch-icon.png" },
 };
+
+export const viewport: Viewport = { themeColor: "#1F6FD1" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -35,6 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <EnvBanner />
         {children}
+        <PwaSupport />
       </body>
     </html>
   );
