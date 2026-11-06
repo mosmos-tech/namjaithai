@@ -18,6 +18,7 @@ select plan(20);
 -- ---------- create_sos_case(): บันทึกผลจาก computeTriage ----------
 create function pg_temp.sos_payload(extra jsonb) returns jsonb language sql as $$
   select jsonb_build_object(
+    'consent', true, 'healthConsent', true, 'consentVersion', '2026-11-06',
     'urgency', 'RED', 'triageReasons', '["DANGER_SIGN"]'::jsonb,
     'canSelfEvacuate', false, 'lat', 14.55, 'lng', 100.95, 'landmark', 'หน้าวัด',
     'phone', '0899990055', 'name', 'ทดสอบ TF-55', 'adults', 1, 'needs', '[]'::jsonb

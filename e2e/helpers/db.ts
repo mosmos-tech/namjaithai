@@ -47,6 +47,8 @@ export async function createCaseViaApi(
     },
     body: JSON.stringify({
       // TF-55: ระบบคำนวณระดับจากคำตอบ (ส่ง urgency มาก็ถูกเมิน)
+      consent: true,
+      healthConsent: true,
       dangerSigns: [],
       canSelfEvacuate: false,
       ...randomBangkokPoint(),

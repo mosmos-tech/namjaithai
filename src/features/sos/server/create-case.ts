@@ -22,6 +22,7 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   // TF-55: ระดับคำนวณที่เซิร์ฟเวอร์ ไม่เชื่อค่าที่ส่งมาจากเบราว์เซอร์
   urgency: Urgency;
   triageReasons: TriageReason[];
+  consentVersion: string;
   // ส่งมาเฉพาะเมื่อมีคำตอบด้านสุขภาพที่เป็น "ใช่" อย่างน้อย 1 ข้อ
   sensitive?: { dangerSigns?: string[]; hasDisabled?: true; hasInjured?: true };
   duplicateAction?: DuplicateAction;
@@ -275,6 +276,7 @@ export async function handleCreateSosCase(params: {
 
   const formData: CreateSosCasePayload = {
     ...answers,
+    consentVersion: "2026-11-06",
     urgency: triage.level,
     triageReasons: triage.reasons,
     ...(hasSensitive
@@ -289,9 +291,7 @@ export async function handleCreateSosCase(params: {
     ...(dupResolution.data.duplicateAction
       ? { duplicateAction: dupResolution.data.duplicateAction }
       : {}),
-    ...(dupResolution.data.targetCaseId
-      ? { targetCaseId: dupResolution.data.targetCaseId }
-      : {}),
+    ...(dupResolution.data.targetCaseId ? { targetCaseId: dupResolution.data.targetCaseId } : {}),
   };
 
   // 4. คำนวณคะแนนจัดลำดับด้วยฟังก์ชันกลาง priorityScore() โดยใช้ระดับที่ระบบคำนวณ
@@ -364,7 +364,8 @@ export async function handleCreateSosCase(params: {
     return {
       status: 500,
       body: {
-        error: "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
+        error:
+          "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
       },
     };
   }
@@ -393,9 +394,7 @@ export async function handleCreateSosCase(params: {
       status: row.status,
       createdAt: row.created_at,
       replayed: row.replayed,
-      ...(row.updated_existing !== undefined
-        ? { updatedExisting: row.updated_existing }
-        : {}),
+      ...(row.updated_existing !== undefined ? { updatedExisting: row.updated_existing } : {}),
       ...(row.is_potential_duplicate !== undefined
         ? {
             isPotentialDuplicate,

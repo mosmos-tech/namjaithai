@@ -29,11 +29,7 @@ export const DEFAULT_THAILAND_CENTER = {
   lng: 100.5018,
 } as const;
 
-export type GpsErrorCode =
-  | "PERMISSION_DENIED"
-  | "POSITION_UNAVAILABLE"
-  | "TIMEOUT"
-  | "UNSUPPORTED";
+export type GpsErrorCode = "PERMISSION_DENIED" | "POSITION_UNAVAILABLE" | "TIMEOUT" | "UNSUPPORTED";
 
 export type SosStepNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -136,6 +132,8 @@ export interface SosDraft {
   lineId: string;
   notes: string;
   photos: SosDraftPhoto[];
+  consent: boolean;
+  healthConsent: boolean;
   // คีย์กันส่งซ้ำประจำร่างนี้ (ใช้ซ้ำถ้ากดส่งซ้ำหรือลองส่งใหม่ และถูกล้างเมื่อส่งสำเร็จ)
   idempotencyKey?: string;
   // เวลาที่บันทึกร่างล่าสุด (ISO string)
@@ -165,6 +163,8 @@ export function createInitialSosDraft(): SosDraft {
     lineId: "",
     notes: "",
     photos: [],
+    consent: false,
+    healthConsent: false,
   };
 }
 
@@ -211,7 +211,7 @@ export function validateStep1Draft(
   const validWaterLevels = Object.values(WaterLevel) as string[];
 
   if (!Array.isArray(draft.dangerSigns)) {
-    errors.dangerSigns = "กรุณาเลือกข้อที่ตรง หรือกด \"ไม่มีข้อใดเลย\"";
+    errors.dangerSigns = 'กรุณาเลือกข้อที่ตรง หรือกด "ไม่มีข้อใดเลย"';
     errors.missingSummary.push("สัญญาณอันตราย");
   }
 
@@ -388,8 +388,7 @@ export function getGpsStatusMessage(params: {
   if (params.gpsError) {
     return {
       tone: "warning",
-      desktopText:
-        "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
+      desktopText: "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
       mobileText: "ดึง GPS ไม่สำเร็จ · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
     };
   }
@@ -489,9 +488,7 @@ export interface Step4ValidationErrors {
  * ตรวจสอบข้อมูลขั้นที่ 4 (สิ่งที่ต้องการ) ด้วย step4Schema จาก src/lib/domain
  * เกณฑ์ผ่าน: เมื่อเลือก "อื่นๆ (พิมพ์เอง)" ต้องพิมพ์รายละเอียด (1–200 ตัวอักษร) ก่อนไปขั้นถัดไป
  */
-export function validateStep4Draft(
-  draft: Pick<SosDraft, "needs" | "otherDetail">,
-): {
+export function validateStep4Draft(draft: Pick<SosDraft, "needs" | "otherDetail">): {
   valid: boolean;
   errors: Step4ValidationErrors;
 } {
@@ -545,6 +542,8 @@ export interface Step5ValidationErrors {
   phone?: string;
   notes?: string;
   photos?: string;
+  consent?: string;
+  healthConsent?: string;
   missingSummary: string[];
 }
 
@@ -558,6 +557,8 @@ export interface Step5ValidationErrors {
 export function validateStep5Draft(
   draft: Pick<SosDraft, "name" | "phone" | "lineId" | "notes"> & {
     photos?: readonly SosDraftPhoto[];
+    consent?: boolean;
+    healthConsent?: boolean;
   },
 ): {
   valid: boolean;
@@ -608,6 +609,15 @@ export function validateStep5Draft(
     }
   }
 
+  if (draft.consent !== true) {
+    errors.consent = "กรุณายินยอมก่อนส่งคำขอ";
+    errors.missingSummary.push("ความยินยอมในการใช้ข้อมูล");
+  }
+  if (draft.healthConsent !== true) {
+    errors.healthConsent = "กรุณายินยอมให้ใช้ข้อมูลสุขภาพ";
+    errors.missingSummary.push("ความยินยอมข้อมูลสุขภาพ");
+  }
+
   const photos = draft.photos ?? [];
   if (photos.length > MAX_SOS_PHOTOS) {
     errors.photos = `แนบรูปได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป`;
@@ -618,7 +628,13 @@ export function validateStep5Draft(
   }
 
   const valid =
-    !errors.name && !errors.phone && !errors.notes && !errors.photos && parsed.success;
+    !errors.name &&
+    !errors.phone &&
+    !errors.notes &&
+    !errors.photos &&
+    !errors.consent &&
+    !errors.healthConsent &&
+    parsed.success;
 
   return {
     valid,
@@ -691,8 +707,7 @@ export function loadSosDraft(
       : initial.photos;
 
     const idempotencyKey =
-      typeof parsed.idempotencyKey === "string" &&
-      parsed.idempotencyKey.trim().length > 0
+      typeof parsed.idempotencyKey === "string" && parsed.idempotencyKey.trim().length > 0
         ? parsed.idempotencyKey.trim()
         : undefined;
 
@@ -713,6 +728,8 @@ export function loadSosDraft(
       currentStep,
       dangerSigns,
       canSelfEvacuate,
+      consent: false,
+      healthConsent: false,
       hasDisabled: parsed.hasDisabled === true,
       hasInjured: parsed.hasInjured === true,
       waterLevel,
@@ -941,8 +958,7 @@ export async function submitSosDraft(
       };
     }
 
-    const normalizedPhone =
-      check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
+    const normalizedPhone = check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
     const idempotencyKey =
       draft.idempotencyKey && draft.idempotencyKey.trim().length > 0
         ? draft.idempotencyKey.trim()
@@ -984,13 +1000,13 @@ export async function submitSosDraft(
           hasDisabled: nextDraft.hasDisabled,
           hasInjured: nextDraft.hasInjured,
           needs: nextDraft.needs,
-          otherDetail: nextDraft.needs.includes(Need.OTHER)
-            ? nextDraft.otherDetail
-            : undefined,
+          otherDetail: nextDraft.needs.includes(Need.OTHER) ? nextDraft.otherDetail : undefined,
           name: nextDraft.name,
           phone: nextDraft.phone,
           lineId: nextDraft.lineId || undefined,
           notes: nextDraft.notes || undefined,
+          consent: nextDraft.consent,
+          healthConsent: nextDraft.healthConsent,
         }),
       });
 

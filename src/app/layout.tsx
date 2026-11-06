@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Bai_Jamjuree, IBM_Plex_Mono, IBM_Plex_Sans_Thai_Looped } from "next/font/google";
 import { EnvBanner } from "@/components/EnvBanner";
+import { Footer } from "@/components/public/Footer";
 import "./globals.css";
 
 const ibmPlexSansThaiLooped = IBM_Plex_Sans_Thai_Looped({
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <EnvBanner />
         {children}
+        <Footer />
       </body>
     </html>
   );

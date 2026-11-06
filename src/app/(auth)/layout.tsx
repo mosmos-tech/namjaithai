@@ -1,6 +1,6 @@
 import { NavbarWithAccount } from "@/features/auth/components/NavbarWithAccount";
 
-// หน้าเข้าใช้งาน (Figma D1 / MC4): มือถือมีแค่ navbar ไม่มีแถบสายด่วนและ footer
+// หน้าเข้าใช้งาน (Figma D1 / MC4): มือถือมี navbar โดยไม่มีแถบสายด่วน
 // จอคอมเป็นหน้าแบ่งสองฝั่งเต็มจอ ไม่มี navbar
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (

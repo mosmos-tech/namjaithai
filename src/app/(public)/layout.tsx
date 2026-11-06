@@ -1,4 +1,3 @@
-import { Footer } from "@/components/public/Footer";
 import { HotlineBar } from "@/components/public/HotlineBar";
 import { NavbarWithAccount } from "@/features/auth/components/NavbarWithAccount";
 
@@ -9,8 +8,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         <HotlineBar />
         <NavbarWithAccount />
       </header>
-      <main className="flex-1 bg-bg-page">{children}</main>
-      <Footer />
+      <main className="bg-bg-page flex-1">{children}</main>
     </>
   );
 }

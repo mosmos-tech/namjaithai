@@ -9,6 +9,8 @@ import {
 import { Urgency, WaterLevel, Need, CaseStatus } from "../../../lib/domain";
 
 const validPayload = {
+  consent: true,
+  healthConsent: true,
   dangerSigns: [],
   canSelfEvacuate: false,
   waterLevel: WaterLevel.WAIST_CHEST,
@@ -173,9 +175,7 @@ describe("handleCreateSosCase (TF-12)", () => {
     if (result.status !== 400) throw new Error("Expected 400");
 
     expect(result.body.fieldErrors.adults).toContain("ต้องมีผู้ติดค้างอย่างน้อย 1 คน");
-    expect(result.body.fieldErrors.otherDetail).toContain(
-      "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ",
-    );
+    expect(result.body.fieldErrors.otherDetail).toContain("กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ");
     expect(result.body.fieldErrors.phone).toBeDefined();
   });
 
@@ -222,12 +222,10 @@ describe("handleCreateSosCase (TF-12)", () => {
 
 describe("extractClientIp & resolveIdempotencyKey helpers", () => {
   it("ดึง IP ตัวแรกจาก x-forwarded-for หรือถอยไปใช้ x-real-ip", () => {
-    expect(
-      extractClientIp(new Headers({ "x-forwarded-for": "198.51.100.7, 10.0.0.1" })),
-    ).toBe("198.51.100.7");
-    expect(extractClientIp(new Headers({ "x-real-ip": "198.51.100.9" }))).toBe(
-      "198.51.100.9",
+    expect(extractClientIp(new Headers({ "x-forwarded-for": "198.51.100.7, 10.0.0.1" }))).toBe(
+      "198.51.100.7",
     );
+    expect(extractClientIp(new Headers({ "x-real-ip": "198.51.100.9" }))).toBe("198.51.100.9");
     expect(extractClientIp(new Headers())).toBeNull();
   });
 

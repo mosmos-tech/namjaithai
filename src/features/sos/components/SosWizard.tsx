@@ -2,11 +2,7 @@
 
 import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
-import {
-  Need,
-  type LocatedArea,
-  type WaterLevel,
-} from "../../../lib/domain";
+import { Need, type LocatedArea, type WaterLevel } from "../../../lib/domain";
 import {
   applyGpsPositionToDraft,
   applyLocatedAreaToDraft,
@@ -137,11 +133,7 @@ export function SosWizard() {
   }
 
   // ── ขั้นที่ 2: พิกัดและที่อยู่ ──────────────────────────────────────────────
-  function handleGpsPosition(coords: {
-    latitude: number;
-    longitude: number;
-    accuracy?: number;
-  }) {
+  function handleGpsPosition(coords: { latitude: number; longitude: number; accuracy?: number }) {
     const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
     if (step2Attempted) {
       setStep2Errors(validateStep2Draft(next).errors);
@@ -213,9 +205,7 @@ export function SosWizard() {
   // ── ขั้นที่ 4: สิ่งที่ต้องการ ──────────────────────────────────────────────
   function handleToggleNeed(need: Need) {
     const exists = draft.needs.includes(need);
-    const nextNeeds = exists
-      ? draft.needs.filter((item) => item !== need)
-      : [...draft.needs, need];
+    const nextNeeds = exists ? draft.needs.filter((item) => item !== need) : [...draft.needs, need];
 
     const next = updateDraft((prev) => ({
       ...prev,
@@ -254,10 +244,7 @@ export function SosWizard() {
   }
 
   // ── ขั้นที่ 5: ข้อมูลติดต่อและแนบรูป ───────────────────────────────────────
-  function handleChangeContactField(
-    field: "name" | "phone" | "lineId" | "notes",
-    value: string,
-  ) {
+  function handleChangeContactField(field: "name" | "phone" | "lineId" | "notes", value: string) {
     setSubmitError(null);
     setSubmitSuccessMessage(null);
 
@@ -433,7 +420,7 @@ export function SosWizard() {
         <SosProgressSegments currentStep={draft.currentStep} />
 
         {/* การ์ดฟอร์ม: มือถือเต็มจอ จอคอมเป็นการ์ดขาวมีขอบ */}
-        <div className="flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:border-border-default lg:bg-bg-surface lg:px-14 lg:py-12">
+        <div className="lg:border-border-default lg:bg-bg-surface flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:px-14 lg:py-12">
           <SosProgressBar currentStep={draft.currentStep} />
 
           {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
@@ -512,6 +499,12 @@ export function SosWizard() {
               lineId={draft.lineId}
               notes={draft.notes}
               photos={draft.photos}
+              consent={draft.consent}
+              healthConsent={draft.healthConsent}
+              onConsentChange={(field, value) => {
+                const next = updateDraft((prev) => ({ ...prev, [field]: value }));
+                if (step5Attempted) setStep5Errors(validateStep5Draft(next).errors);
+              }}
               errors={step5Errors}
               isSubmitting={isSubmitting}
               submitError={submitError}

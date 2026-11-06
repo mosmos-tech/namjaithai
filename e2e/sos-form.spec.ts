@@ -329,6 +329,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ ไม่มีตำแหน่ง");
     const phone = randomPhone();
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await submit(page).click();
     await expect(page.getByText(/ยังส่งคำขอไม่ได้/).first()).toBeVisible();
     await expect(page.getByText(/ส่งคำขอสำเร็จ/)).toHaveCount(0);
@@ -341,6 +343,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ ส่งสำเร็จ");
     const phone = randomPhone();
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     // กดสองครั้งติดกันเร็วๆ (นิ้วสั่น) ต้องได้เคสเดียว
     await submit(page).evaluate((b: HTMLButtonElement) => {
       b.click();
@@ -366,6 +370,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await seedLocationIntoDraft(page);
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ เบอร์ซ้ำ");
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(existing.phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await submit(page).click();
     await expect(page.getByRole("button", { name: /อัปเดตเคสเดิม/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /สร้างใหม่/ })).toBeVisible();

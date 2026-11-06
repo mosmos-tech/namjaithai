@@ -70,7 +70,6 @@ test.describe("footer", () => {
   });
 
   test("ลิงก์ นโยบายความเป็นส่วนตัว เปิดได้", async ({ page }) => {
-    test.fail(true, "บั๊ก E2E-1: footer ลิงก์ไป /privacy แต่ยังไม่มีหน้านี้ (404)");
     await page.goto("/hotlines");
     await page
       .getByRole("contentinfo")

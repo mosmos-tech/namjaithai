@@ -114,6 +114,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "081-234-5678",
       lineId: "somying_line",
       notes: "อยู่ชั้น 2",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(validMobile.valid).toBe(true);
@@ -125,6 +127,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "02-123-4567",
       lineId: "",
       notes: "",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(validLandline.valid).toBe(true);
@@ -136,6 +140,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "0123456789",
       lineId: "",
       notes: "",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(invalidPhone.valid).toBe(false);
@@ -147,6 +153,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "0891234567",
       lineId: "",
       notes: "",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(missingName.valid).toBe(false);
@@ -188,6 +196,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
 
     const draftWithoutLocation = {
       ...createInitialSosDraft(),
+      consent: true,
+      healthConsent: true,
       currentStep: 5 as const,
       dangerSigns: [],
       canSelfEvacuate: false,
@@ -236,6 +246,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
 
     const fullDraft = {
       ...createInitialSosDraft(),
+      consent: true,
+      healthConsent: true,
       currentStep: 5 as const,
       dangerSigns: [],
       canSelfEvacuate: false,
@@ -285,14 +297,13 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(savedAfterError.idempotencyKey).toBe("idem-fixed-1");
 
     const retryFetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response(
-        JSON.stringify({ caseCode: "FL-2610-0099", trackingToken: "tok_99" }),
-        { status: 201 },
-      );
+      return new Response(JSON.stringify({ caseCode: "FL-2610-0099", trackingToken: "tok_99" }), {
+        status: 201,
+      });
     });
 
     const retryResult = await submitSosDraft({
-      draft: savedAfterError,
+      draft: { ...savedAfterError, consent: true, healthConsent: true },
       storage,
       inFlightRef,
       fetchImpl: retryFetchMock,
@@ -300,10 +311,7 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     });
 
     expect(retryResult.status).toBe("submitted");
-    const sentHeaders = retryFetchMock.mock.calls[0]?.[1]?.headers as Record<
-      string,
-      string
-    >;
+    const sentHeaders = retryFetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
     expect(sentHeaders["Idempotency-Key"]).toBe("idem-fixed-1");
   });
 
@@ -321,6 +329,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
 
     const fullDraft = {
       ...createInitialSosDraft(),
+      consent: true,
+      healthConsent: true,
       currentStep: 5 as const,
       dangerSigns: [],
       canSelfEvacuate: false,
@@ -339,10 +349,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(storage.getItem(SOS_DRAFT_STORAGE_KEY)).not.toBeNull();
 
     const fetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response(
-        JSON.stringify({ caseCode: "FL-2610-0042", trackingToken: "tok_42" }),
-        { status: 201 },
-      );
+      return new Response(JSON.stringify({ caseCode: "FL-2610-0042", trackingToken: "tok_42" }), {
+        status: 201,
+      });
     });
 
     const result = await submitSosDraft({
