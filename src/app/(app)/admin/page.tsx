@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
 import { UnitInvitePanel } from "@/features/auth/components/UnitInvitePanel";
+import { UnitCapabilitiesPanel } from "@/features/auth/components/UnitCapabilitiesPanel";
 
 export const metadata: Metadata = { title: "ห้องสั่งการ — น้ำใจไทย SOS", robots: { index: false } };
 
@@ -16,6 +17,7 @@ export default function Page({ searchParams }: PageProps<"/admin">) {
       >
         <div className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
           <UnitInvitePanel />
+          <UnitCapabilitiesPanel />
         </div>
       </SignedInShell>
     </Suspense>
