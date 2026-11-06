@@ -148,6 +148,12 @@ export const sosSchema = step1Schema
     message: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน",
     path: ["adults"],
   })
+  .refine(
+    (d) =>
+      !isInaccurateGps(accuracyForLocationSource(d.locationSource, d.accuracyM)) ||
+      (d.addressLine?.length ?? 0) > 0,
+    { message: ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE, path: ["addressLine"] },
+  )
   .refine((d) => !d.needs.includes(Need.OTHER) || (d.otherDetail?.trim().length ?? 0) > 0, {
     message: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ",
     path: ["otherDetail"],

@@ -26,8 +26,13 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   urgency: Urgency;
   triageReasons: TriageReason[];
   consentVersion: string;
-  // ส่งมาเฉพาะเมื่อมีคำตอบด้านสุขภาพที่เป็น "ใช่" อย่างน้อย 1 ข้อ
-  sensitive?: { dangerSigns?: string[]; hasDisabled?: true; hasInjured?: true };
+  details?: Record<string, string | number | boolean>;
+  sensitive?: {
+    dangerSigns?: string[];
+    hasDisabled?: true;
+    hasInjured?: true;
+    [key: string]: string | number | boolean | string[] | undefined;
+  };
   duplicateAction?: DuplicateAction;
   targetCaseId?: string;
 };
@@ -324,6 +329,10 @@ export async function handleCreateSosCase(params: {
 
   const formData: CreateSosCasePayload = {
     ...answers,
+    incidentType,
+    waterLevel: effectiveWaterLevel,
+    canSelfEvacuate: effectiveCanSelfEvacuate,
+    accuracyM: accuracyForLocationSource(answers.locationSource, answers.accuracyM),
     consentVersion: "2026-11-06",
     urgency: triage.level,
     triageReasons: triage.reasons,

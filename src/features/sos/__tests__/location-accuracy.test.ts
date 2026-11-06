@@ -25,6 +25,8 @@ const MACBOOK_GPS = { latitude: 13.7563, longitude: 100.5018, accuracy: 16238 };
 const PIN = { lat: 13.7601, lng: 100.4935 };
 
 const basePayload = {
+  consent: true,
+  healthConsent: true,
   dangerSigns: [],
   canSelfEvacuate: false,
   lat: 13.7563,
