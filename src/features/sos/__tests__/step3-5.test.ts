@@ -285,10 +285,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(savedAfterError.idempotencyKey).toBe("idem-fixed-1");
 
     const retryFetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response(
-        JSON.stringify({ caseCode: "FL-2610-0099", trackingToken: "tok_99" }),
-        { status: 201 },
-      );
+      return new Response(JSON.stringify({ caseCode: "FL-2610-0099", trackingToken: "tok_99" }), {
+        status: 201,
+      });
     });
 
     const retryResult = await submitSosDraft({
@@ -300,11 +299,50 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     });
 
     expect(retryResult.status).toBe("submitted");
-    const sentHeaders = retryFetchMock.mock.calls[0]?.[1]?.headers as Record<
-      string,
-      string
-    >;
+    const sentHeaders = retryFetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
     expect(sentHeaders["Idempotency-Key"]).toBe("idem-fixed-1");
+  });
+
+  it("TF-15: เมื่อเน็ตหลุด เก็บ payload และ idempotency key ของคำขอเดิมสำหรับคิว", async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
+    };
+    const draft = {
+      ...createInitialSosDraft(),
+      currentStep: 5 as const,
+      dangerSigns: [],
+      canSelfEvacuate: false,
+      waterLevel: WaterLevel.WAIST_CHEST,
+      lat: 13.7563,
+      lng: 100.5018,
+      landmark: "หน้าวัด",
+      adults: 2,
+      name: "สมชาย ใจดี",
+      phone: "081-234-5678",
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("offline"));
+    const result = await submitSosDraft({
+      draft,
+      storage,
+      fetchImpl,
+      generateIdempotencyKey: () => "offline-key",
+    });
+    expect(result.status).toBe("network_error");
+    if (result.status !== "network_error") throw new Error("Expected network error");
+    expect(result.idempotencyKey).toBe("offline-key");
+    expect(JSON.parse(result.requestBody!)).toMatchObject({
+      phone: "0812345678",
+      lat: 13.7563,
+      landmark: "หน้าวัด",
+    });
+    expect(loadSosDraft(storage).idempotencyKey).toBe("offline-key");
   });
 
   it("การส่งฟอร์มข้อ 3: เมื่อส่งคำขอสำเร็จ ข้อมูลร่างใน localStorage ต้องถูกล้างทันที", async () => {
@@ -339,10 +377,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(storage.getItem(SOS_DRAFT_STORAGE_KEY)).not.toBeNull();
 
     const fetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response(
-        JSON.stringify({ caseCode: "FL-2610-0042", trackingToken: "tok_42" }),
-        { status: 201 },
-      );
+      return new Response(JSON.stringify({ caseCode: "FL-2610-0042", trackingToken: "tok_42" }), {
+        status: 201,
+      });
     });
 
     const result = await submitSosDraft({

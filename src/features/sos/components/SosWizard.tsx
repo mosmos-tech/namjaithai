@@ -4,6 +4,7 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { rememberSentCase } from "../sent-case";
+import { saveOfflineSos } from "../offline-queue-core";
 import { WaitingAdvice } from "./WaitingAdvice";
 import {
   INCIDENT_REGISTRY,
@@ -18,6 +19,7 @@ import {
   applyLocatedAreaToDraft,
   applyManualPinToDraft,
   saveSosDraft,
+  clearSosDraft,
   submitSosDraft,
   validateStep1Draft,
   validateStep2Draft,
@@ -417,6 +419,18 @@ export function SosWizard() {
         }
       }
 
+      if (result.status === "network_error" && result.requestBody) {
+        try {
+          await saveOfflineSos(result.idempotencyKey, result.requestBody);
+          clearSosDraft();
+          window.dispatchEvent(new Event("sos-queued"));
+        } catch {
+          setSubmitError(
+            "บันทึกคำขอรอส่งไม่สำเร็จ กรุณาเปิดพื้นที่เก็บข้อมูลหรือติดต่อ 1669 / 1784",
+          );
+        }
+        return;
+      }
       if (result.status === "api_error" || result.status === "network_error") {
         setSubmitError(result.error);
         return;

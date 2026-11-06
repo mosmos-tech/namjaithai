@@ -36,11 +36,7 @@ export const DEFAULT_THAILAND_CENTER = {
   lng: 100.5018,
 } as const;
 
-export type GpsErrorCode =
-  | "PERMISSION_DENIED"
-  | "POSITION_UNAVAILABLE"
-  | "TIMEOUT"
-  | "UNSUPPORTED";
+export type GpsErrorCode = "PERMISSION_DENIED" | "POSITION_UNAVAILABLE" | "TIMEOUT" | "UNSUPPORTED";
 
 export type SosStepNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -259,16 +255,13 @@ export function validateStep1Draft(
     errors.missingSummary.push("อยู่ที่จุดเกิดเหตุ");
   }
 
-  if (
-    draft.incidentType !== undefined &&
-    !validIncidentTypes.includes(draft.incidentType)
-  ) {
+  if (draft.incidentType !== undefined && !validIncidentTypes.includes(draft.incidentType)) {
     errors.incidentType = "ไม่มีประเภทเหตุนี้";
     errors.missingSummary.push("ประเภทเหตุ");
   }
 
   if (!Array.isArray(draft.dangerSigns)) {
-    errors.dangerSigns = "กรุณาเลือกข้อที่ตรง หรือกด \"ไม่มีข้อใดเลย\"";
+    errors.dangerSigns = 'กรุณาเลือกข้อที่ตรง หรือกด "ไม่มีข้อใดเลย"';
     errors.missingSummary.push("สัญญาณอันตราย");
   }
 
@@ -435,8 +428,7 @@ export function applyManualPinToDraft(
 }
 
 export type ManualLocationSource =
-  | typeof LocationSource.MANUAL_PIN
-  | typeof LocationSource.GMAPS_LINK;
+  typeof LocationSource.MANUAL_PIN | typeof LocationSource.GMAPS_LINK;
 
 /**
  * นำผลลัพธ์จาก API แปลงพิกัดเป็นที่อยู่ (/api/geo/reverse) มาเติมจังหวัด/อำเภอ/ตำบลในร่างฟอร์มอัตโนมัติ
@@ -482,8 +474,7 @@ export function getGpsStatusMessage(params: {
   if (params.gpsError) {
     return {
       tone: "warning",
-      desktopText:
-        "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
+      desktopText: "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
       mobileText: "ดึง GPS ไม่สำเร็จ · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
     };
   }
@@ -555,10 +546,7 @@ export function getTotalPeopleCount(
 export function validateStep3Draft(
   draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets"> &
     Partial<
-      Pick<
-        SosDraft,
-        "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured"
-      >
+      Pick<SosDraft, "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured">
     >,
 ): {
   valid: boolean;
@@ -614,12 +602,7 @@ export function validateStep3Draft(
           errors.missingSummary.push(q.label.th);
         }
       } else if (q.kind === "number") {
-        if (
-          typeof val !== "number" ||
-          !Number.isInteger(val) ||
-          val < q.min ||
-          val > q.max
-        ) {
+        if (typeof val !== "number" || !Number.isInteger(val) || val < q.min || val > q.max) {
           questionErrors[q.key] = `กรุณาระบุ "${q.label.th}" เป็นตัวเลขระหว่าง ${q.min}–${q.max}`;
           errors.missingSummary.push(q.label.th);
         }
@@ -665,9 +648,7 @@ export interface Step4ValidationErrors {
  * ตรวจสอบข้อมูลขั้นที่ 4 (สิ่งที่ต้องการ) ด้วย step4Schema จาก src/lib/domain
  * เกณฑ์ผ่าน: เมื่อเลือก "อื่นๆ (พิมพ์เอง)" ต้องพิมพ์รายละเอียด (1–200 ตัวอักษร) ก่อนไปขั้นถัดไป
  */
-export function validateStep4Draft(
-  draft: Pick<SosDraft, "needs" | "otherDetail">,
-): {
+export function validateStep4Draft(draft: Pick<SosDraft, "needs" | "otherDetail">): {
   valid: boolean;
   errors: Step4ValidationErrors;
 } {
@@ -793,8 +774,7 @@ export function validateStep5Draft(
     errors.missingSummary.push("ขนาดรูปไม่เกิน 500 KB");
   }
 
-  const valid =
-    !errors.name && !errors.phone && !errors.notes && !errors.photos && parsed.success;
+  const valid = !errors.name && !errors.phone && !errors.notes && !errors.photos && parsed.success;
 
   return {
     valid,
@@ -851,8 +831,7 @@ export function loadSosDraft(
     );
 
     const incidentType =
-      typeof parsed.incidentType === "string" &&
-      validIncidentTypes.includes(parsed.incidentType)
+      typeof parsed.incidentType === "string" && validIncidentTypes.includes(parsed.incidentType)
         ? (parsed.incidentType as IncidentType)
         : undefined;
     const atScene = typeof parsed.atScene === "boolean" ? parsed.atScene : undefined;
@@ -901,8 +880,7 @@ export function loadSosDraft(
     }
 
     const idempotencyKey =
-      typeof parsed.idempotencyKey === "string" &&
-      parsed.idempotencyKey.trim().length > 0
+      typeof parsed.idempotencyKey === "string" && parsed.idempotencyKey.trim().length > 0
         ? parsed.idempotencyKey.trim()
         : undefined;
 
@@ -1072,6 +1050,7 @@ export type SubmitSosDraftResult =
       status: "api_error" | "network_error";
       error: string;
       idempotencyKey: string;
+      requestBody?: string;
     }
   | {
       status: "submitted";
@@ -1164,8 +1143,7 @@ export async function submitSosDraft(
       };
     }
 
-    const normalizedPhone =
-      check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
+    const normalizedPhone = check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
     const idempotencyKey =
       draft.idempotencyKey && draft.idempotencyKey.trim().length > 0
         ? draft.idempotencyKey.trim()
@@ -1195,6 +1173,37 @@ export async function submitSosDraft(
       }
     }
 
+    const requestBody = JSON.stringify({
+      incidentType: nextDraft.incidentType,
+      atScene: nextDraft.atScene,
+      dangerSigns: nextDraft.dangerSigns,
+      canSelfEvacuate: nextDraft.canSelfEvacuate,
+      waterLevel: activeType === IncidentType.FLOOD ? nextDraft.waterLevel : undefined,
+      details: detailsPayload,
+      lat: nextDraft.lat,
+      lng: nextDraft.lng,
+      accuracyM: accuracyForLocationSource(nextDraft.locationSource, nextDraft.accuracyM),
+      locationSource: nextDraft.locationSource,
+      addressLine: nextDraft.addressLine?.trim() || undefined,
+      province: nextDraft.province,
+      district: nextDraft.district,
+      subdistrict: nextDraft.subdistrict,
+      landmark: nextDraft.landmark,
+      adults: nextDraft.adults,
+      elderly: nextDraft.elderly,
+      bedridden: nextDraft.bedridden,
+      children: nextDraft.children,
+      pets: nextDraft.pets,
+      hasDisabled: nextDraft.hasDisabled,
+      hasInjured: nextDraft.hasInjured,
+      needs: nextDraft.needs,
+      otherDetail: nextDraft.needs.includes(Need.OTHER) ? nextDraft.otherDetail : undefined,
+      name: nextDraft.name,
+      phone: nextDraft.phone,
+      lineId: nextDraft.lineId || undefined,
+      notes: nextDraft.notes || undefined,
+    });
+
     try {
       const response = await fetchImpl("/api/cases", {
         method: "POST",
@@ -1202,38 +1211,7 @@ export async function submitSosDraft(
           "Content-Type": "application/json",
           "Idempotency-Key": idempotencyKey,
         },
-        body: JSON.stringify({
-          incidentType: nextDraft.incidentType,
-          atScene: nextDraft.atScene,
-          dangerSigns: nextDraft.dangerSigns,
-          canSelfEvacuate: nextDraft.canSelfEvacuate,
-          waterLevel: activeType === IncidentType.FLOOD ? nextDraft.waterLevel : undefined,
-          details: detailsPayload,
-          lat: nextDraft.lat,
-          lng: nextDraft.lng,
-          accuracyM: accuracyForLocationSource(nextDraft.locationSource, nextDraft.accuracyM),
-          locationSource: nextDraft.locationSource,
-          addressLine: nextDraft.addressLine?.trim() || undefined,
-          province: nextDraft.province,
-          district: nextDraft.district,
-          subdistrict: nextDraft.subdistrict,
-          landmark: nextDraft.landmark,
-          adults: nextDraft.adults,
-          elderly: nextDraft.elderly,
-          bedridden: nextDraft.bedridden,
-          children: nextDraft.children,
-          pets: nextDraft.pets,
-          hasDisabled: nextDraft.hasDisabled,
-          hasInjured: nextDraft.hasInjured,
-          needs: nextDraft.needs,
-          otherDetail: nextDraft.needs.includes(Need.OTHER)
-            ? nextDraft.otherDetail
-            : undefined,
-          name: nextDraft.name,
-          phone: nextDraft.phone,
-          lineId: nextDraft.lineId || undefined,
-          notes: nextDraft.notes || undefined,
-        }),
+        body: requestBody,
       });
 
       const data = (await response.json()) as {
@@ -1268,6 +1246,7 @@ export async function submitSosDraft(
         status: "network_error",
         error: "ไม่สามารถเชื่อมต่อเครือข่ายได้ ระบบบันทึกข้อมูลร่างไว้ในเครื่องแล้ว",
         idempotencyKey,
+        requestBody,
       };
     }
   } finally {

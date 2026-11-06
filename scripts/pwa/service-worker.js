@@ -12,6 +12,20 @@ const PUBLIC_ASSETS = [
   "/pwa/apple-touch-icon.png",
 ];
 
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "namjaithai-sos-queue") return;
+  event.waitUntil(
+    (async () => {
+      try {
+        await processOfflineSos();
+      } finally {
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const client of clients) client.postMessage({ type: "sos-queue-changed" });
+      }
+    })(),
+  );
+});
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
