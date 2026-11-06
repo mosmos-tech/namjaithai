@@ -86,3 +86,22 @@ test("TF-46 API ส่งเฉพาะข้อมูลสรุปและ�
   const second = await request.get("/api/situation-summary");
   expect((await second.json()).generatedAt).toBe(data.generatedAt);
 });
+
+test("TF-46 เลือกน้ำท่วมได้เมื่อโหลดสถานะไม่สำเร็จ", async ({ page }) => {
+  await page.route("**/api/situation-summary", (route) => route.abort());
+  await page.goto("/incidents");
+  await expect(page.getByRole("link", { name: /^น้ำท่วม/ })).toBeVisible();
+  await page.getByRole("link", { name: /^น้ำท่วม/ }).click();
+  await expect(page).toHaveURL(/\/request$/);
+});
+
+test("TF-46 เคารพสถานะปิดรับจากเซิร์ฟเวอร์เมื่อออนไลน์", async ({ page }) => {
+  await page.route("**/api/situation-summary", (route) =>
+    route.fulfill({ json: { types: [{ code: "FLOOD", enabled: false }], provinces: [] } }),
+  );
+  const response = page.waitForResponse("**/api/situation-summary");
+  await page.goto("/incidents");
+  await response;
+  await expect(page.getByText("น้ำท่วม", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^น้ำท่วม/ })).toHaveCount(0);
+});

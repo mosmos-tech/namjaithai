@@ -5,19 +5,26 @@ import { INCIDENT_REGISTRY, INCIDENT_TYPE_ORDER, type IncidentType } from "@/lib
 
 export default function IncidentSelection() {
   const [enabled, setEnabled] = useState<IncidentType[]>([]);
+  const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/situation-summary", { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (data?.types)
-          setEnabled(
-            data.types
-              .filter((type: { code: IncidentType; enabled: boolean }) => type.enabled)
-              .map((type: { code: IncidentType }) => type.code),
-          );
+      .then((response) => {
+        if (!response.ok) throw new Error("summary unavailable");
+        return response.json();
       })
-      .catch(() => {});
+      .then((data) => {
+        if (!Array.isArray(data?.types)) throw new Error("invalid summary");
+        setUnavailable(false);
+        setEnabled(
+          data.types
+            .filter((type: { code: IncidentType; enabled: boolean }) => type.enabled)
+            .map((type: { code: IncidentType }) => type.code),
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setUnavailable(true);
+      });
     return () => controller.abort();
   }, []);
   return (
@@ -26,7 +33,7 @@ export default function IncidentSelection() {
       <p className="text-text-secondary mt-3">เลือกเหตุที่ต้องการความช่วยเหลือ</p>
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {INCIDENT_TYPE_ORDER.map((code) => {
-          const available = enabled.includes(code) && code === "FLOOD";
+          const available = code === "FLOOD" && (unavailable || enabled.includes(code));
           return available ? (
             <Link
               key={code}
