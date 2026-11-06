@@ -1,6 +1,6 @@
 import { cacheLife } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/server";
-import type { AdminArea, LocatedArea } from "@/lib/domain";
+import type { AdminArea, AreaBounds, LocatedArea } from "@/lib/domain";
 
 // รายชื่อจังหวัด/อำเภอ/ตำบล เปลี่ยนเฉพาะตอนอัปเดต seed เลย cache ไว้นาน
 // ไม่ต้องถามฐานข้อมูลทุกครั้งที่มีคนเปิดฟอร์ม SOS
@@ -65,4 +65,16 @@ export async function locateAdminArea(lat: number, lng: number): Promise<Located
     subdistrict: { code: data.subdistrict_code, nameTh: data.subdistrict_name_th },
     distanceM: Math.round(data.distance_m),
   };
+}
+
+// กรอบตำบล ใช้เลื่อนแผนที่ในฟอร์ม SOS เมื่อผู้แจ้งเลือกตำบลเอง (TF-65) — ขอบเขตแทบไม่เปลี่ยน cache ไว้นาน
+// คืน null ถ้าไม่มีรหัสตำบลนี้
+export async function getSubdistrictBounds(code: number): Promise<AreaBounds | null> {
+  "use cache";
+  cacheLife("weeks");
+  const { data, error } = await createPublicClient()
+    .rpc("subdistrict_bounds", { p_code: code })
+    .maybeSingle<AreaBounds>();
+  if (error) throw error;
+  return data;
 }

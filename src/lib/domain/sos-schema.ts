@@ -1,7 +1,15 @@
 import { z } from "zod";
 import "./zod-locale";
 import { WaterLevel, Need } from "./enums";
-import { latSchema, lngSchema } from "./geo";
+import {
+  accuracyForLocationSource,
+  accuracyMSchema,
+  ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE,
+  isInaccurateGps,
+  latSchema,
+  lngSchema,
+  locationSourceSchema,
+} from "./geo";
 import {
   FORBIDDEN_DETAIL_KEYS,
   INCIDENT_REGISTRY,
@@ -53,7 +61,12 @@ export const step1Schema = z.object({
 export const step2Schema = z.object({
   lat: latSchema,
   lng: lngSchema,
-  accuracyM: z.number().optional(),
+  accuracyM: accuracyMSchema.optional(),
+  // TF-65: ไม่บังคับ เพราะร่างที่บันทึกก่อน TF-65 ไม่มีค่านี้ เคสจะเก็บเป็น null (ไม่ทราบ)
+  locationSource: locationSourceSchema.optional(),
+  // ที่อยู่ละเอียด (เก็บใน case_contacts เห็นเฉพาะทีมที่รับเคสและแอดมิน)
+  // บังคับเมื่อ GPS คลาดเคลื่อนเกิน 1000 ม. — ดู refine ท้าย sosSchema
+  addressLine: z.string().trim().max(300, "ที่อยู่ต้องไม่เกิน 300 ตัวอักษร").optional(),
   province: z.string().optional(),
   district: z.string().optional(),
   subdistrict: z.string().optional(),
@@ -133,6 +146,17 @@ export const sosSchema = step1Schema
     message: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน",
     path: ["adults"],
   })
+  // TF-65: GPS ไม่แม่น (เกิน 1000 ม.) ส่งได้ แต่ต้องมีที่อยู่ให้ทีมกู้ภัยหาเจอ
+  // ปักเอง/วางลิงก์ไม่นับ accuracy ที่ติดมา (ผู้แจ้งยืนยันจุดเองแล้ว)
+  .refine(
+    (d) =>
+      !isInaccurateGps(accuracyForLocationSource(d.locationSource, d.accuracyM)) ||
+      (d.addressLine?.length ?? 0) > 0,
+    {
+      message: ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE,
+      path: ["addressLine"],
+    },
+  )
   .refine(
     (d) =>
       !d.needs.includes(Need.OTHER) ||
