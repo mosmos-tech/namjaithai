@@ -14,7 +14,12 @@
 2. ตั้งค่า channel access token ของ **Messaging API** ฝั่ง server เป็น `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` (ไม่ใช่ secret ของ LINE Login)
 3. ตั้ง `APP_BASE_URL` เป็น canonical HTTPS origin ของเว็บ public และ `LINE_NOTIFICATIONS_SECRET` เป็นค่าสุ่มอย่างน้อย 16 ตัวอักษร ห้ามใช้ตัวแปร `NEXT_PUBLIC_` สำหรับคีย์ลับ
 4. ให้ผู้ใช้เพิ่มเพื่อน OA ของโครงการก่อนรับ push message ผู้ที่บล็อก OA อาจไม่ได้รับข้อความแม้ LINE ตอบรับ API แล้ว จึงให้ติดตามผ่านเว็บได้เสมอ
-5. Apply migration `20261102160000_my_cases_and_line_notifications.sql` แล้วตั้ง scheduler ให้เรียก `POST /api/notifications/line` พร้อม `Authorization: Bearer <LINE_NOTIFICATIONS_SECRET>` ทุกนาที ห้ามใส่ secret ใน URL
+5. Apply migrations ให้ครบ แล้วตั้ง scheduler ให้เรียก `POST /api/notifications/line` พร้อม `Authorization: Bearer <LINE_NOTIFICATIONS_SECRET>` ทุกนาที ห้ามใส่ secret ใน URL
+6. เมื่อ OA และ scheduler พร้อมแล้ว ให้ผู้ดูแลฐานข้อมูลเปิด trigger ด้วยคำสั่งด้านล่าง ระบบจะเริ่มเก็บงานจากการเปลี่ยนสถานะครั้งถัดไป
+
+```sql
+alter table public.cases enable trigger trg_case_line_notification;
+```
 
 ตัวช่วยสำหรับ scheduler บนเครื่อง/server ที่มี `.env.local` พร้อม:
 
@@ -28,6 +33,7 @@ npm run notifications:line
 
 ## คิวและการส่งซ้ำ
 
+- Migration ปิด trigger ไว้เป็นค่าเริ่มต้นเพื่อหยุดสร้างงานระหว่างที่ยังไม่มี OA
 - Trigger เพิ่มงานใน transaction เดียวกับการเปลี่ยน `cases.status` เฉพาะเคสที่ผูกผู้ใช้ ACTIVE และมี LINE user ID ไม่สร้างงานเมื่อเขียนสถานะเดิมซ้ำ
 - ตาราง `case_line_notifications` และ RPC สำหรับ worker ไม่เปิดให้ anon/authenticated อ่านหรือเรียก
 - Worker claim ได้ครั้งละ 10 งานด้วย row lock และ lease 2 นาที รับเฉพาะงานแรกที่ยังไม่จบของแต่ละเคส เพื่อรักษาลำดับสถานะ
@@ -36,6 +42,14 @@ npm run notifications:line
 - 429/5xx/network error ใช้ backoff เพิ่มขึ้น หยุดเมื่อพยายามครบ 5 ครั้งหรืออายุงานเกิน 23 ชั่วโมง เพื่อไม่ส่งซ้ำหลัง retry key ของ LINE หมดอายุ
 - ความล้มเหลวถาวรและผู้ใช้ที่ถูกระงับหยุดส่ง เก็บเฉพาะรหัสข้อผิดพลาด ไม่บันทึก token หรือเนื้อหาตอบกลับที่อาจมีข้อมูลส่วนตัว
 - เนื้อหาข้อความมีรหัสเคส สถานะ เวลาของเหตุการณ์ และลิงก์ติดตาม ไม่มีชื่อ เบอร์โทร พิกัด หรือข้อมูลสุขภาพ
+
+เมื่อเปิดส่งจริง ให้ตั้งงานฐานข้อมูลรายวันเพื่อล้างแถวคิวที่มีอายุเกิน 30 วัน อายุนี้เผื่อช่วงตรวจสอบการส่งและยาวกว่าช่วง retry 23 ชั่วโมง
+
+```sql
+delete from public.case_line_notifications
+where created_at < now() - interval '30 days'
+  and (locked_until is null or locked_until < now());
+```
 
 อ้างอิง [LINE Push messages](https://developers.line.biz/en/reference/messaging-api/#send-push-message) และ [LINE retry keys](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/)
 
