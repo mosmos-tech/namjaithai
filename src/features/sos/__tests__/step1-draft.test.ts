@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { Urgency, WaterLevel } from "../../../lib/domain";
+import { IncidentType, WaterLevel } from "../../../lib/domain";
 import {
   SOS_STEPS,
   createInitialSosDraft,
+  parseIncidentTypeParam,
   validateStep1Draft,
   saveSosDraft,
   loadSosDraft,
@@ -24,53 +25,51 @@ function createMemoryStorage() {
   };
 }
 
-describe("TF-08: ฟอร์ม SOS ขั้น 1 ความเร่งด่วนและระดับน้ำ", () => {
-  it("เกณฑ์ข้อ 1: เลือกความเร่งด่วนและระดับน้ำครบถ้วนแล้วผ่านการตรวจสอบเพื่อไปขั้นถัดไปได้", () => {
+describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานการณ์ (ไม่มีการเลือกสี)", () => {
+  it("ตอบสัญญาณอันตราย + ออกเองได้ไหม ครบแล้วผ่าน (ระดับน้ำไม่บังคับ)", () => {
     const check = validateStep1Draft({
-      urgency: Urgency.RED,
-      waterLevel: WaterLevel.WAIST_CHEST,
+      dangerSigns: [],
+      canSelfEvacuate: false,
+      waterLevel: undefined,
     });
-
     expect(check.valid).toBe(true);
-    expect(check.errors.urgency).toBeUndefined();
-    expect(check.errors.waterLevel).toBeUndefined();
     expect(check.errors.missingSummary).toEqual([]);
-  });
 
-  it("เกณฑ์ข้อ 2: ไม่เลือกความเร่งด่วนแล้วกดถัดไป มีข้อความบอกว่าขาดอะไรอย่างชัดเจน", () => {
-    // ไม่เลือกทั้ง 2 อย่าง: ขาดแค่ความเร่งด่วน (ระดับน้ำไม่บังคับ — Figma มือถือไม่ถาม)
-    const bothMissing = validateStep1Draft({
-      urgency: undefined,
-      waterLevel: undefined,
-    });
-    expect(bothMissing.valid).toBe(false);
-    expect(bothMissing.errors.urgency).toBe("กรุณาเลือกความเร่งด่วน 1 ข้อ");
-    expect(bothMissing.errors.waterLevel).toBeUndefined();
-    expect(bothMissing.errors.missingSummary).toEqual(["ระดับความเร่งด่วน"]);
-
-    // เลือกแต่ความเร่งด่วน ไม่เลือกระดับน้ำ: ผ่าน
-    const waterMissing = validateStep1Draft({
-      urgency: Urgency.YELLOW,
-      waterLevel: undefined,
-    });
-    expect(waterMissing.valid).toBe(true);
-    expect(waterMissing.errors.missingSummary).toEqual([]);
-
-    // เลือกแต่ระดับน้ำ ขาดความเร่งด่วน
-    const urgencyMissing = validateStep1Draft({
-      urgency: undefined,
+    const withSigns = validateStep1Draft({
+      dangerSigns: ["UNCONSCIOUS", "PERSON_IN_WATER"],
+      canSelfEvacuate: true,
       waterLevel: WaterLevel.WAIST_CHEST,
     });
-    expect(urgencyMissing.valid).toBe(false);
-    expect(urgencyMissing.errors.urgency).toBe("กรุณาเลือกความเร่งด่วน 1 ข้อ");
-    expect(urgencyMissing.errors.waterLevel).toBeUndefined();
-    expect(urgencyMissing.errors.missingSummary).toEqual(["ระดับความเร่งด่วน"]);
+    expect(withSigns.valid).toBe(true);
   });
 
-  it('เกณฑ์ข้อ 3: โครงฟอร์ม 5 ขั้นและข้อความ "ขั้นที่ X จาก 5" ถูกต้องทุกขั้น', () => {
+  it("ยังไม่ตอบแล้วกดถัดไป มีข้อความบอกว่าขาดอะไรอย่างชัดเจน", () => {
+    const nothing = validateStep1Draft({
+      dangerSigns: undefined,
+      canSelfEvacuate: undefined,
+      waterLevel: undefined,
+    });
+    expect(nothing.valid).toBe(false);
+    expect(nothing.errors.dangerSigns).toBe('กรุณาเลือกข้อที่ตรง หรือกด "ไม่มีข้อใดเลย"');
+    expect(nothing.errors.canSelfEvacuate).toBe("กรุณาตอบว่าออกจากที่นั่นเองได้ไหม");
+    expect(nothing.errors.missingSummary).toEqual(["สัญญาณอันตราย", "ออกเองได้ไหม"]);
+
+    // ตอบ "ไม่มีข้อใดเลย" แล้ว แต่ยังไม่ตอบเรื่องออกเองได้ไหม
+    const noEvacuate = validateStep1Draft({ dangerSigns: [], canSelfEvacuate: undefined });
+    expect(noEvacuate.valid).toBe(false);
+    expect(noEvacuate.errors.dangerSigns).toBeUndefined();
+    expect(noEvacuate.errors.missingSummary).toEqual(["ออกเองได้ไหม"]);
+  });
+
+  it("สัญญาณอันตรายที่ไม่มีในทะเบียนไม่ผ่าน", () => {
+    const check = validateStep1Draft({ dangerSigns: ["ALIEN_ATTACK"], canSelfEvacuate: true });
+    expect(check.valid).toBe(false);
+  });
+
+  it('โครงฟอร์ม 5 ขั้นและข้อความ "ขั้นที่ X จาก 5" ถูกต้องทุกขั้น', () => {
     expect(SOS_STEPS).toHaveLength(5);
     expect(SOS_STEPS.map((s) => s.shortLabel)).toEqual([
-      "ความเร่งด่วน",
+      "สถานการณ์",
       "ตำแหน่ง",
       "ผู้ติดค้าง",
       "สิ่งที่ต้องการ",
@@ -87,28 +86,79 @@ describe("TF-08: ฟอร์ม SOS ขั้น 1 ความเร่งด�
     ]);
   });
 
-  it("เกณฑ์ข้อ 4: บันทึกร่างทุกครั้งที่กรอก เมื่อปิดหน้าแล้วเปิดใหม่ ค่าที่กรอกยังอยู่ครบ", () => {
+  it("บันทึกร่างทุกครั้งที่กรอก เมื่อปิดหน้าแล้วเปิดใหม่ ค่าที่กรอกยังอยู่ครบ", () => {
     const storage = createMemoryStorage();
     const draft = {
       ...createInitialSosDraft(),
       currentStep: 2 as SosStepNumber,
-      urgency: Urgency.GREEN,
+      dangerSigns: ["CHEST_PAIN"],
+      canSelfEvacuate: false,
       waterLevel: WaterLevel.ANKLE_KNEE,
+      hasInjured: true,
     };
 
     saveSosDraft(draft, storage);
 
     const restored = loadSosDraft(storage);
-    expect(restored.urgency).toBe(Urgency.GREEN);
+    expect(restored.dangerSigns).toEqual(["CHEST_PAIN"]);
+    expect(restored.canSelfEvacuate).toBe(false);
     expect(restored.waterLevel).toBe(WaterLevel.ANKLE_KNEE);
+    expect(restored.hasInjured).toBe(true);
     expect(restored.currentStep).toBe(2);
     expect(restored.updatedAt).toBeDefined();
 
-    // เมื่อล้างร่างแล้วต้องกลับเป็นค่าเริ่มต้น
     clearSosDraft(storage);
     const afterClear = loadSosDraft(storage);
-    expect(afterClear.urgency).toBeUndefined();
-    expect(afterClear.waterLevel).toBeUndefined();
+    expect(afterClear.dangerSigns).toBeUndefined();
+    expect(afterClear.canSelfEvacuate).toBeUndefined();
     expect(afterClear.currentStep).toBe(1);
+  });
+
+  it("ร่างรุ่นเก่าที่มีแต่ urgency (ก่อน TF-55) กลับไปตอบขั้น 1 ใหม่ และไม่พก urgency ไปต่อ", () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      "namjaithai-sos-draft-v1",
+      JSON.stringify({ ...createInitialSosDraft(), currentStep: 3, urgency: "GREEN" }),
+    );
+    const restored = loadSosDraft(storage) as unknown as Record<string, unknown>;
+    expect(restored.currentStep).toBe(1);
+    expect(restored.urgency).toBeUndefined();
+  });
+
+  it("TF-50: ตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene = false) ไม่ผ่านการตรวจ และกลับขั้น 1 เสมอ", () => {
+    const check = validateStep1Draft({
+      incidentType: IncidentType.FLOOD,
+      atScene: false,
+      dangerSigns: [],
+      canSelfEvacuate: true,
+    });
+    expect(check.valid).toBe(false);
+    expect(check.errors.atScene).toContain("แจ้งแทนคนอื่นไม่ได้");
+    expect(check.errors.missingSummary).toContain("อยู่ที่จุดเกิดเหตุ");
+
+    const storage = createMemoryStorage();
+    saveSosDraft(
+      {
+        ...createInitialSosDraft(),
+        currentStep: 3,
+        incidentType: IncidentType.FLOOD,
+        atScene: false,
+        dangerSigns: [],
+        canSelfEvacuate: true,
+      },
+      storage,
+    );
+    const restored = loadSosDraft(storage);
+    expect(restored.atScene).toBe(false);
+    expect(restored.currentStep).toBe(1);
+  });
+
+  it("TF-50: อ่านพารามิเตอร์ ?type=FLOOD จาก URL เพื่อเลือกประเภทเหตุไว้ให้", () => {
+    expect(parseIncidentTypeParam("?type=FLOOD")).toBe(IncidentType.FLOOD);
+    expect(parseIncidentTypeParam("?type=flood")).toBe(IncidentType.FLOOD);
+    expect(parseIncidentTypeParam("type=FIRE")).toBe(IncidentType.FIRE);
+    expect(parseIncidentTypeParam("?type=UNKNOWN")).toBeUndefined();
+    expect(parseIncidentTypeParam("")).toBeUndefined();
+    expect(parseIncidentTypeParam(null)).toBeUndefined();
   });
 });

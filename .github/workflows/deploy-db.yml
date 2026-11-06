@@ -1,0 +1,98 @@
+# TF-64: ส่ง migration ขึ้น Supabase เมื่อ merge แล้วค่อย deploy เว็บ production (รายละเอียดใน docs/environments.md)
+#
+#   push เข้า develop → GitHub Environment "dev"        → Supabase project 1 (dev + uat ใช้ร่วมกัน)
+#   push เข้า main    → GitHub Environment "production" → รอคนกดอนุมัติ → Supabase project 2
+#                       → ผ่านแล้วค่อยเรียก Vercel Deploy Hook (vercel.json ปิด auto deploy ของ main ไว้)
+#                       → migration ล้มเหลว = ไม่ deploy โค้ดใหม่ เว็บจริงยังเป็นรุ่นเดิมที่เข้ากับฐานข้อมูล
+#   branch uat ไม่ต้อง push เพราะใช้ฐานข้อมูลเดียวกับ dev ที่ลง migration ไปแล้ว
+#   กดรันเองได้ที่ Actions → Deploy DB → Run workflow (เลือก branch ให้ตรงกับ target)
+#
+# ค่าลับอ่านจาก secrets ของแต่ละ environment (ชื่อเดียวกันทั้งคู่ คนละค่า):
+#   SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD
+#   + production: VERCEL_DEPLOY_HOOK_PRODUCTION
+# ไม่รันจาก pull_request: โค้ดใน PR ยังไม่ผ่านรีวิว ห้ามแตะฐานข้อมูลจริง
+# ไม่ลงข้อมูลจังหวัด (seed) ที่นี่ — ลงครั้งแรกครั้งเดียวด้วยมือ ตามเช็กลิสต์
+name: Deploy DB
+
+on:
+  # ไม่กรอง path: main ต้องผ่านขั้นนี้ทุกครั้งเพื่อ deploy เว็บ (ไม่มี migration ใหม่ db push ก็ไม่ทำอะไร)
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "ลงฐานข้อมูลไหน (dev ต้องรันจาก branch develop, production ต้องรันจาก main)"
+        type: choice
+        options: [dev, production]
+        required: true
+
+permissions:
+  contents: read
+
+# รอบใหม่รอรอบเก่าจบก่อน ไม่ยกเลิกกลางทาง (migration ที่หยุดกลางคันแก้ยากกว่า)
+concurrency:
+  group: deploy-db-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # กดรันเองแต่เลือก branch ไม่ตรงกับ target → แจ้งชัดๆ แทนการข้ามเงียบๆ
+  wrong-branch:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      !((inputs.target == 'dev' && github.ref_name == 'develop') ||
+        (inputs.target == 'production' && github.ref_name == 'main'))
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::target ${{ inputs.target }} ต้องรันจาก branch ${{ inputs.target == 'production' && 'main' || 'develop' }} (ตอนนี้เลือก ${{ github.ref_name }})"
+          exit 1
+
+  migrate:
+    if: >-
+      (github.event_name == 'push' && (github.ref_name == 'develop' || github.ref_name == 'main')) ||
+      (github.event_name == 'workflow_dispatch' &&
+        ((inputs.target == 'dev' && github.ref_name == 'develop') ||
+         (inputs.target == 'production' && github.ref_name == 'main')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ github.ref_name == 'main' && 'production' || 'dev' }}
+    env:
+      IS_PRODUCTION: ${{ github.ref_name == 'main' }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      VERCEL_DEPLOY_HOOK_PRODUCTION: ${{ secrets.VERCEL_DEPLOY_HOOK_PRODUCTION }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # ล็อกเวอร์ชันให้ตรงกับที่ทีมใช้ในเครื่อง (npx supabase --version)
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.121.0
+
+      - name: Check secrets
+        run: |
+          required="SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD"
+          if [ "$IS_PRODUCTION" = "true" ]; then required="$required VERCEL_DEPLOY_HOOK_PRODUCTION"; fi
+          missing=0
+          for name in $required; do
+            if [ -z "${!name}" ]; then
+              echo "::error::ยังไม่ได้ตั้ง secret $name ใน GitHub Environment นี้"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      # แสดงรายการ migration ที่จะลงก่อน ดูย้อนหลังใน log ได้ว่ารอบนี้ลงอะไรไปบ้าง
+      - name: Migrations to apply (dry run)
+        run: supabase db push --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" --dry-run
+
+      - name: Apply migrations
+        run: supabase db push --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" --yes
+
+      # ขั้นนี้รันเฉพาะเมื่อทุกขั้นก่อนหน้าผ่าน: migration ล้มเหลว = ไม่ deploy
+      - name: Deploy production (Vercel Deploy Hook)
+        if: env.IS_PRODUCTION == 'true'
+        run: |
+          curl --fail --silent --show-error --request POST "$VERCEL_DEPLOY_HOOK_PRODUCTION" > /dev/null
+          echo "สั่ง Vercel deploy production แล้ว ดูความคืบหน้าที่ Vercel → Deployments"

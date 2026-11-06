@@ -10,11 +10,13 @@ export async function SignedInShell({
   title,
   comingIn,
   denied,
+  children,
 }: {
   pathname: string;
   title: string;
-  comingIn: string;
+  comingIn?: string;
   denied: Promise<boolean>;
+  children?: React.ReactNode;
 }) {
   const [user, wasDenied] = await Promise.all([requireAccess(pathname), denied]);
 
@@ -41,9 +43,12 @@ export async function SignedInShell({
           </button>
         </form>
       </div>
-      <p className="border-border-default bg-bg-surface text-text-secondary rounded-[14px] border p-6 text-lg">
-        หน้านี้กำลังพัฒนา ({comingIn})
-      </p>
+      {comingIn && (
+        <p className="border-border-default bg-bg-surface text-text-secondary rounded-[14px] border p-6 text-lg">
+          หน้านี้กำลังพัฒนา ({comingIn})
+        </p>
+      )}
+      {children}
     </div>
   );
 }

@@ -109,11 +109,11 @@ export interface ExistingCaseForDuplicateCheck {
   createdAt: Date | string;
 }
 
+// ส่งกลับไปให้ผู้แจ้งเห็น — ไม่มีระดับความเร่งด่วน (TF-55: ผู้แจ้งไม่เห็นระดับ)
 export interface DuplicateCandidateMatch {
   caseId: string;
   caseCode: string;
   status: CaseStatus;
-  urgency: Urgency;
   waterLevel?: WaterLevel | null;
   createdAt: string;
   matchReason: DuplicateMatchReason;
@@ -185,7 +185,6 @@ export function findDuplicateCandidate(
       caseId: item.caseId,
       caseCode: item.caseCode,
       status: item.status,
-      urgency: item.urgency,
       waterLevel: item.waterLevel ?? null,
       createdAt: createdDate.toISOString(),
       matchReason,
@@ -214,7 +213,6 @@ export function findDuplicateCandidate(
     caseId: best.caseId,
     caseCode: best.caseCode,
     status: best.status,
-    urgency: best.urgency,
     waterLevel: best.waterLevel,
     createdAt: best.createdAt,
     matchReason: best.matchReason,

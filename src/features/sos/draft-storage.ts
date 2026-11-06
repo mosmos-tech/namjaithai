@@ -1,16 +1,41 @@
 import {
+  latSchema,
+  lngSchema,
   step1Schema,
   step2Schema,
   step3Schema,
   step4Schema,
   step5Schema,
-  Urgency,
   WaterLevel,
   Need,
+  IncidentType,
+  INCIDENT_REGISTRY,
+  UNIVERSAL_DANGER_SIGNS,
+  type LocatedArea,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
 
 export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v1";
+
+/**
+ * เกณฑ์ความคลาดเคลื่อนของ GPS (เมตร): ถ้าเกิน 100 เมตร ต้องแจ้งให้ผู้ใช้ปักหมุดเพิ่มบนแผนที่ (TF-09)
+ */
+export const GPS_LOW_ACCURACY_THRESHOLD_M = 100;
+
+/**
+ * พิกัดเริ่มต้นของแผนที่เมื่อยังไม่ได้ดึง GPS (ใจกลางประเทศไทย/กรุงเทพฯ)
+ * เพื่อให้ผู้ใช้ที่ไม่อนุญาต GPS ยังเลื่อนและแตะปักหมุดเองได้ทันที
+ */
+export const DEFAULT_THAILAND_CENTER = {
+  lat: 13.7563,
+  lng: 100.5018,
+} as const;
+
+export type GpsErrorCode =
+  | "PERMISSION_DENIED"
+  | "POSITION_UNAVAILABLE"
+  | "TIMEOUT"
+  | "UNSUPPORTED";
 
 export type SosStepNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -41,9 +66,10 @@ export interface SosDraftPhoto {
 export const SOS_STEPS: readonly SosStepDefinition[] = [
   {
     step: 1,
-    title: "ความเร่งด่วนและระดับน้ำ",
-    shortLabel: "ความเร่งด่วน",
-    description: "เลือกสีความเร่งด่วนและระดับน้ำปัจจุบันเพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
+    title: "สถานการณ์ตอนนี้",
+    shortLabel: "สถานการณ์",
+    // TF-55: ผู้แจ้งตอบคำถามสั้นๆ ระบบจัดลำดับความเร่งด่วนเอง (ผู้แจ้งไม่เห็นระดับ)
+    description: "ตอบคำถามสั้นๆ เรื่องอันตรายและระดับน้ำ เพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
   },
   {
     step: 2,
@@ -77,8 +103,11 @@ export const SOS_STEPS: readonly SosStepDefinition[] = [
  */
 export interface SosDraft {
   currentStep: SosStepNumber;
-  // ขั้นที่ 1: ความเร่งด่วนและระดับน้ำ
-  urgency?: Urgency;
+  // ขั้นที่ 1: สถานการณ์ (TF-50, TF-55) — undefined = ยังไม่ได้ตอบ
+  incidentType?: IncidentType;
+  atScene?: boolean;
+  dangerSigns?: string[];
+  canSelfEvacuate?: boolean;
   waterLevel?: WaterLevel;
   // ขั้นที่ 2: ตำแหน่ง (TF-09)
   lat?: number;
@@ -90,6 +119,8 @@ export interface SosDraft {
   province?: string;
   district?: string;
   subdistrict?: string;
+  addressLine?: string;
+  gmapsUrl?: string;
   landmark: string;
   // ขั้นที่ 3: ผู้ติดค้าง (TF-11)
   adults: number;
@@ -97,6 +128,9 @@ export interface SosDraft {
   bedridden: number;
   children: number;
   pets: number;
+  // TF-55: ใช้คำนวณระดับ (ข้อมูลสุขภาพ)
+  hasDisabled: boolean;
+  hasInjured: boolean;
   // ขั้นที่ 4: สิ่งที่ต้องการ (TF-11)
   needs: Need[];
   otherDetail: string;
@@ -115,14 +149,21 @@ export interface SosDraft {
 export function createInitialSosDraft(): SosDraft {
   return {
     currentStep: 1,
-    urgency: undefined,
+    incidentType: undefined,
+    atScene: undefined,
+    dangerSigns: undefined,
+    canSelfEvacuate: undefined,
     waterLevel: undefined,
+    addressLine: "",
+    gmapsUrl: "",
     landmark: "",
     adults: 1,
     elderly: 0,
     bedridden: 0,
     children: 0,
     pets: 0,
+    hasDisabled: false,
+    hasInjured: false,
     needs: [],
     otherDetail: "",
     name: "",
@@ -133,22 +174,59 @@ export function createInitialSosDraft(): SosDraft {
   };
 }
 
+/**
+ * อ่านพารามิเตอร์ ?type=FLOOD จาก URL query string เพื่อเลือกประเภทเหตุไว้ให้ล่วงหน้า (TF-50)
+ */
+export function parseIncidentTypeParam(
+  search: string | null | undefined,
+): IncidentType | undefined {
+  if (!search) return undefined;
+  try {
+    const params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
+    const rawType = params.get("type")?.trim().toUpperCase();
+    if (rawType && (Object.values(IncidentType) as string[]).includes(rawType)) {
+      return rawType as IncidentType;
+    }
+  } catch {
+    // ข้ามกรณี query string รูปแบบไม่ถูกต้อง
+  }
+  return undefined;
+}
+
 export interface Step1ValidationErrors {
-  urgency?: string;
+  incidentType?: string;
+  atScene?: string;
+  dangerSigns?: string;
+  canSelfEvacuate?: string;
   waterLevel?: string;
+  missingSummary: string[];
+}
+
+export interface Step2ValidationErrors {
+  location?: string;
+  landmark?: string;
   missingSummary: string[];
 }
 
 /**
  * ตรวจสอบข้อมูลขั้นที่ 1 ด้วย step1Schema จาก src/lib/domain
- * ถ้ายังไม่เลือกช่องไหน จะคืนข้อความภาษาไทยบอกว่าขาดอะไรอย่างชัดเจน
+ * - ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene === false) จะไม่ผ่านและไม่สร้างเคส (TF-50)
+ * - ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
  */
-export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel">): {
+export function validateStep1Draft(
+  draft: Pick<
+    SosDraft,
+    "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate" | "waterLevel"
+  >,
+): {
   valid: boolean;
   errors: Step1ValidationErrors;
 } {
   const result = step1Schema.safeParse({
-    urgency: draft.urgency,
+    incidentType: draft.incidentType,
+    atScene: draft.atScene,
+    dangerSigns: draft.dangerSigns,
+    canSelfEvacuate: draft.canSelfEvacuate,
     waterLevel: draft.waterLevel,
   });
 
@@ -163,15 +241,33 @@ export function validateStep1Draft(draft: Pick<SosDraft, "urgency" | "waterLevel
     missingSummary: [],
   };
 
-  const validUrgencies = Object.values(Urgency) as string[];
+  const validIncidentTypes = Object.values(IncidentType) as string[];
   const validWaterLevels = Object.values(WaterLevel) as string[];
 
-  if (!draft.urgency || !validUrgencies.includes(draft.urgency)) {
-    errors.urgency = "กรุณาเลือกความเร่งด่วน 1 ข้อ";
-    errors.missingSummary.push("ระดับความเร่งด่วน");
+  if (draft.atScene === false) {
+    errors.atScene = "แจ้งแทนคนอื่นไม่ได้ กรุณาโทรสายด่วนฉุกเฉินแทน";
+    errors.missingSummary.push("อยู่ที่จุดเกิดเหตุ");
   }
 
-  // ระดับน้ำไม่บังคับ (Figma มือถือไม่ถาม) ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
+  if (
+    draft.incidentType !== undefined &&
+    !validIncidentTypes.includes(draft.incidentType)
+  ) {
+    errors.incidentType = "ไม่มีประเภทเหตุนี้";
+    errors.missingSummary.push("ประเภทเหตุ");
+  }
+
+  if (!Array.isArray(draft.dangerSigns)) {
+    errors.dangerSigns = "กรุณาเลือกข้อที่ตรง หรือกด \"ไม่มีข้อใดเลย\"";
+    errors.missingSummary.push("สัญญาณอันตราย");
+  }
+
+  if (typeof draft.canSelfEvacuate !== "boolean") {
+    errors.canSelfEvacuate = "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม";
+    errors.missingSummary.push("ออกเองได้ไหม");
+  }
+
+  // ระดับน้ำไม่บังคับ ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
   if (draft.waterLevel && !validWaterLevels.includes(draft.waterLevel)) {
     errors.waterLevel = "ไม่มีตัวเลือกระดับน้ำนี้";
     errors.missingSummary.push("ระดับน้ำ");
@@ -190,8 +286,9 @@ export interface Step2ValidationErrors {
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 2 (พิกัดตำแหน่งและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
- * ป้องกันการกดส่งในขั้นที่ 5 โดยยังไม่มีพิกัดหรือจุดสังเกต
+ * ตรวจสอบข้อมูลขั้นที่ 2 (พิกัดและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
+ * - พิกัด (lat, lng) ต้องอยู่ในขอบเขตประเทศไทย
+ * - จุดสังเกต (landmark) บังคับต้องระบุเพื่อให้ทีมกู้ภัยสังเกตเห็นได้เมื่อป้ายบ้านจมน้ำ
  */
 export function validateStep2Draft(
   draft: Pick<
@@ -223,24 +320,154 @@ export function validateStep2Draft(
     missingSummary: [],
   };
 
-  const hasCoordError = result.error.issues.some(
-    (issue) => issue.path[0] === "lat" || issue.path[0] === "lng",
-  );
-  if (typeof draft.lat !== "number" || typeof draft.lng !== "number" || hasCoordError) {
-    errors.location = "กรุณาระบุตำแหน่งที่เกิดเหตุในขั้นที่ 2";
-    errors.missingSummary.push("ตำแหน่งที่เกิดเหตุ (ขั้นที่ 2)");
+  if (typeof draft.lat !== "number" || typeof draft.lng !== "number") {
+    errors.location = "กรุณาดึงพิกัด GPS หรือแตะปักหมุดตำแหน่งบนแผนที่";
+    errors.missingSummary.push("พิกัดตำแหน่ง");
+  } else {
+    const latCheck = latSchema.safeParse(draft.lat);
+    const lngCheck = lngSchema.safeParse(draft.lng);
+    if (!latCheck.success || !lngCheck.success) {
+      errors.location =
+        latCheck.error?.issues[0]?.message ??
+        lngCheck.error?.issues[0]?.message ??
+        "พิกัดอยู่นอกประเทศไทย";
+      errors.missingSummary.push("พิกัดตำแหน่ง");
+    }
   }
 
-  const trimmedLandmark = draft.landmark?.trim() ?? "";
-  if (trimmedLandmark.length === 0) {
-    errors.landmark = "กรุณาระบุจุดสังเกตในขั้นที่ 2";
-    errors.missingSummary.push("จุดสังเกต (ขั้นที่ 2)");
+  if (!draft.landmark || draft.landmark.trim().length === 0) {
+    errors.landmark = "กรุณาระบุจุดสังเกต เช่น สีหลังคา จำนวนชั้น หรือสถานที่ใกล้เคียง";
+    errors.missingSummary.push("จุดสังเกต");
   }
 
   return {
     valid: false,
     errors,
   };
+}
+
+/**
+ * ตรวจว่าความคลาดเคลื่อนของ GPS เกิน 100 เมตรหรือไม่ (เกณฑ์ผ่านข้อ 2 ของ TF-09)
+ */
+export function isLowGpsAccuracy(accuracyM?: number): boolean {
+  return (
+    typeof accuracyM === "number" &&
+    Number.isFinite(accuracyM) &&
+    accuracyM > GPS_LOW_ACCURACY_THRESHOLD_M
+  );
+}
+
+/**
+ * นำพิกัดจาก GPS ของอุปกรณ์มาอัปเดตลงร่างฟอร์ม พร้อมบันทึกค่าความแม่นยำ (accuracyM)
+ */
+export function applyGpsPositionToDraft(
+  draft: SosDraft,
+  coords: { latitude: number; longitude: number; accuracy?: number },
+): SosDraft {
+  return {
+    ...draft,
+    lat: Number(coords.latitude.toFixed(6)),
+    lng: Number(coords.longitude.toFixed(6)),
+    accuracyM:
+      typeof coords.accuracy === "number" && Number.isFinite(coords.accuracy)
+        ? Math.round(coords.accuracy)
+        : undefined,
+  };
+}
+
+/**
+ * นำพิกัดจากการปักหมุดเองบนแผนที่หรือลิงก์ Google Maps มาอัปเดตลงร่างฟอร์ม
+ * ล้างค่า accuracyM ออกเพราะเป็นจุดที่ผู้ใช้ปักยืนยันด้วยตัวเองแล้ว
+ */
+export function applyManualPinToDraft(
+  draft: SosDraft,
+  coords: { lat: number; lng: number },
+): SosDraft {
+  return {
+    ...draft,
+    lat: Number(coords.lat.toFixed(6)),
+    lng: Number(coords.lng.toFixed(6)),
+    accuracyM: undefined,
+  };
+}
+
+/**
+ * นำผลลัพธ์จาก API แปลงพิกัดเป็นที่อยู่ (/api/geo/reverse) มาเติมจังหวัด/อำเภอ/ตำบลในร่างฟอร์มอัตโนมัติ
+ */
+export function applyLocatedAreaToDraft(draft: SosDraft, area: LocatedArea): SosDraft {
+  return {
+    ...draft,
+    provinceCode: String(area.province.code),
+    province: area.province.nameTh,
+    districtCode: String(area.district.code),
+    district: area.district.nameTh,
+    subdistrictCode: String(area.subdistrict.code),
+    subdistrict: area.subdistrict.nameTh,
+  };
+}
+
+export interface GpsStatusBanner {
+  tone: "success" | "warning";
+  desktopText: string;
+  mobileText: string;
+}
+
+/**
+ * สร้างข้อความแจ้งสถานะพิกัดและการปักหมุดสำหรับแสดงใต้ปุ่ม GPS / แผนที่
+ * - ถ้าความแม่นยำเกิน 100 ม. จะแสดงข้อความเตือนให้ปักหมุดเพิ่มบนแผนที่
+ * - ถ้าไม่อนุญาต GPS จะแสดงข้อความว่ายังสามารถแตะ/ลากหมุดปักเองบนแผนที่ได้
+ */
+export function getGpsStatusMessage(params: {
+  lat?: number;
+  lng?: number;
+  accuracyM?: number;
+  gpsError?: GpsErrorCode | null;
+}): GpsStatusBanner | null {
+  if (params.gpsError === "PERMISSION_DENIED") {
+    return {
+      tone: "warning",
+      desktopText:
+        "ไม่ได้รับอนุญาตให้ใช้ GPS · คุณยังสามารถแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเองได้",
+      mobileText: "ไม่อนุญาต GPS · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+    };
+  }
+
+  if (params.gpsError) {
+    return {
+      tone: "warning",
+      desktopText:
+        "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
+      mobileText: "ดึง GPS ไม่สำเร็จ · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+    };
+  }
+
+  if (typeof params.lat === "number" && typeof params.lng === "number") {
+    if (isLowGpsAccuracy(params.accuracyM)) {
+      const rounded = Math.round(params.accuracyM!);
+      return {
+        tone: "warning",
+        desktopText: `ความแม่นยำ ±${rounded} เมตร (คลาดเคลื่อนเกิน 100 ม.) · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเพิ่มให้ตรงจุด`,
+        mobileText: `ความแม่นยำ ±${rounded} ม. (เกิน 100 ม.) กรุณาเลื่อนหมุดปักหมุดเพิ่มบนแผนที่`,
+      };
+    }
+
+    if (typeof params.accuracyM === "number" && Number.isFinite(params.accuracyM)) {
+      const rounded = Math.round(params.accuracyM);
+      return {
+        tone: "success",
+        desktopText: `ได้ตำแหน่งแล้ว · แม่นยำ ±${rounded} เมตร · ลากหมุดบนแผนที่เพื่อปรับได้`,
+        mobileText: `ได้ตำแหน่งแล้ว (แม่นยำ ±${rounded} ม.)`,
+      };
+    }
+
+    return {
+      tone: "success",
+      desktopText: "ปักหมุดตำแหน่งแล้ว · ลากหมุดบนแผนที่เพื่อปรับได้",
+      mobileText: "ปักหมุดตำแหน่งแล้ว",
+    };
+  }
+
+  return null;
 }
 
 export interface Step3ValidationErrors {
@@ -453,7 +680,7 @@ function isValidStepNumber(value: unknown): value is SosStepNumber {
 
 const SERVER_INITIAL_DRAFT: SosDraft = Object.freeze(createInitialSosDraft());
 
-let _cachedRaw: string | null = null;
+let _cachedKey: string | null = null;
 let _cachedDraft: SosDraft = SERVER_INITIAL_DRAFT;
 const _listeners = new Set<() => void>();
 
@@ -482,14 +709,33 @@ export function loadSosDraft(
       return initial;
     }
 
-    const validUrgencies = Object.values(Urgency) as string[];
+    const validIncidentTypes = Object.values(IncidentType) as string[];
     const validWaterLevels = Object.values(WaterLevel) as string[];
     const validNeeds = Object.values(Need) as string[];
+    const validDangerSigns = Array.from(
+      new Set([
+        ...UNIVERSAL_DANGER_SIGNS.map((sign) => sign.key),
+        ...Object.values(INCIDENT_REGISTRY).flatMap((def) =>
+          def.dangerSigns.map((sign) => sign.key),
+        ),
+      ]),
+    );
 
-    const urgency =
-      typeof parsed.urgency === "string" && validUrgencies.includes(parsed.urgency)
-        ? (parsed.urgency as Urgency)
+    const incidentType =
+      typeof parsed.incidentType === "string" &&
+      validIncidentTypes.includes(parsed.incidentType)
+        ? (parsed.incidentType as IncidentType)
         : undefined;
+    const atScene = typeof parsed.atScene === "boolean" ? parsed.atScene : undefined;
+
+    // ร่างที่บันทึกก่อน TF-55 มี urgency แต่ไม่มีคำตอบใหม่ → กลับไปตอบขั้น 1 ใหม่
+    const dangerSigns = Array.isArray(parsed.dangerSigns)
+      ? parsed.dangerSigns.filter(
+          (key): key is string => typeof key === "string" && validDangerSigns.includes(key),
+        )
+      : undefined;
+    const canSelfEvacuate =
+      typeof parsed.canSelfEvacuate === "boolean" ? parsed.canSelfEvacuate : undefined;
 
     const waterLevel =
       typeof parsed.waterLevel === "string" && validWaterLevels.includes(parsed.waterLevel)
@@ -512,15 +758,28 @@ export function loadSosDraft(
         ? parsed.idempotencyKey.trim()
         : undefined;
 
-    // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ ให้กลับมาเริ่มที่ขั้นที่ 1
+    // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ หรือตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ ให้กลับมาเริ่มที่ขั้นที่ 1
     const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
-    const currentStep: SosStepNumber = rawStep > 1 && !urgency ? 1 : rawStep;
+    const step1Answered =
+      atScene !== false && dangerSigns !== undefined && canSelfEvacuate !== undefined;
+    const currentStep: SosStepNumber = rawStep > 1 && !step1Answered ? 1 : rawStep;
+
+    // ตัด urgency ของร่างรุ่นเก่าทิ้ง ไม่ให้หลุดไปกับคำขอ
+    const { urgency: _legacyUrgency, ...rest } = parsed as Partial<SosDraft> & {
+      urgency?: unknown;
+    };
+    void _legacyUrgency;
 
     return {
       ...initial,
-      ...parsed,
+      ...rest,
       currentStep,
-      urgency,
+      incidentType,
+      atScene,
+      dangerSigns,
+      canSelfEvacuate,
+      hasDisabled: parsed.hasDisabled === true,
+      hasInjured: parsed.hasInjured === true,
       waterLevel,
       needs,
       photos,
@@ -551,7 +810,7 @@ export function saveSosDraft(
     storage.setItem(SOS_DRAFT_STORAGE_KEY, raw);
 
     if (typeof window !== "undefined" && storage === window.localStorage) {
-      _cachedRaw = raw;
+      _cachedKey = `${raw}::${window.location.search}`;
       _cachedDraft = payload;
       notifyListeners();
     }
@@ -573,7 +832,7 @@ export function clearSosDraft(
   try {
     storage.removeItem(SOS_DRAFT_STORAGE_KEY);
     if (typeof window !== "undefined" && storage === window.localStorage) {
-      _cachedRaw = null;
+      _cachedKey = null;
       _cachedDraft = SERVER_INITIAL_DRAFT;
       notifyListeners();
     }
@@ -589,9 +848,16 @@ export function clearSosDraft(
 export function getSosDraftSnapshot(): SosDraft {
   try {
     const raw = window.localStorage.getItem(SOS_DRAFT_STORAGE_KEY);
-    if (raw !== _cachedRaw) {
-      _cachedRaw = raw;
-      _cachedDraft = raw ? loadSosDraft(window.localStorage) : SERVER_INITIAL_DRAFT;
+    const search = window.location.search;
+    const cacheKey = `${raw ?? ""}::${search}`;
+    if (cacheKey !== _cachedKey) {
+      _cachedKey = cacheKey;
+      const base = raw ? loadSosDraft(window.localStorage) : createInitialSosDraft();
+      const urlType = parseIncidentTypeParam(search);
+      _cachedDraft =
+        base.incidentType === undefined && urlType !== undefined
+          ? { ...base, incidentType: urlType }
+          : base;
     }
     return _cachedDraft;
   } catch {
@@ -708,12 +974,12 @@ export async function submitSosDraft(
     }
 
     const check1 = validateStep1Draft(draft);
-    if (!check1.valid || !draft.urgency) {
+    if (!check1.valid) {
       return {
         status: "invalid_step",
         step: 1,
         step1Errors: check1.errors,
-        error: "ยังส่งคำขอไม่ได้ กรุณาเลือกระดับความเร่งด่วนในขั้นที่ 1",
+        error: `ยังส่งคำขอไม่ได้ กรุณาตอบ${check1.errors.missingSummary.join("และ")} ในขั้นที่ 1`,
       };
     }
 
@@ -743,7 +1009,7 @@ export async function submitSosDraft(
         status: "invalid_step",
         step: 2,
         step2Errors: check2.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check2.errors.missingSummary.join("และ")}ก่อนส่งคำขอ`,
+        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check2.errors.missingSummary.join("และ")} ในขั้นที่ 2 ก่อนส่งคำขอ`,
       };
     }
 
@@ -772,7 +1038,8 @@ export async function submitSosDraft(
           "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
-          urgency: nextDraft.urgency,
+          dangerSigns: nextDraft.dangerSigns,
+          canSelfEvacuate: nextDraft.canSelfEvacuate,
           waterLevel: nextDraft.waterLevel,
           lat: nextDraft.lat,
           lng: nextDraft.lng,
@@ -786,6 +1053,8 @@ export async function submitSosDraft(
           bedridden: nextDraft.bedridden,
           children: nextDraft.children,
           pets: nextDraft.pets,
+          hasDisabled: nextDraft.hasDisabled,
+          hasInjured: nextDraft.hasInjured,
           needs: nextDraft.needs,
           otherDetail: nextDraft.needs.includes(Need.OTHER)
             ? nextDraft.otherDetail

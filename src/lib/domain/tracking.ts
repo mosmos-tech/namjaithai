@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { CaseStatus } from "./case-status";
-import type { Urgency } from "./enums";
 
 // ── ข้อมูลที่ผู้แจ้งพิมพ์/ส่งมาเพื่อเปิดหน้าติดตาม ───────────────────────────────
 // รหัสเคสจาก create_sos_case(): FL-YYMM-NNNN (เลขรันเกิน 9999 ได้ เลยรับ 4 หลักขึ้นไป)
@@ -42,7 +41,7 @@ export type TrackedCase = {
   caseCode: string;
   trackingToken: string;
   status: CaseStatus;
-  urgency: Urgency;
+  // ไม่มีระดับความเร่งด่วน: ผู้แจ้งไม่เห็นระดับที่ระบบคำนวณ (TF-55)
   createdAt: string;
   lastStatusUpdatedAt: string;
   area: { province: string | null; district: string | null; subdistrict: string | null };

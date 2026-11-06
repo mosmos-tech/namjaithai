@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { randomBangkokPoint } from "./db";
+import { uniqueTestPoint } from "./db";
 
 const DRAFT_KEY = "namjaithai-sos-draft-v1";
 
@@ -27,9 +27,21 @@ export async function expectStep(page: Page, step: number) {
   await expect(page.getByText(`ขั้นที่ ${step} จาก 5`)).toBeVisible();
 }
 
-// ขั้นที่ 1: เลือกความเร่งด่วนจากชื่อการ์ด (ใช้คำแรก "วิกฤต" / "เร่งด่วน" / "ทั่วไป")
-export async function chooseUrgency(page: Page, word: "วิกฤต" | "เร่งด่วน" | "ทั่วไป") {
-  await page.getByRole("radio", { name: new RegExp(`^${word}`) }).click();
+/**
+ * ขั้นที่ 1 (TF-55): ตอบสัญญาณอันตราย + ออกเองได้ไหม (ผู้แจ้งไม่เลือกสีแล้ว)
+ * dangerSigns = ชื่อข้อที่จะติ๊ก เช่น "มีคนหมดสติ" (ไม่ส่ง = กด "ไม่มีข้อใดเลย")
+ */
+export async function answerStep1(
+  page: Page,
+  { dangerSigns = [], canSelfEvacuate = true }: { dangerSigns?: string[]; canSelfEvacuate?: boolean } = {},
+) {
+  if (dangerSigns.length === 0) {
+    await page.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" }).click();
+  }
+  for (const label of dangerSigns) {
+    await page.getByRole("checkbox", { name: label, exact: true }).click();
+  }
+  await page.getByRole("radio", { name: canSelfEvacuate ? "ได้ ออกเองได้" : "ไม่ได้ ติดอยู่" }).click();
 }
 
 /**
@@ -37,18 +49,25 @@ export async function chooseUrgency(page: Page, word: "วิกฤต" | "เ�
  * TODO(TF-09): เปลี่ยนเป็นกดดึง GPS / ปักหมุดจริงเมื่อขั้นตำแหน่งเสร็จ
  */
 export async function seedLocationIntoDraft(page: Page) {
-  const point = randomBangkokPoint();
-  await page.evaluate(
+  const point = uniqueTestPoint();
+  const currentStep = await page.evaluate(
     ({ key, point }) => {
       const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
-      localStorage.setItem(
-        key,
-        JSON.stringify({ ...draft, ...point, accuracyM: 10, landmark: "หน้าร้านสะดวกซื้อ (E2E)" }),
-      );
+      const next = {
+        ...draft,
+        ...point,
+        accuracyM: 10,
+        landmark: "หน้าร้านสะดวกซื้อ (E2E)",
+      };
+      localStorage.setItem(key, JSON.stringify(next));
+      window.dispatchEvent(new Event("storage"));
+      return typeof next.currentStep === "number" ? next.currentStep : 1;
     },
     { key: DRAFT_KEY, point },
   );
-  await page.reload();
+  if (currentStep === 2) {
+    await expect(page.locator("#sos-landmark")).toHaveValue("หน้าร้านสะดวกซื้อ (E2E)");
+  }
   return point;
 }
 
@@ -58,9 +77,10 @@ export async function readDraft(page: Page): Promise<Record<string, unknown> | n
 
 // พาจากขั้น 1 ไปถึงขั้น 5 แบบกรอกค่าที่ถูกต้อง
 export async function goToStep5(page: Page) {
-  await chooseUrgency(page, "เร่งด่วน");
+  await answerStep1(page);
   await nextButton(page).click();
   await expectStep(page, 2);
+  await seedLocationIntoDraft(page);
   await nextButton(page).click();
   await expectStep(page, 3);
   await nextButton(page).click();
