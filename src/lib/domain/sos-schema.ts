@@ -2,24 +2,43 @@ import { z } from "zod";
 import "./zod-locale";
 import { WaterLevel, Need } from "./enums";
 import { latSchema, lngSchema } from "./geo";
-import { INCIDENT_REGISTRY } from "./incidents";
+import {
+  INCIDENT_REGISTRY,
+  IncidentType,
+  UNIVERSAL_DANGER_SIGNS,
+} from "./incidents";
 
 const waterLevelValues = Object.values(WaterLevel) as [WaterLevel, ...WaterLevel[]];
 const needValues = Object.values(Need) as [Need, ...Need[]];
+const incidentTypeValues = Object.values(IncidentType) as [
+  IncidentType,
+  ...IncidentType[],
+];
 
 // เบอร์โทรไทย: มือถือ 06x-09x (10 หลัก) หรือบ้าน/สำนักงาน 02x-05x (9-10 หลัก)
 const thaiPhoneRegex = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
 
-// สัญญาณอันตรายของน้ำท่วม (ตอนนี้ฟอร์มรับแค่ FLOOD — TF-50/51 จะเปลี่ยนตามประเภทเหตุ)
-const floodDangerSignKeys = INCIDENT_REGISTRY.FLOOD.dangerSigns.map((s) => s.key) as [
-  string,
-  ...string[],
-];
+// สัญญาณอันตรายทั้งหมดจากทะเบียนประเภทเหตุ (TF-49 / TF-50 / TF-55)
+const allDangerSignKeys = Array.from(
+  new Set([
+    ...UNIVERSAL_DANGER_SIGNS.map((s) => s.key),
+    ...Object.values(INCIDENT_REGISTRY).flatMap((def) =>
+      def.dangerSigns.map((s) => s.key),
+    ),
+  ]),
+) as [string, ...string[]];
 
-// ── ขั้น 1: สถานการณ์ (TF-55: ผู้แจ้งไม่เลือกสีเอง ระบบคำนวณจากคำตอบ) ──────────
+// ── ขั้น 1: สถานการณ์ (TF-50 / TF-55: เลือกประเภทเหตุ + อยู่ที่จุดเกิดเหตุ + คำถามสัญญาณอันตราย) ──
 export const step1Schema = z.object({
+  incidentType: z
+    .enum(incidentTypeValues, { error: "ไม่มีประเภทเหตุนี้" })
+    .optional(),
+  // ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (false) จะไม่ผ่านการตรวจและไม่สร้างเคส (TF-50)
+  atScene: z
+    .literal(true, { error: "แจ้งแทนคนอื่นไม่ได้ กรุณาโทรสายด่วนฉุกเฉินแทน" })
+    .optional(),
   // ต้องตอบ: ติ๊กสัญญาณอันตราย หรือกด "ไม่มี" (= array ว่าง)
-  dangerSigns: z.array(z.enum(floodDangerSignKeys, { error: "ไม่มีตัวเลือกนี้" }), {
+  dangerSigns: z.array(z.enum(allDangerSignKeys, { error: "ไม่มีตัวเลือกนี้" }), {
     error: "กรุณาตอบว่ามีสัญญาณอันตรายข้อใดไหม",
   }),
   canSelfEvacuate: z.boolean({ error: "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม" }),
