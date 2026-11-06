@@ -72,6 +72,39 @@ test.describe("TF-14 ผู้แจ้งอัปเดตเคส", () => {
       );
   });
 
+  test("คงสัญญาณอันตรายเดิมไว้ในการคำนวณระดับ", async ({ request, baseURL }) => {
+    const sent = await createCaseViaApi(baseURL!, {
+      waterLevel: "ANKLE_KNEE",
+      dangerSigns: ["UNCONSCIOUS"],
+      canSelfEvacuate: true,
+    });
+    const headers = { "X-Tracking-Token": sent.trackingToken, "X-Reporter-Phone": sent.phone };
+    const url = `/api/track/${sent.caseCode}/reporter`;
+    const details = await (await request.get(url, { headers })).json();
+    const response = await request.patch(url, {
+      headers,
+      data: {
+        action: "update",
+        version: details.version,
+        waterLevel: "ANKLE_KNEE",
+        adults: 1,
+        elderly: 0,
+        bedridden: 0,
+        children: 0,
+        pets: 0,
+        notes: "",
+      },
+    });
+    expect(response.status()).toBe(200);
+    expect(await response.json()).not.toHaveProperty("urgency");
+    const result = await adminDb()
+      .from("cases")
+      .select("urgency,triage_reasons")
+      .eq("case_code", sent.caseCode)
+      .single();
+    expect(result.data).toMatchObject({ urgency: "RED", triage_reasons: ["DANGER_SIGN"] });
+  });
+
   test("กู้ภัยปรับระดับไว้แล้ว ผู้แจ้งแก้ไขไม่ทับระดับนั้น", async ({ request, baseURL }) => {
     const sent = await createCaseViaApi(baseURL!, { waterLevel: "ANKLE_KNEE" });
     const db = adminDb();
