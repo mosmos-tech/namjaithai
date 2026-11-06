@@ -1,4 +1,4 @@
-import { adminDb } from "./helpers/db";
+import { adminDb, setTestOnlyIncidentTypes } from "./helpers/db";
 
 /**
  * ก่อนรัน E2E ทุกครั้ง: ล้างตัวนับ rate limit ของการส่ง SOS/ติดตามเคส ในฐานข้อมูลในเครื่อง
@@ -10,4 +10,7 @@ export default async function globalSetup() {
 
   const { error } = await adminDb().from("sos_rate_limit_hits").delete().gte("id", 0);
   if (error) throw new Error(`ล้าง rate limit ไม่สำเร็จ: ${error.message}`);
+
+  // ประเภทเหตุที่ยังรอ TF-54 ตรวจเนื้อหาปิดอยู่ แต่ E2E ของ TF-51 ต้องส่งเคสได้ — เปิดเฉพาะตอนรัน test
+  await setTestOnlyIncidentTypes(true);
 }

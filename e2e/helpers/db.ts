@@ -16,6 +16,18 @@ export function adminDb(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+// ประเภทเหตุที่ปิดไว้รอ TF-54 ตรวจเนื้อหา แต่ E2E ของ TF-51 ใช้ทดสอบฟอร์ม
+// global-setup เปิดก่อนรัน, global-teardown ปิดคืน ให้ฐานข้อมูลในเครื่องกลับเป็นแบบ migration
+const TEST_ONLY_INCIDENT_TYPES = ["ROAD_ACCIDENT", "ANIMAL"];
+
+export async function setTestOnlyIncidentTypes(enabled: boolean) {
+  const { error } = await adminDb()
+    .from("incident_types")
+    .update({ is_enabled: enabled })
+    .in("code", TEST_ONLY_INCIDENT_TYPES);
+  if (error) throw new Error(`ตั้งค่าประเภทเหตุสำหรับ test ไม่สำเร็จ: ${error.message}`);
+}
+
 // เบอร์มือถือไทยสุ่ม (ไม่ซ้ำกันทุกครั้ง เลี่ยงการตรวจเคสซ้ำด้วยเบอร์ของ TF-16)
 export function randomPhone(): string {
   return `08${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
