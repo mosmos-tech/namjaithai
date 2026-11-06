@@ -184,19 +184,24 @@ test.describe("TF-43 account cases", () => {
     ).toHaveCount(1);
   });
 
-  test("เปลี่ยนสถานะสร้างคิว LINE โดยผู้ใช้เรียก worker เองไม่ได้", async ({ page }) => {
+  test("พักคิว LINE เมื่อเปลี่ยนสถานะ และผู้ใช้เรียก worker เองไม่ได้", async ({ page }) => {
     const sent = await report(page.request);
     const { data: row } = await adminDb()
       .from("cases")
       .select("id")
       .eq("case_code", sent.caseCode)
       .single();
-    await adminDb().from("cases").update({ status: "ACCEPTED" }).eq("id", row!.id);
-    const { data: jobs } = await adminDb()
+    const { error: updateError } = await adminDb()
+      .from("cases")
+      .update({ status: "ACCEPTED" })
+      .eq("id", row!.id);
+    expect(updateError).toBeNull();
+    const { data: jobs, error: queueError } = await adminDb()
       .from("case_line_notifications")
       .select("user_id,to_status,state")
       .eq("case_id", row!.id);
-    expect(jobs).toEqual([{ user_id: owner.id, to_status: "ACCEPTED", state: "PENDING" }]);
+    expect(queueError).toBeNull();
+    expect(jobs).toEqual([]);
     expect((await page.request.post("/api/notifications/line")).status()).toBe(401);
   });
 

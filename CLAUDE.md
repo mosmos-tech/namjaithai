@@ -46,7 +46,8 @@
 
 ## วิธีทำงานของทีม
 - ทำงานเป็นการ์ด TF-XX บนบอร์ด Scrum; แตก branch จาก develop ตามชื่อบนการ์ด (feature/ chore/ test/ fix/)
-- commit ขึ้นต้นด้วยรหัสการ์ด เช่น `TF-07: ...`; เปิด PR เข้า develop; ห้าม push ตรงเข้า main/develop (มี ruleset บังคับ)
+- commit ขึ้นต้นด้วยรหัสการ์ด เช่น `TF-07: ...`; เปิด PR เข้า develop; ห้าม push ตรงเข้า main/uat/develop (มี ruleset บังคับ)
+- สภาพแวดล้อม local → dev (develop) → uat → production (main) ดู docs/environments.md: migration ขึ้น Supabase ผ่าน GitHub Actions เท่านั้น ห้าม db push ขึ้น production เอง
 - ก่อนเปิด PR: lint, typecheck, test ต้องผ่าน; ไม่มีคีย์ลับในโค้ด (.env.local ไม่ขึ้น git)
 - รายละเอียดและเกณฑ์ผ่านของการ์ดทุกใบอยู่ใน docs/backlog.md (สถานะ/คนหยิบดูที่บอร์ด)
 
