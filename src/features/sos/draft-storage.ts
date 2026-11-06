@@ -122,7 +122,8 @@ export interface SosDraft {
   addressLine?: string;
   gmapsUrl?: string;
   landmark: string;
-  // ขั้นที่ 3: ผู้ติดค้าง (TF-11)
+  // ขั้นที่ 3: คำถามเฉพาะประเภทเหตุ (TF-51) และผู้ติดค้าง (TF-11)
+  details?: Record<string, string | number | boolean | undefined>;
   adults: number;
   elderly: number;
   bedridden: number;
@@ -157,6 +158,7 @@ export function createInitialSosDraft(): SosDraft {
     addressLine: "",
     gmapsUrl: "",
     landmark: "",
+    details: {},
     adults: 1,
     elderly: 0,
     bedridden: 0,
@@ -472,6 +474,7 @@ export function getGpsStatusMessage(params: {
 
 export interface Step3ValidationErrors {
   totalPeople?: string;
+  questionErrors?: Record<string, string>;
   missingSummary: string[];
 }
 
@@ -490,11 +493,19 @@ export function getTotalPeopleCount(
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 3 (ผู้ติดค้าง) ด้วย step3Schema จาก src/lib/domain
- * เกณฑ์ผ่าน: จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน
+ * ตรวจสอบข้อมูลขั้นที่ 3 (คำถามเฉพาะประเภทจากทะเบียน + จำนวนผู้ติดค้าง)
+ * เกณฑ์ผ่าน:
+ * - คำถามที่บังคับ (required: true) ของประเภทเหตุนั้นต้องตอบครบและถูกต้องตามชนิดข้อมูล (TF-51)
+ * - จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน (TF-11)
  */
 export function validateStep3Draft(
-  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets">,
+  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets"> &
+    Partial<
+      Pick<
+        SosDraft,
+        "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured"
+      >
+    >,
 ): {
   valid: boolean;
   totalPeople: number;
@@ -509,21 +520,85 @@ export function validateStep3Draft(
     pets: draft.pets,
   });
 
-  if (result.success) {
+  const errors: Step3ValidationErrors = {
+    missingSummary: [],
+  };
+  const questionErrors: Record<string, string> = {};
+
+  const activeType = draft.incidentType ?? IncidentType.FLOOD;
+  const questions = INCIDENT_REGISTRY[activeType].questions;
+
+  for (const q of questions) {
+    let val: string | number | boolean | undefined = draft.details?.[q.key];
+    if (val === undefined) {
+      if (q.key === "waterLevel") val = draft.waterLevel;
+      else if (q.key === "canSelfEvacuate") val = draft.canSelfEvacuate;
+      else if (q.key === "hasInjured") val = draft.hasInjured;
+    }
+
+    // สำหรับ FLOOD คำถาม canSelfEvacuate ถูกบังคับตั้งแต่ขั้นที่ 1 แล้ว
+    // ถ้าเรียก validateStep3Draft เฉพาะตัวนับคน (ไม่ได้ส่ง canSelfEvacuate หรือ incidentType มา) ไม่ต้องบังคับซ้ำ
+    if (
+      activeType === IncidentType.FLOOD &&
+      q.key === "canSelfEvacuate" &&
+      val === undefined &&
+      draft.incidentType === undefined
+    ) {
+      continue;
+    }
+
+    if (q.required && (val === undefined || val === "")) {
+      questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
+      errors.missingSummary.push(q.label.th);
+      continue;
+    }
+
+    if (val !== undefined && val !== "") {
+      if (q.kind === "choice") {
+        if (typeof val !== "string" || !q.options.some((o) => o.value === val)) {
+          questionErrors[q.key] = `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`;
+          errors.missingSummary.push(q.label.th);
+        }
+      } else if (q.kind === "number") {
+        if (
+          typeof val !== "number" ||
+          !Number.isInteger(val) ||
+          val < q.min ||
+          val > q.max
+        ) {
+          questionErrors[q.key] = `กรุณาระบุ "${q.label.th}" เป็นตัวเลขระหว่าง ${q.min}–${q.max}`;
+          errors.missingSummary.push(q.label.th);
+        }
+      } else if (q.kind === "boolean") {
+        if (typeof val !== "boolean") {
+          questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
+          errors.missingSummary.push(q.label.th);
+        }
+      }
+    }
+  }
+
+  if (!result.success) {
+    errors.totalPeople = "ต้องมีผู้ติดค้างอย่างน้อย 1 คน (ไม่นับรวมสัตว์เลี้ยง)";
+    errors.missingSummary.push("จำนวนผู้ติดค้างอย่างน้อย 1 คน");
+  }
+
+  if (Object.keys(questionErrors).length > 0) {
+    errors.questionErrors = questionErrors;
+  }
+
+  if (errors.totalPeople || Object.keys(questionErrors).length > 0) {
     return {
-      valid: true,
+      valid: false,
       totalPeople,
-      errors: { missingSummary: [] },
+      errors,
     };
   }
 
   return {
-    valid: false,
+    valid: true,
     totalPeople,
-    errors: {
-      totalPeople: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน (ไม่นับรวมสัตว์เลี้ยง)",
-      missingSummary: ["จำนวนผู้ติดค้างอย่างน้อย 1 คน"],
-    },
+    errors: { missingSummary: [] },
   };
 }
 
@@ -752,6 +827,19 @@ export function loadSosDraft(
       ? parsed.photos.slice(0, MAX_SOS_PHOTOS)
       : initial.photos;
 
+    const details: Record<string, string | number | boolean | undefined> = {};
+    if (
+      typeof parsed.details === "object" &&
+      parsed.details !== null &&
+      !Array.isArray(parsed.details)
+    ) {
+      for (const [k, v] of Object.entries(parsed.details)) {
+        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+          details[k] = v;
+        }
+      }
+    }
+
     const idempotencyKey =
       typeof parsed.idempotencyKey === "string" &&
       parsed.idempotencyKey.trim().length > 0
@@ -781,6 +869,7 @@ export function loadSosDraft(
       hasDisabled: parsed.hasDisabled === true,
       hasInjured: parsed.hasInjured === true,
       waterLevel,
+      details,
       needs,
       photos,
       idempotencyKey,
@@ -989,7 +1078,7 @@ export async function submitSosDraft(
         status: "invalid_step",
         step: 3,
         step3Errors: check3.errors,
-        error: "ยังส่งคำขอไม่ได้ กรุณาระบุจำนวนผู้ติดค้างอย่างน้อย 1 คนในขั้นที่ 3",
+        error: `ยังส่งคำขอไม่ได้ กรุณาตรวจสอบข้อมูลในขั้นที่ 3: ${check3.errors.missingSummary.join(", ")}`,
       };
     }
 
@@ -1030,6 +1119,20 @@ export async function submitSosDraft(
 
     saveSosDraft(nextDraft, storage);
 
+    const activeType = nextDraft.incidentType ?? IncidentType.FLOOD;
+    const detailsPayload: Record<string, string | number | boolean> = {};
+    for (const q of INCIDENT_REGISTRY[activeType].questions) {
+      let val: string | number | boolean | undefined = nextDraft.details?.[q.key];
+      if (val === undefined) {
+        if (q.key === "waterLevel") val = nextDraft.waterLevel;
+        else if (q.key === "canSelfEvacuate") val = nextDraft.canSelfEvacuate;
+        else if (q.key === "hasInjured" && nextDraft.hasInjured) val = true;
+      }
+      if (val !== undefined) {
+        detailsPayload[q.key] = val;
+      }
+    }
+
     try {
       const response = await fetchImpl("/api/cases", {
         method: "POST",
@@ -1038,9 +1141,12 @@ export async function submitSosDraft(
           "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
+          incidentType: nextDraft.incidentType,
+          atScene: nextDraft.atScene,
           dangerSigns: nextDraft.dangerSigns,
           canSelfEvacuate: nextDraft.canSelfEvacuate,
-          waterLevel: nextDraft.waterLevel,
+          waterLevel: activeType === IncidentType.FLOOD ? nextDraft.waterLevel : undefined,
+          details: detailsPayload,
           lat: nextDraft.lat,
           lng: nextDraft.lng,
           accuracyM: nextDraft.accuracyM,

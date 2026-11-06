@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Need, WaterLevel } from "../../../lib/domain";
+import { IncidentType, Need, WaterLevel } from "../../../lib/domain";
 import {
   SOS_DRAFT_STORAGE_KEY,
   createInitialSosDraft,
@@ -19,7 +19,7 @@ import {
   MAX_SOS_PHOTOS,
 } from "../image-compression";
 import { PEOPLE_GROUPS } from "../components/Step3People";
-import { NEED_OPTIONS } from "../components/Step4Needs";
+import { NEED_OPTIONS, getNeedOptionsForIncident } from "../components/Step4Needs";
 
 describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค้าง สิ่งที่ต้องการ ข้อมูลติดต่อ)", () => {
   it("เกณฑ์ข้อ 1: จำนวนคนรวมต้องมีอย่างน้อย 1 คน (สัตว์เลี้ยงไม่นับรวมเป็นจำนวนคน)", () => {
@@ -365,5 +365,50 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(reloaded.dangerSigns).toBeUndefined();
     expect(reloaded.name).toBe("");
     expect(reloaded.phone).toBe("");
+  });
+
+  it("TF-51: validateStep3Draft ตรวจคำถามบังคับของประเภทเหตุ และ getNeedOptionsForIncident เปลี่ยนตามประเภทเหตุพร้อม OTHER เสมอ", () => {
+    // ROAD_ACCIDENT ยังไม่ตอบคำถามบังคับ 3 ข้อ -> ไม่ผ่าน
+    const missingRoadQuestions = validateStep3Draft({
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      details: {},
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(missingRoadQuestions.valid).toBe(false);
+    expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("injuredCount");
+    expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("vehicleType");
+    expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("isTrapped");
+
+    // ตอบครบทั้ง 3 ข้อ (ตัวเลข + ตัวเลือก + ใช่/ไม่ใช่) -> ผ่าน
+    const validRoadQuestions = validateStep3Draft({
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      details: {
+        injuredCount: 1,
+        vehicleType: "CAR",
+        isTrapped: false,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(validRoadQuestions.valid).toBe(true);
+
+    // ความต้องการเปลี่ยนตามประเภทเหตุ และมี OTHER (อื่นๆ พิมพ์เอง) เสมอ
+    const floodNeeds = getNeedOptionsForIncident(IncidentType.FLOOD).map((o) => o.value);
+    const roadNeeds = getNeedOptionsForIncident(IncidentType.ROAD_ACCIDENT).map((o) => o.value);
+    const animalNeeds = getNeedOptionsForIncident(IncidentType.ANIMAL).map((o) => o.value);
+
+    expect(floodNeeds).toContain(Need.EVACUATION_BOAT);
+    expect(roadNeeds).not.toContain(Need.EVACUATION_BOAT);
+    expect(roadNeeds).toContain(Need.MEDICINE);
+    expect(roadNeeds).toContain(Need.OTHER);
+    expect(animalNeeds).not.toContain(Need.EVACUATION_BOAT);
+    expect(animalNeeds).toContain(Need.OTHER);
   });
 });
