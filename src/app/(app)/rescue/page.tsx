@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
 
@@ -15,7 +16,15 @@ export default function Page({ searchParams }: PageProps<"/rescue">) {
         title="แผนที่กู้ภัย"
         comingIn="TF-22"
         denied={searchParams.then((p) => p.denied === "1")}
-      />
+      >
+        {/* TF-23: ระหว่างรอแผนที่ (TF-22) ดูเคสแบบรายการได้ก่อน */}
+        <Link
+          href="/rescue/cases"
+          className="bg-primary-600 font-heading inline-flex min-h-12 w-fit items-center rounded-full px-6 text-lg font-semibold text-white"
+        >
+          ดูรายการเคส
+        </Link>
+      </SignedInShell>
     </Suspense>
   );
 }
