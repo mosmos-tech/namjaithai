@@ -27,6 +27,11 @@ export type LocationSource = (typeof LocationSource)[keyof typeof LocationSource
 // ผู้แจ้งต้องปักเอง วางลิงก์ หรือกด "ส่งพร้อมที่อยู่แทน" (ต้องกรอกที่อยู่) — ไม่บล็อกการขอความช่วยเหลือ
 export const GPS_MAX_ACCEPTABLE_ACCURACY_M = 1000;
 
+// TF-67: ค่าแรกของ GPS มักหยาบ (ยังจับดาวเทียมไม่ครบ) จึงรอให้แม่นขึ้นก่อนตัดสิน
+// ได้ไม่เกินนี้รับทันที / ไม่งั้นรอได้นานสุดเท่านี้ นับจากได้ค่าแรก (หรือ error แรก) แล้วใช้ค่าที่ดีที่สุด
+export const GPS_TARGET_ACCURACY_M = 100;
+export const GPS_REFINE_MAX_WAIT_MS = 15_000;
+
 export const INACCURATE_LOCATION_MESSAGE =
   "ตำแหน่งจากอุปกรณ์นี้ไม่แม่น กรุณาแตะบนแผนที่ วางลิงก์ Google Maps หรือกรอกที่อยู่";
 
