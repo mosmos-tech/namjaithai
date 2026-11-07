@@ -16,6 +16,7 @@ import {
   type Urgency,
   type DuplicateAction,
   type DuplicateCandidateMatch,
+  type IncidentDetailValue,
 } from "../../../lib/domain";
 
 // คำตอบด้านสุขภาพไม่ส่งตรงๆ แต่รวมไว้ใน sensitive → ฐานข้อมูลเก็บลง case_sensitive_details
@@ -26,7 +27,7 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   urgency: Urgency;
   triageReasons: TriageReason[];
   consentVersion: string;
-  details?: Record<string, string | number | boolean>;
+  details?: Record<string, IncidentDetailValue>;
   sensitive?: {
     dangerSigns?: string[];
     hasDisabled?: true;

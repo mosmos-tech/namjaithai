@@ -10,6 +10,8 @@ import {
   INCIDENT_TYPE_ORDER,
   IncidentType,
   UnitCapability,
+  isQuestionVisible,
+  type IncidentQuestion,
   type LocalizedText,
 } from "../incidents";
 
@@ -108,11 +110,12 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     expect([...list.matchAll(/'([^']+)'/g)].map((m) => m[1])).toEqual([...FORBIDDEN_DETAIL_KEYS]);
   });
 
-  it("TF-51: แต่ละประเภทเหตุถามไม่เกิน 3 คำถาม และมีความต้องการตามประเภทพร้อม OTHER เสมอ", () => {
+  it("TF-54: แต่ละประเภทเหตุมีคำถามหลักไม่เกิน 4 ข้อ และมีความต้องการตามประเภทพร้อม OTHER เสมอ", () => {
     for (const type of ALL_TYPES) {
       const def = INCIDENT_REGISTRY[type];
-      expect(def.questions.length, `${type} มีคำถามเกิน 3 ข้อ`).toBeGreaterThanOrEqual(1);
-      expect(def.questions.length, `${type} มีคำถามเกิน 3 ข้อ`).toBeLessThanOrEqual(3);
+      const mainQuestions = def.questions.filter((q) => !q.dependsOn);
+      expect(mainQuestions.length, `${type} มีคำถามหลักน้อยกว่า 1 ข้อ`).toBeGreaterThanOrEqual(1);
+      expect(mainQuestions.length, `${type} มีคำถามหลักเกิน 4 ข้อ`).toBeLessThanOrEqual(4);
       expect(def.needs.length, `${type} ต้องมีรายการความต้องการ`).toBeGreaterThanOrEqual(2);
       expect(def.needs, `${type} ต้องมี OTHER เสมอ`).toContain(Need.OTHER);
     }
@@ -122,20 +125,83 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     expect(INCIDENT_REGISTRY.ANIMAL.needs).not.toEqual(INCIDENT_REGISTRY.FLOOD.needs);
   });
 
-  it("TF-51: validateAndSplitIncidentDetails ตรวจ details ตามประเภทด้วย Zod และแยกข้อมูลสุขภาพออกจาก publicDetails", () => {
-    // ROAD_ACCIDENT: ถูกต้อง -> แยก injuredCount ไป sensitiveDetails, ที่เหลืออยู่ publicDetails
-    const okRoad = validateAndSplitIncidentDetails(IncidentType.ROAD_ACCIDENT, {
+  it("TF-54: ทุก waitingAdvice และ dangerSigns มี source ชี้ไปยัง URL แหล่งทางการ", () => {
+    for (const type of ALL_TYPES) {
+      const def = INCIDENT_REGISTRY[type];
+      expect(def.waitingAdvice.length, `${type} ต้องมี waitingAdvice อย่างน้อย 1 ข้อ`).toBeGreaterThan(0);
+      for (const advice of def.waitingAdvice) {
+        expect(advice.source, `${type} advice source ต้องเป็น URL`).toMatch(/^https?:\/\//);
+      }
+      for (const sign of def.dangerSigns) {
+        expect(sign.source, `${type} danger sign source ต้องเป็น URL`).toMatch(/^https?:\/\//);
+      }
+    }
+  });
+
+  it("TF-54: roadAccident มีตัวเลือกยานพาหนะแบบ multi-select และ animal มีสัตว์เลื้อยคลานครบ", () => {
+    const roadVehicles = INCIDENT_REGISTRY.ROAD_ACCIDENT.questions.find((q) => q.key === "vehicleTypes");
+    expect(roadVehicles).toBeDefined();
+    expect(roadVehicles?.kind).toBe("choice");
+    if (roadVehicles?.kind === "choice") {
+      expect(roadVehicles.multiple).toBe(true);
+    }
+
+    const animalTypeQ = INCIDENT_REGISTRY.ANIMAL.questions.find((q) => q.key === "animalType");
+    expect(animalTypeQ).toBeDefined();
+    if (animalTypeQ?.kind === "choice") {
+      const values = animalTypeQ.options.map((o) => o.value);
+      expect(values).toContain("SNAKE");
+      expect(values).toContain("MONITOR_LIZARD");
+      expect(values).toContain("CROCODILE");
+    }
+  });
+
+  it("TF-54: คำถามสุขภาพถูกตั้งค่า sensitive: true อย่างถูกต้อง", () => {
+    for (const type of ALL_TYPES) {
+      const def = INCIDENT_REGISTRY[type];
+      for (const q of def.questions) {
+        if (
+          ["injuredCount", "hasInjured", "symptomGroup", "hasChronicCondition", "hasBittenOrStung"].includes(
+            q.key,
+          )
+        ) {
+          expect(q.sensitive, `${type}.${q.key} ต้องเป็น sensitive: true`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("TF-51 / TF-54: validateAndSplitIncidentDetails ตรวจ details ตามประเภทด้วย Zod และแยกข้อมูลสุขภาพออกจาก publicDetails", () => {
+    // ROAD_ACCIDENT: ถูกต้อง -> แยก injuredCount ไป sensitiveDetails, vehicleTypes อยู่ publicDetails
+    const okRoadMulti = validateAndSplitIncidentDetails(IncidentType.ROAD_ACCIDENT, {
+      injuredCount: 2,
+      vehicleTypes: ["MOTORCYCLE", "CAR"],
+      isTrapped: true,
+    });
+    expect(okRoadMulti.ok).toBe(true);
+    if (okRoadMulti.ok) {
+      expect(okRoadMulti.publicDetails).toEqual({
+        vehicleTypes: ["MOTORCYCLE", "CAR"],
+        isTrapped: true,
+      });
+      expect(okRoadMulti.sensitiveDetails).toEqual({
+        injuredCount: 2,
+      });
+    }
+
+    // รองรับ legacy vehicleType เดี่ยว
+    const okRoadLegacy = validateAndSplitIncidentDetails(IncidentType.ROAD_ACCIDENT, {
       injuredCount: 2,
       vehicleType: "MOTORCYCLE",
       isTrapped: true,
     });
-    expect(okRoad.ok).toBe(true);
-    if (okRoad.ok) {
-      expect(okRoad.publicDetails).toEqual({
+    expect(okRoadLegacy.ok).toBe(true);
+    if (okRoadLegacy.ok) {
+      expect(okRoadLegacy.publicDetails).toEqual({
         vehicleType: "MOTORCYCLE",
         isTrapped: true,
       });
-      expect(okRoad.sensitiveDetails).toEqual({
+      expect(okRoadLegacy.sensitiveDetails).toEqual({
         injuredCount: 2,
       });
     }
@@ -144,17 +210,93 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     const mismatchRoad = validateAndSplitIncidentDetails(IncidentType.ROAD_ACCIDENT, {
       waterLevel: WaterLevel.ROOF,
       injuredCount: 1,
-      vehicleType: "CAR",
+      vehicleTypes: ["CAR"],
       isTrapped: false,
     });
     expect(mismatchRoad.ok).toBe(false);
 
-    // ส่ง key ของ ROAD_ACCIDENT (vehicleType) มาใน FLOOD -> ไม่ผ่าน
+    // ส่ง key ของ ROAD_ACCIDENT (vehicleTypes) มาใน FLOOD -> ไม่ผ่าน
     const mismatchFlood = validateAndSplitIncidentDetails(
       IncidentType.FLOOD,
-      { vehicleType: "CAR" },
+      { vehicleTypes: ["CAR"] },
       { canSelfEvacuate: true },
     );
     expect(mismatchFlood.ok).toBe(false);
   });
+
+  describe("TF-54: isQuestionVisible และเงื่อนไข dependsOn", () => {
+    it("คำถามที่ไม่มี dependsOn จะแสดงเสมอ", () => {
+      const q: IncidentQuestion = {
+        key: "testNoDep",
+        label: { th: "ไม่มีเงื่อนไข" },
+        required: true,
+        kind: "boolean",
+      };
+      expect(isQuestionVisible(q, {})).toBe(true);
+      expect(isQuestionVisible(q, { other: "anything" })).toBe(true);
+    });
+
+    it("คำถามที่มี dependsOn จะแสดงเฉพาะเมื่อคำตอบตรงกับเงื่อนไข", () => {
+      const qSingle: IncidentQuestion = {
+        key: "subQuestion",
+        label: { th: "คำถามย่อย" },
+        required: true,
+        kind: "number",
+        min: 1,
+        max: 50,
+        dependsOn: { key: "parentChoice", value: "SPECIAL" },
+      };
+
+      expect(isQuestionVisible(qSingle, {})).toBe(false);
+      expect(isQuestionVisible(qSingle, { parentChoice: "OTHER" })).toBe(false);
+      expect(isQuestionVisible(qSingle, { parentChoice: "SPECIAL" })).toBe(true);
+    });
+
+    it("รองรับ dependsOn ที่ตรวจสอบค่า boolean, array value, และ multi-select answer", () => {
+      const qBool: IncidentQuestion = {
+        key: "subTrappedCount",
+        label: { th: "จำนวนคนติด" },
+        required: true,
+        kind: "number",
+        min: 1,
+        max: 99,
+        dependsOn: { key: "isTrapped", value: true },
+      };
+      expect(isQuestionVisible(qBool, { isTrapped: false })).toBe(false);
+      expect(isQuestionVisible(qBool, { isTrapped: true })).toBe(true);
+
+      const qMultiDep: IncidentQuestion = {
+        key: "helmetQuestion",
+        label: { th: "สวมหมวกกันน็อกไหม" },
+        required: false,
+        kind: "boolean",
+        dependsOn: { key: "vehicleTypes", value: "MOTORCYCLE" },
+      };
+      expect(isQuestionVisible(qMultiDep, { vehicleTypes: ["CAR", "TRUCK"] })).toBe(false);
+      expect(isQuestionVisible(qMultiDep, { vehicleTypes: ["MOTORCYCLE", "CAR"] })).toBe(true);
+    });
+
+    it("รองรับ kind: 'text' พร้อม maxLength และ kind: 'choice' พร้อม multiple: true", () => {
+      const textQ: IncidentQuestion = {
+        key: "otherDetailText",
+        label: { th: "รายละเอียดเพิ่มเติม" },
+        required: false,
+        kind: "text",
+        maxLength: 200,
+      };
+      expect(textQ.kind).toBe("text");
+      expect(textQ.maxLength).toBe(200);
+
+      const choiceQ: IncidentQuestion = {
+        key: "multiChoice",
+        label: { th: "เลือกได้หลายข้อ" },
+        required: true,
+        kind: "choice",
+        multiple: true,
+        options: [{ value: "A", label: { th: "ข้อ A" } }],
+      };
+      expect(choiceQ.multiple).toBe(true);
+    });
+  });
 });
+

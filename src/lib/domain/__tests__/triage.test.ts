@@ -21,12 +21,37 @@ const base = (overrides: Partial<TriageInput> = {}): TriageInput => ({
 describe("computeTriage — ตารางกติกา TF-55 (เจอข้อแรกที่ตรง)", () => {
   describe("แถว 1 แดง: สัญญาณอันตรายของประเภทเหตุ", () => {
     for (const sign of INCIDENT_REGISTRY.FLOOD.dangerSigns) {
-      it(`${sign.label.th} → แดง`, () => {
+      it(`FLOOD: ${sign.label.th} → แดง`, () => {
         const r = computeTriage(base({ dangerSigns: [sign.key] }));
         expect(r.level).toBe(Urgency.RED);
         expect(r.reasons[0]).toBe(TriageReason.DANGER_SIGN);
       });
     }
+
+    it("ทดสอบสัญญาณอันตรายเฉพาะของทุกประเภทเหตุใหม่ 7 ประเภท → แดง", () => {
+      const typeSigns: [IncidentType, string][] = [
+        [IncidentType.FIRE, "TRAPPED_IN_FIRE"],
+        [IncidentType.ROAD_ACCIDENT, "TRAPPED_IN_VEHICLE"],
+        [IncidentType.WATER_RESCUE, "PERSON_IN_WATER"],
+        [IncidentType.COLLAPSE, "TRAPPED_UNDER_DEBRIS"],
+        [IncidentType.ANIMAL, "VENOMOUS_BITE"],
+        [IncidentType.MEDICAL, "CRITICAL_MEDICAL_EMERGENCY"],
+        [IncidentType.OTHER, "SEVERE_HAZARD"],
+      ];
+
+      for (const [type, signKey] of typeSigns) {
+        const r = computeTriage(
+          base({
+            incidentType: type,
+            dangerSigns: [signKey],
+            waterLevel: undefined,
+            canSelfEvacuate: true,
+          }),
+        );
+        expect(r.level, `${type} with ${signKey} must be RED`).toBe(Urgency.RED);
+        expect(r.reasons[0]).toBe(TriageReason.DANGER_SIGN);
+      }
+    });
 
     it("สัญญาณอันตรายมาก่อนแถวอื่นเสมอ แม้ออกเองได้และน้ำตื้น", () => {
       const r = computeTriage(base({ dangerSigns: ["UNCONSCIOUS"], canSelfEvacuate: true }));

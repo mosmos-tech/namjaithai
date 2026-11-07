@@ -232,7 +232,7 @@ export function SosWizard() {
   }
 
   // ── ขั้นที่ 3: คำถามเฉพาะประเภทเหตุ + ผู้ติดค้าง ──────────────────────────────
-  function handleChangeDetail(key: string, value: string | number | boolean | undefined) {
+  function handleChangeDetail(key: string, value: string | number | boolean | string[] | undefined) {
     const next = updateDraft((prev) => {
       const nextDetails = { ...(prev.details ?? {}) };
       if (value === undefined) {
