@@ -1,4 +1,7 @@
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { runLineNotifications } from "@/features/notifications/line-worker";
+import { lineWorkerConfigFromEnv } from "@/features/notifications/server/line-config";
 import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { handleCreateSosCase, type SosCaseRpcClient } from "@/features/sos/server/create-case";
 import {
@@ -101,6 +104,18 @@ export async function POST(request: Request): Promise<Response> {
       user?.status === "ACTIVE" ? user.id : null,
     ),
   });
+
+  // Schedule as soon as the case is created, including when a photo upload later needs retrying.
+  // A replay returns 200, so retries do not wake the worker again.
+  if (result.status === 201 && process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN) {
+    after(async () => {
+      try {
+        await runLineNotifications(lineWorkerConfigFromEnv(new URL(request.url).origin));
+      } catch {
+        // The notification stays queued for the scheduled worker.
+      }
+    });
+  }
 
   if ((result.status === 200 || result.status === 201) && photos.length) {
     try {
