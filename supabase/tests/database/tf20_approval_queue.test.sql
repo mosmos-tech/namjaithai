@@ -136,7 +136,7 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 select is(pg_temp.tf20_visible_cases(), 'TF20-BKK', 'อนุมัติแล้วกู้ภัยเห็นเคสในพื้นที่หน่วยทันที และไม่เห็นเคสนอกพื้นที่');
-select is(pg_temp.tf20_visible_contacts(), 'TF20-BKK', 'อนุมัติแล้วกู้ภัยเห็นข้อมูลติดต่อของเคสที่รับผิดชอบ');
+select is(pg_temp.tf20_visible_contacts(), '', 'กู้ภัยต้องเปิดข้อมูลติดต่อของเคสที่รับผ่าน RPC ที่บันทึก audit');
 select is((select count(*)::int from public.audit_logs), 0, 'กู้ภัยทั่วไปอ่าน audit_logs ไม่ได้');
 reset role;
 

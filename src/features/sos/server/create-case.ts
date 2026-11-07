@@ -300,10 +300,10 @@ export async function handleCreateSosCase(params: {
       : answers.canSelfEvacuate;
   const effectiveHasInjured = Boolean(
     hasInjured ||
-      detailsCheck.sensitiveDetails.hasInjured === true ||
-      (typeof detailsCheck.sensitiveDetails.injuredCount === "number" &&
-        detailsCheck.sensitiveDetails.injuredCount > 0) ||
-      detailsCheck.sensitiveDetails.hasBittenOrStung === true,
+    detailsCheck.sensitiveDetails.hasInjured === true ||
+    (typeof detailsCheck.sensitiveDetails.injuredCount === "number" &&
+      detailsCheck.sensitiveDetails.injuredCount > 0) ||
+    detailsCheck.sensitiveDetails.hasBittenOrStung === true,
   );
 
   // 4. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
@@ -373,6 +373,18 @@ export async function handleCreateSosCase(params: {
   });
 
   if (error) {
+    if (error.code === "SOS25") {
+      return {
+        status: 400,
+        body: {
+          error:
+            "คำขอเดิมส่งถึงระบบแล้ว แต่ข้อมูลหรือรูปเปลี่ยนไป กรุณาติดตามเคสเดิมหรือโทร 1669 / 1784",
+          fieldErrors: {},
+          formErrors: [],
+          fields: [],
+        },
+      };
+    }
     // กรณีพบเคสเปิดอยู่จากเบอร์เดียวกัน หรือห่างไม่ถึง 50 ม. ภายใน 24 ชม. (รหัส SOS49 จาก TF-16)
     if (error.code === "SOS49" && error.details) {
       try {

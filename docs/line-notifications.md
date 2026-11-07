@@ -1,4 +1,4 @@
-# TF-43: เคสของฉันและแจ้งเตือน LINE
+# TF-43 / TF-34: เคสของฉันและแจ้งเตือน LINE
 
 ## การผูกบัญชีและสิทธิ์
 
@@ -14,42 +14,60 @@
 2. ตั้งค่า channel access token ของ **Messaging API** ฝั่ง server เป็น `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` (ไม่ใช่ secret ของ LINE Login)
 3. ตั้ง `APP_BASE_URL` เป็น canonical HTTPS origin ของเว็บ public และ `LINE_NOTIFICATIONS_SECRET` เป็นค่าสุ่มอย่างน้อย 16 ตัวอักษร ห้ามใช้ตัวแปร `NEXT_PUBLIC_` สำหรับคีย์ลับ
 4. ให้ผู้ใช้เพิ่มเพื่อน OA ของโครงการก่อนรับ push message ผู้ที่บล็อก OA อาจไม่ได้รับข้อความแม้ LINE ตอบรับ API แล้ว จึงให้ติดตามผ่านเว็บได้เสมอ
-5. Apply migrations ให้ครบ แล้วตั้ง scheduler ให้เรียก `POST /api/notifications/line` พร้อม `Authorization: Bearer <LINE_NOTIFICATIONS_SECRET>` ทุกนาที ห้ามใส่ secret ใน URL
-6. เมื่อ OA และ scheduler พร้อมแล้ว ให้ผู้ดูแลฐานข้อมูลเปิด trigger ด้วยคำสั่งด้านล่าง ระบบจะเริ่มเก็บงานจากการเปลี่ยนสถานะครั้งถัดไป
+5. Apply migrations ให้ครบ (ผ่าน Deploy DB ตามปกติ) แล้วตั้งตัวเรียก worker ตามหัวข้อ "ตัวเรียก worker (TF-34)" ด้านล่าง
 
-```sql
-alter table public.cases enable trigger trg_case_line_notification;
-```
-
-ตัวช่วยสำหรับ scheduler บนเครื่อง/server ที่มี `.env.local` พร้อม:
+ตัวช่วยสำหรับเรียก worker ครั้งเดียวจากเครื่องที่มี `.env.local` พร้อม (ใช้ตรวจตอนตั้งค่า):
 
 ```bash
 npm run notifications:line
 ```
 
-คำสั่งนี้ส่งข้อความจริงเมื่อ environment พร้อมแล้ว ไม่ถูกเรียกโดยชุดทดสอบหรือเมื่อเปิดหน้าเว็บ
+## ตัวเรียก worker (TF-34)
 
-ไม่ได้ตั้ง Vercel cron อัตโนมัติ: ต้องเลือก scheduler ที่รองรับการทำงานทุกนาทีใน deployment ของทีมก่อนเปิดใช้งาน Vercel Hobby จำกัด cron วันละครั้ง จึงไม่เหมาะกับแจ้งเตือนสถานะ SOS ดู [ข้อจำกัด Vercel Cron](https://vercel.com/docs/cron-jobs/usage-and-pricing)
+`pg_cron` ในฐานข้อมูลเรียก `public.run_line_worker()` ทุกนาที ซึ่งใช้ `pg_net` ยิง `POST /api/notifications/line` พร้อม `Authorization: Bearer <secret>` URL และ secret อยู่ใน **Supabase Vault** ของแต่ละ project (ไม่มีค่าลับในโค้ดหรือ migration) ถ้ายังไม่ตั้ง Vault งานนี้จะไม่ทำอะไร
+
+ตั้งครั้งเดียวต่อ project ใน Supabase → SQL Editor (dev ใช้ URL ของเว็บ dev, production ใช้ URL เว็บจริง) — ค่า secret ต้องตรงกับ `LINE_NOTIFICATIONS_SECRET` ใน Vercel ของ environment นั้น:
+
+```sql
+select vault.create_secret('https://namjaithai-dev.vercel.app/api/notifications/line', 'line_worker_url');
+select vault.create_secret('<ค่าเดียวกับ LINE_NOTIFICATIONS_SECRET>', 'line_worker_secret');
+```
+
+นอกจากนี้ `POST /api/cases` ปลุก worker ทันทีหลังตอบผู้แจ้งแล้ว (`after()`) เมื่อมี `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` เคสแดงจึงถึงกู้ภัยในไม่กี่วินาที ถ้าล้มก็ไม่กระทบการส่ง SOS เพราะ cron เก็บตกทุกนาที
+
+Vercel Hobby จำกัด cron วันละครั้ง จึงไม่ใช้ Vercel Cron ดู [ข้อจำกัด Vercel Cron](https://vercel.com/docs/cron-jobs/usage-and-pricing)
+
+## เหตุการณ์และผู้รับ (TF-34)
+
+| เหตุการณ์                                  | ผู้รับ                                                                                                                                                                              | ข้อความมี                                                                                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| สถานะเคสเปลี่ยน (เช่น มีทีมรับเคส)         | ผู้แจ้งที่ล็อกอิน LINE                                                                                                                                                              | รหัสเคส สถานะ ประเภทเหตุ อำเภอ/จังหวัด ลิงก์ติดตาม — **ไม่มีระดับความเร่งด่วน** (ผู้แจ้งไม่เห็นระดับ)                                 |
+| เคสแดงใหม่ (หรือถูกปรับเป็นแดงตอนยังรอรับ) | กู้ภัยออนไลน์ในหน่วยจังหวัดเดียวกับเคส (หน่วยระบุอำเภอ → อำเภอต้องตรง) ที่ `canUnitHandle()` ผ่าน ไม่เกินหน่วยละ 2 คน รวมไม่เกิน 10 คนต่อเคส · `TODO(TF-28)` เปลี่ยนเป็นรัศมี 5 กม. | รหัสเคส ประเภท ระดับ อำเภอ/จังหวัด ลิงก์ `/rescue/cases` — หลายเคสภายใน 5 นาทีรวมเป็นข้อความเดียว "มีเคสแดงใหม่ N เคสในพื้นที่ของคุณ" |
+| อนุมัติ/ปฏิเสธ/ระงับสมาชิก (TF-20)         | ผู้สมัคร                                                                                                                                                                            | ชื่อหน่วย ผล วันหมดอายุ                                                                                                               |
+| ขอให้ผู้แจ้งยืนยันปิดเคส                   | ผู้แจ้ง                                                                                                                                                                             | จุดเชื่อม `enqueue_close_confirmation(case_id)` ให้ TF-58 เรียก (ยังไม่มีใครเรียก)                                                    |
+
+ทุกข้อความไม่มีชื่อ เบอร์ อาการ หรือที่อยู่ละเอียด เพราะข้อความไปอยู่ในระบบของ LINE
+
+## ประหยัดโควตาและไม่ส่งถึงผู้ใช้จริงนอก production
+
+- **กันซ้ำ:** เรื่องเดิมถึงคนเดิมภายใน 10 นาทีไม่เข้าคิวซ้ำ (trigger ในฐานข้อมูล ทั้งคิวเคสและคิวสมาชิก)
+- **ด่านตาม `NEXT_PUBLIC_APP_ENV`:** `production` ส่งจริงทุกคน · `dev`/`uat` ส่งจริงเฉพาะ LINE ID ใน `SUPER_ADMIN_LINE_IDS` คนอื่นเขียน log แล้วปิดงานเป็น `SKIPPED` · ค่าอื่น (เครื่องตัวเอง) ไม่ส่งเลย
+- **โควตารายเดือนหมด** (LINE ตอบ 429 "monthly limit"): งานนั้น `FAILED` ทันทีไม่ retry, หยุดส่งทั้งระบบถึงต้นเดือนหน้า (เวลาไทย), คืนงานที่ claim ไว้เข้าคิว, บันทึก `audit_logs` (`LINE_DELIVERY_PAUSED`) และหน้า `/admin` ขึ้นแถบแจ้ง — 429 ปกติ (ยิงถี่เกิน) ยัง retry ตามเดิม
+- ถ้าอัปเกรดโควตาแล้วอยากส่งต่อก่อนต้นเดือน: `update public.line_delivery_state set paused_until = null;`
 
 ## คิวและการส่งซ้ำ
 
-- Migration ปิด trigger ไว้เป็นค่าเริ่มต้นเพื่อหยุดสร้างงานระหว่างที่ยังไม่มี OA
+- TF-34 เปิด trigger สถานะเคสแล้ว (เดิม #27 พักไว้รอ OA) — ยังไม่มี token งานจะรอในคิวจนหมดอายุ 23 ชั่วโมง และถูกล้างหลัง 30 วัน
 - Trigger เพิ่มงานใน transaction เดียวกับการเปลี่ยน `cases.status` เฉพาะเคสที่ผูกผู้ใช้ ACTIVE และมี LINE user ID ไม่สร้างงานเมื่อเขียนสถานะเดิมซ้ำ
 - ตาราง `case_line_notifications` และ RPC สำหรับ worker ไม่เปิดให้ anon/authenticated อ่านหรือเรียก
-- Worker claim ได้ครั้งละ 10 งานด้วย row lock และ lease 2 นาที รับเฉพาะงานแรกที่ยังไม่จบของแต่ละเคส เพื่อรักษาลำดับสถานะ
+- Worker claim ได้ครั้งละ 10 งานด้วย row lock และ lease 2 นาที รับเฉพาะงานแรกที่ยังไม่จบของแต่ละ (เคส, ผู้รับ) เพื่อรักษาลำดับสถานะ โดยผู้รับคนละคนไม่ต้องรอกัน
 - ทุกการส่งใช้ UUID งานเดิมเป็น `X-Line-Retry-Key` รวมถึง retry หลัง network error หรือ acknowledgement ล้มเหลว ไม่สร้าง key ใหม่เมื่อส่งซ้ำ
 - LINE ตอบ 2xx หรือ 409 พร้อม accepted-request-id หมายถึง API รับคำขอแล้ว (`SENT` ในคิว) ไม่ได้ยืนยันว่าผู้ใช้เห็นข้อความ
 - 429/5xx/network error ใช้ backoff เพิ่มขึ้น หยุดเมื่อพยายามครบ 5 ครั้งหรืออายุงานเกิน 23 ชั่วโมง เพื่อไม่ส่งซ้ำหลัง retry key ของ LINE หมดอายุ
 - ความล้มเหลวถาวรและผู้ใช้ที่ถูกระงับหยุดส่ง เก็บเฉพาะรหัสข้อผิดพลาด ไม่บันทึก token หรือเนื้อหาตอบกลับที่อาจมีข้อมูลส่วนตัว
 - เนื้อหาข้อความมีรหัสเคส สถานะ เวลาของเหตุการณ์ และลิงก์ติดตาม ไม่มีชื่อ เบอร์โทร พิกัด หรือข้อมูลสุขภาพ
 
-เมื่อเปิดส่งจริง ให้ตั้งงานฐานข้อมูลรายวันเพื่อล้างแถวคิวที่มีอายุเกิน 30 วัน อายุนี้เผื่อช่วงตรวจสอบการส่งและยาวกว่าช่วง retry 23 ชั่วโมง
-
-```sql
-delete from public.case_line_notifications
-where created_at < now() - interval '30 days'
-  and (locked_until is null or locked_until < now());
-```
+pg_cron ล้างแถวคิวที่จบแล้วและอายุเกิน 30 วันทุกวัน (งาน `tf34-line-queue-cleanup`) อายุนี้เผื่อช่วงตรวจสอบการส่งและยาวกว่าช่วง retry 23 ชั่วโมง
 
 อ้างอิง [LINE Push messages](https://developers.line.biz/en/reference/messaging-api/#send-push-message) และ [LINE retry keys](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/)
 

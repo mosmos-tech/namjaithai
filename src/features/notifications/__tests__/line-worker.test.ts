@@ -27,6 +27,7 @@ function setup(response: Response | Error) {
         fetcher,
         token: "fake-channel-token",
         baseUrl: "https://example.test",
+        appEnv: "production",
       }),
   };
 }

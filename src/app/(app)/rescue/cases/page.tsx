@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
-import { requireAccess } from "@/features/auth/server/require-role";
+import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { RescueCaseList } from "@/features/rescue/components/RescueCaseList";
 import { getMyUnitCapabilities } from "@/features/rescue/server/my-unit-capabilities";
 
@@ -23,6 +23,8 @@ export default function Page({ searchParams }: PageProps<"/rescue/cases">) {
 }
 
 async function CaseListWithCapabilities() {
-  const user = await requireAccess("/rescue/cases");
+  // SignedInShell ตรวจสิทธิ์และ redirect ให้แล้ว — ที่นี่แค่อ่านผู้ใช้ ห้าม redirect ซ้ำกลางการวาดหน้า
+  const user = await getCurrentAppUser();
+  if (!user) return null;
   return <RescueCaseList capabilities={await getMyUnitCapabilities(user.id)} />;
 }

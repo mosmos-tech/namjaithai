@@ -1129,6 +1129,13 @@ export type SubmitSosDraftResult =
       requestBody?: string;
     }
   | {
+      status: "photo_pending";
+      idempotencyKey: string;
+      requestBody: string;
+      caseCode: string;
+      trackingToken: string;
+    }
+  | {
       status: "submitted";
       caseCode: string;
       trackingToken?: string;
@@ -1288,6 +1295,9 @@ export async function submitSosDraft(
       notes: nextDraft.notes || undefined,
       consent: nextDraft.consent,
       healthConsent: nextDraft.healthConsent,
+      ...(nextDraft.photos.length
+        ? { photos: nextDraft.photos.map((photo) => photo.dataUrl) }
+        : {}),
     });
 
     try {
@@ -1304,9 +1314,20 @@ export async function submitSosDraft(
         caseCode?: string;
         trackingToken?: string;
         error?: string;
+        photoWarning?: string;
+        photosPending?: boolean;
       };
 
       if (!response.ok) {
+        if (data.photosPending && data.caseCode && data.trackingToken) {
+          return {
+            status: "photo_pending",
+            idempotencyKey,
+            requestBody,
+            caseCode: data.caseCode,
+            trackingToken: data.trackingToken,
+          };
+        }
         return {
           status: "api_error",
           error:
@@ -1325,7 +1346,7 @@ export async function submitSosDraft(
         caseCode,
         trackingToken: data.trackingToken,
         idempotencyKey,
-        successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${caseCode}`,
+        successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${caseCode}${data.photoWarning ? ` — ${data.photoWarning}` : ""}`,
       };
     } catch {
       return {

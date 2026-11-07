@@ -13,6 +13,8 @@ const INACCURATE_ACCURACY_M = 16000;
 
 async function openStep2WithGps(page: Page, context: BrowserContext, accuracy: number) {
   const point = uniqueTestPoint();
+  // TF-67: GPS ที่ยังไม่ถึง 100 ม. รอให้แม่นขึ้น 15 วินาที — ใช้นาฬิกาจำลองแทนการรอจริง
+  await page.clock.install();
   await context.grantPermissions(["geolocation"]);
   await context.setGeolocation({ latitude: point.lat, longitude: point.lng, accuracy });
   await openFreshSosForm(page);
@@ -20,6 +22,11 @@ async function openStep2WithGps(page: Page, context: BrowserContext, accuracy: n
   await nextButton(page).click();
   await expectStep(page, 2);
   await page.getByTestId("gps-locate-button").click();
+  if (accuracy > 100) {
+    await expect(page.getByTestId("gps-refine-status")).toContainText("กำลังหาตำแหน่งที่แม่นขึ้น");
+    await page.clock.fastForward(15_000);
+    await expect(page.getByTestId("gps-refine-status")).toHaveCount(0);
+  }
   return point;
 }
 

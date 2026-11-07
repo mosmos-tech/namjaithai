@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { adminDb, countCasesByPhone, createCaseViaApi, randomPhone } from "./helpers/db";
+import { applySession, createAccount } from "./helpers/accounts";
 import {
   backButton,
   answerStep1,
@@ -56,9 +57,7 @@ test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-50
 
     const hotlinesBox = page.getByTestId("not-at-scene-hotlines");
     await expect(hotlinesBox).toBeVisible();
-    await expect(
-      hotlinesBox.getByRole("heading", { name: /แจ้งแทนคนอื่นไม่ได้/ }),
-    ).toBeVisible();
+    await expect(hotlinesBox.getByRole("heading", { name: /แจ้งแทนคนอื่นไม่ได้/ })).toBeVisible();
     await expect(hotlinesBox.getByRole("link", { name: /โทร 1669/ })).toHaveAttribute(
       "href",
       "tel:1669",
@@ -155,11 +154,18 @@ test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-50
       await page.mouse.wheel(0, 4000);
       await expect.poll(async () => (await bar.boundingBox())?.y).toBeLessThanOrEqual(1);
       const callButton = bar.getByRole("link", { name: /โทร 1669/ });
-      await expect.poll(() => callButton.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        const topmost = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        return topmost === element || element.contains(topmost);
-      })).toBe(true);
+      await expect
+        .poll(() =>
+          callButton.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const topmost = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2,
+            );
+            return topmost === element || element.contains(topmost);
+          }),
+        )
+        .toBe(true);
     }
   });
 
@@ -356,6 +362,159 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
 
   const submit = (page: import("@playwright/test").Page) =>
     page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" });
+
+  test("คำขอถึงแล้วแต่ส่งรูปไม่สำเร็จ แสดงรหัสเคสและเก็บรูปเดิมรอส่งซ้ำ", async ({
+    page,
+    context,
+  }) => {
+    await seedLocationIntoDraft(page);
+    await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบส่งรูปซ้ำ");
+    await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(randomPhone());
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+    const image = await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 8;
+      canvas.height = 8;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "blue";
+      ctx.fillRect(0, 0, 8, 8);
+      return canvas.toDataURL("image/png").split(",")[1];
+    });
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: "retry.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(image, "base64"),
+      });
+    await expect(page.getByRole("button", { name: /^ลบรูป retry\./ })).toBeVisible();
+    let succeed = false;
+    const requests: { key: string; body: string | null }[] = [];
+    await context.route("**/api/cases", async (route) => {
+      requests.push({
+        key: route.request().headers()["idempotency-key"],
+        body: route.request().postData(),
+      });
+      await route.fulfill({
+        status: succeed ? 200 : 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          caseCode: "FL-TEST-PENDING",
+          trackingToken: "a".repeat(32),
+          ...(succeed ? {} : { photosPending: true, error: "ส่งรูปยังไม่สำเร็จ" }),
+        }),
+      });
+    });
+    await submit(page).click();
+    await expect(
+      page.getByRole("heading", { name: "ส่งคำขอถึงระบบแล้ว — กำลังส่งรูป" }),
+    ).toBeVisible();
+    await expect(page.getByText(/รหัสเคส: FL-TEST-PENDING/)).toBeVisible();
+    succeed = true;
+    await page.getByRole("button", { name: "ลองส่งอีกครั้ง" }).click();
+    await expect(
+      page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
+    ).toBeVisible();
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(
+      requests.every(
+        (request) => request.key === requests[0].key && request.body === requests[0].body,
+      ),
+    ).toBe(true);
+    expect(JSON.parse(requests[0].body!).photos).toHaveLength(1);
+  });
+
+  test("แนบรูปแล้วส่ง SOS เก็บรูปส่วนตัว ส่งซ้ำไม่เพิ่มรูป และผู้รับเคสเปิดดูได้", async ({
+    page,
+    context,
+  }) => {
+    await seedLocationIntoDraft(page);
+    const phone = randomPhone();
+    await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ รูป SOS");
+    await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+    const image = await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 8;
+      canvas.height = 8;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "blue";
+      ctx.fillRect(0, 0, 8, 8);
+      return canvas.toDataURL("image/png").split(",")[1];
+    });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "photo.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(image, "base64"),
+    });
+    await expect(page.getByRole("button", { name: /^ลบรูป photo\./ })).toBeVisible();
+    const sent = page.waitForRequest(
+      (request) => request.method() === "POST" && request.url().endsWith("/api/cases"),
+    );
+    await submit(page).click();
+    const request = await sent;
+    await expect(page.getByText(/รหัสเคสของคุณคือ FL-/)).toBeVisible({ timeout: 20_000 });
+    const replay = await page.request.post("/api/cases", {
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": request.headers()["idempotency-key"],
+      },
+      data: request.postData()!,
+    });
+    expect(replay.status()).toBe(200);
+    expect((await replay.json()).replayed).toBe(true);
+    const db = adminDb();
+    const { data: contacts } = await db
+      .from("case_contacts")
+      .select("case_id")
+      .eq("phone", phone)
+      .throwOnError();
+    expect(contacts).toHaveLength(1);
+    const { data: media } = await db
+      .from("case_media")
+      .select("storage_path")
+      .eq("case_id", contacts![0].case_id)
+      .throwOnError();
+    expect(media).toHaveLength(1);
+    const { data: blob, error } = await db.storage
+      .from("case-media")
+      .download(media![0].storage_path);
+    expect(error).toBeNull();
+    expect(blob!.size).toBeGreaterThan(0);
+    const rescuer = await createAccount({ displayName: "กู้ภัยทดสอบรูป", role: "RESCUER" });
+    const { data: unit } = await db
+      .from("units")
+      .insert({ name: `TF24-photo-${crypto.randomUUID()}`, province: "เลย" })
+      .select("id")
+      .single()
+      .throwOnError();
+    await db
+      .from("unit_members")
+      .insert({
+        unit_id: unit!.id,
+        user_id: rescuer.id,
+        role_in_unit: "MEMBER",
+        status: "APPROVED",
+      })
+      .throwOnError();
+    await db
+      .from("cases")
+      .update({ status: "ACCEPTED", assigned_unit_id: unit!.id, assigned_rescuer_id: rescuer.id })
+      .eq("id", contacts![0].case_id)
+      .throwOnError();
+    await applySession(context, rescuer);
+    await page.goto(`/rescue/cases/${contacts![0].case_id}`);
+    const casePhoto = page.getByRole("img", { name: "รูปประกอบเหตุ" });
+    await expect(casePhoto).toBeVisible();
+    await expect
+      .poll(() => casePhoto.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    await db.from("cases").update({ status: "RESOLVED" }).eq("id", contacts![0].case_id);
+    await db.from("units").update({ is_active: false }).eq("id", unit!.id);
+    await db.from("users").update({ status: "SUSPENDED" }).eq("id", rescuer.id);
+  });
 
   test("ไม่กรอกชื่อและเบอร์ ขึ้น error ทั้งสองช่อง", async ({ page }) => {
     await submit(page).click();

@@ -1,10 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { manageableUnits } from "@/features/auth/server/unit-invites";
-import {
-  deliverMemberLineNotifications,
-  type NotificationClient,
-} from "@/features/notifications/line-worker";
+import { deliverMemberLineNotifications } from "@/features/notifications/line-worker";
+import { lineWorkerConfigFromEnv } from "@/features/notifications/server/line-config";
 import { memberReviewSchema, type UnitMemberStatus } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -126,11 +124,10 @@ async function handleReview(request: NextRequest) {
   }
 
   if (process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN) {
-    await deliverMemberLineNotifications({
-      db: createAdminClient() as unknown as NotificationClient,
-      token: process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN,
-      baseUrl: process.env.APP_BASE_URL ?? request.nextUrl.origin,
-    }).catch(() => null);
+    // ส่งทันทีหลังบันทึกผลแล้ว ถ้าพลาด pg_cron จะส่งให้รอบถัดไป (TF-34: มีด่าน dev/uat และโควตา)
+    await deliverMemberLineNotifications(lineWorkerConfigFromEnv(request.nextUrl.origin)).catch(
+      () => null,
+    );
   }
 
   const updated = Array.isArray(data) ? data : [];

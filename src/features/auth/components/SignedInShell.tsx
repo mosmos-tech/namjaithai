@@ -10,18 +10,24 @@ export async function SignedInShell({
   title,
   comingIn,
   denied,
+  wide,
   children,
 }: {
   pathname: string;
   title: string;
   comingIn?: string;
   denied: Promise<boolean>;
+  wide?: boolean;
   children?: React.ReactNode;
 }) {
   const [user, wasDenied] = await Promise.all([requireAccess(pathname), denied]);
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">
+    <div
+      className={`mx-auto flex flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12 ${
+        wide ? "w-full max-w-6xl" : "max-w-3xl"
+      }`}
+    >
       {wasDenied && (
         <p role="alert" className="rounded-[12px] bg-amber-50 px-4 py-3 text-lg text-amber-700">
           บัญชีของคุณไม่มีสิทธิ์เปิดหน้านั้น จึงพากลับมาหน้าของคุณ

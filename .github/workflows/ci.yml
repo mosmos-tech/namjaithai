@@ -55,7 +55,7 @@ jobs:
 
       # ข้าม service ที่เว็บยังไม่ใช้ ให้เปิดเร็วขึ้น (migration + seed จังหวัดรันเองตอน start)
       - name: Start Supabase
-        run: npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor,realtime,storage-api
+        run: npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor,realtime
 
       # เขียน .env.local จากคีย์ของ Supabase ใน CI (คีย์ทดสอบที่สร้างใหม่ทุกครั้ง ไม่ใช่ความลับ)
       - name: Write .env.local

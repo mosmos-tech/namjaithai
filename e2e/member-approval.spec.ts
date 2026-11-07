@@ -251,7 +251,7 @@ test.describe("TF-20 คิวอนุมัติและระงับส�
     await applySession(context, applicant1);
     await page.goto("/rescue");
     await expect(page).toHaveURL(/\/rescue$/);
-    await expect(page.getByRole("heading", { name: "แผนที่กู้ภัย" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "แผนที่กู้ภัย", level: 1 })).toBeVisible();
 
     // 7. คนที่ 3 ที่ถูกปฏิเสธ เข้า /rescue ไม่ได้ (หลุดสิทธิ์ทันที)
     await applySession(context, applicant3);
