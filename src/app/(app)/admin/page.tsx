@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
 import { AdminManagement } from "@/features/admin/AdminManagement";
 import { UnitInvitePanel } from "@/features/auth/components/UnitInvitePanel";
+import { LineDeliveryNotice } from "@/features/notifications/components/LineDeliveryNotice";
 
 export const metadata: Metadata = { title: "ห้องสั่งการ — น้ำใจไทย SOS", robots: { index: false } };
 
@@ -15,6 +16,7 @@ export default function Page({ searchParams }: PageProps<"/admin">) {
         comingIn="TF-33"
         denied={searchParams.then((p) => p.denied === "1")}
       >
+        <LineDeliveryNotice />
         <AdminManagement />
         <UnitInvitePanel />
       </SignedInShell>
