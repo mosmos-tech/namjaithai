@@ -1,6 +1,12 @@
 import type { AppProps } from "next/app";
+import { OfflineSosHomeSupport } from "@/features/sos/components/OfflineSosHomeSupport";
 import "@/app/globals.css";
 
 export default function App({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
+  return (
+    <>
+      <OfflineSosHomeSupport />
+      <Component {...pageProps} />
+    </>
+  );
 }

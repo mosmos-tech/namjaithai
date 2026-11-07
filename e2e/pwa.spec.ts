@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { gzipSync } from "node:zlib";
+import { goToStep5 } from "./helpers/sos";
+import { adminDb, randomPhone } from "./helpers/db";
 
 async function offlineReady(page: Page) {
   await page.goto("/");
@@ -195,9 +197,13 @@ test("วัดขนาดหน้าแรกแบบ cold load รวมฟ
   });
   await page.goto("/", { waitUntil: "load" });
   await expect(page.getByTestId("onboarding-popup")).toBeVisible();
-  await page.locator("img:visible").evaluateAll((images) =>
-    Promise.all(images.map((image) => (image as HTMLImageElement).decode())).then(() => undefined),
-  );
+  await page
+    .locator("img:visible")
+    .evaluateAll((images) =>
+      Promise.all(images.map((image) => (image as HTMLImageElement).decode())).then(
+        () => undefined,
+      ),
+    );
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   const totals: Record<string, number> = {};
   for (const { type, bytes } of await Promise.all(sizes)) {
@@ -206,4 +212,256 @@ test("วัดขนาดหน้าแรกแบบ cold load รวมฟ
   const compressed = Object.values(totals).reduce((total, bytes) => total + bytes, 0);
   console.log(`Initial load: ${compressed} bytes`, totals);
   expect(compressed).toBeLessThanOrEqual(150_000);
+});
+
+test("TF-15 เก็บคำขอออฟไลน์และส่งรหัสเดิมเมื่อกลับมาออนไลน์", async ({
+  page,
+  context,
+  isMobile,
+}) => {
+  await offlineReady(page);
+  await page.goto("/request");
+  await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
+  await goToStep5(page);
+  await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ผู้ทดสอบ ออฟไลน์");
+  await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill("0812345678");
+  await context.setOffline(true);
+  await page.getByTestId("step5-submit-button").click();
+  await expect(page.getByTestId("step5-missing-alert")).toContainText("ความยินยอม");
+  await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toHaveCount(0);
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+  await page.getByTestId("step5-submit-button").click();
+  await expect(
+    page.getByRole("heading", { name: /บันทึกไว้ในเครื่องแล้ว — ยังไม่ถึงทีมกู้ภัย/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "โทร 1669" })).toHaveAttribute("href", "tel:1669");
+  await expect(page.getByRole("link", { name: "โทร 1784" })).toHaveAttribute("href", "tel:1784");
+  await expect(page.getByRole("link", { name: "ส่งทาง SMS" })).toHaveAttribute("href", /^sms:/);
+  if (isMobile) await expect(page.getByText("เปิดหน้านี้ค้างไว้จนกว่าจะส่งสำเร็จ")).toBeVisible();
+  const queued = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return await new Promise<{ id: string }>((resolve, reject) => {
+      const req = db.transaction("queue").objectStore("queue").get("current");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  });
+  expect(queued.id).toBeTruthy();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /บันทึกไว้ในเครื่องแล้ว/ })).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: /มี 1 คำขอรอส่ง/ })).toBeVisible();
+  await page.getByRole("link", { name: /มี 1 คำขอรอส่ง/ }).click();
+  await expect(page.getByRole("heading", { name: /บันทึกไว้ในเครื่องแล้ว/ })).toBeVisible();
+  let requests = 0;
+  const keys: string[] = [];
+  await context.route("**/api/cases", async (route) => {
+    requests++;
+    expect(route.request().postDataJSON()).toMatchObject({ consent: true, healthConsent: true });
+    keys.push(route.request().headers()["idempotency-key"]);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ caseCode: "FL-TEST-1234", trackingToken: "a".repeat(32) }),
+    });
+  });
+  await context.setOffline(false);
+  await expect(page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" })).toBeVisible(
+    { timeout: 30000 },
+  );
+  await expect(page.getByText("FL-TEST-1234")).toBeVisible();
+  expect(requests).toBe(1);
+  expect(keys).toEqual([queued.id]);
+  await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toHaveCount(0);
+  await page.getByRole("link", { name: "ดูรายละเอียดและติดตามเคส" }).click();
+  await expect(page).toHaveURL(/\/sos\/sent$/);
+  await expect(page.getByText("FL-TEST-1234")).toBeVisible();
+  const remaining = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("namjaithai-offline-sos");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return await new Promise<unknown>((resolve, reject) => {
+      const request = db.transaction("queue").objectStore("queue").get("current");
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  });
+  expect(remaining).toBeNull();
+});
+
+test("TF-15 ไม่ลบคำขอเมื่อเซิร์ฟเวอร์แจ้งข้อขัดแย้ง", async ({ page }) => {
+  await page.goto("/request");
+  let attempts = 0;
+  await page.route("**/api/cases", async (route) => {
+    attempts++;
+    const status = attempts === 1 ? 409 : 201;
+    await route.fulfill({
+      status,
+      contentType: "application/json",
+      body: JSON.stringify(
+        status === 409
+          ? { error: "พบเคสที่อาจซ้ำ" }
+          : { caseCode: "FL-TEST-5678", trackingToken: "b".repeat(32) },
+      ),
+    });
+  });
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("queue");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("queue", "readwrite");
+      tx.objectStore("queue").put(
+        {
+          id: "conflict-key",
+          body: JSON.stringify({ phone: "0812345678" }),
+          status: "pending",
+          lastAttempt: new Date().toISOString(),
+          lease: 0,
+        },
+        "current",
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    window.dispatchEvent(new Event("sos-queued"));
+  });
+  await expect(page.getByRole("alert").filter({ hasText: "พบเคสที่อาจซ้ำ" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toBeVisible();
+  expect(attempts).toBe(1);
+  await page.getByRole("button", { name: "ลองส่งอีกครั้ง" }).click();
+  await expect(
+    page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
+  ).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
+test("TF-15 service worker ส่งคิวเมื่อแท็บปิดแล้วและเครือข่ายกลับมา", async ({
+  page,
+  context,
+  isMobile,
+}) => {
+  test.skip(isMobile, "ตรวจ Background Sync ผ่าน Chromium แบบเดสก์ท็อป");
+  await offlineReady(page);
+  const supported = await page.evaluate(
+    async () => "sync" in (await navigator.serviceWorker.ready),
+  );
+  test.skip(!supported, "เบราว์เซอร์นี้ไม่มี Background Sync");
+  await context.setOffline(true);
+  await context.route("**/api/cases", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ caseCode: "FL-BACKGROUND", trackingToken: "c".repeat(32) }),
+    });
+  });
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("queue");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("queue", "readwrite");
+      tx.objectStore("queue").put(
+        {
+          id: "background-key",
+          body: JSON.stringify({ phone: "0812345678" }),
+          status: "pending",
+          lastAttempt: new Date().toISOString(),
+          lease: 0,
+        },
+        "current",
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    const registration = (await navigator.serviceWorker.ready) as ServiceWorkerRegistration & {
+      sync: { register(tag: string): Promise<void> };
+    };
+    await registration.sync.register("namjaithai-sos-queue");
+  });
+  const workerRequest = context.waitForEvent("request", {
+    predicate: (request) => request.url().endsWith("/api/cases") && !!request.serviceWorker(),
+    timeout: 30000,
+  });
+  await page.close();
+  await context.setOffline(false);
+  const request = await workerRequest;
+  expect(request.headers()["idempotency-key"]).toBe("background-key");
+  const reopened = await context.newPage();
+  await reopened.goto("/request");
+  await expect(
+    reopened.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
+  ).toBeVisible();
+});
+
+test("TF-15 ส่งคิวที่ยินยอมแล้วเข้า API จริงเพียงหนึ่งเคส", async ({ page, context }) => {
+  const db = adminDb(); // ป้องกันไม่ให้ใช้ฐานที่ไม่ใช่ localhost
+  const phone = randomPhone();
+  await context.route("**/api/cases", async (route) => {
+    await route.continue({
+      headers: {
+        ...route.request().headers(),
+        "x-forwarded-for": `10.71.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+      },
+    });
+  });
+  await offlineReady(page);
+  await page.goto("/request");
+  await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
+  await goToStep5(page);
+  await page.evaluate(() => {
+    const key = "namjaithai-sos-draft-v1";
+    const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
+    draft.lat = 14 + Math.random() * 0.4;
+    draft.lng = 100 + Math.random() * 0.4;
+    localStorage.setItem(key, JSON.stringify(draft));
+    window.dispatchEvent(new Event("storage"));
+  });
+  await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ คิวออฟไลน์");
+  await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+  await context.setOffline(true);
+  await page.getByTestId("step5-submit-button").click();
+  await expect(page.getByRole("heading", { name: /บันทึกไว้ในเครื่องแล้ว/ })).toBeVisible();
+  const id = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return await new Promise<string>((resolve, reject) => {
+      const req = db.transaction("queue").objectStore("queue").get("current");
+      req.onsuccess = () => resolve(req.result.id);
+      req.onerror = () => reject(req.error);
+    });
+  });
+  await context.setOffline(false);
+  await expect(page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" })).toBeVisible(
+    { timeout: 30000 },
+  );
+  const result = await db
+    .from("cases")
+    .select("case_code,consent_version,consented_at,health_consented_at")
+    .eq("idempotency_key", id);
+  expect(result.error).toBeNull();
+  expect(result.data).toHaveLength(1);
+  expect(result.data![0]).toMatchObject({ consent_version: "2026-11-06" });
+  expect(result.data![0].consented_at).toBeTruthy();
+  expect(result.data![0].health_consented_at).toBeTruthy();
+  await expect(page.getByText(result.data![0].case_code)).toBeVisible();
 });
