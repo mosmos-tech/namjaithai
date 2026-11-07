@@ -408,6 +408,55 @@ test("TF-15 service worker ส่งคิวเมื่อแท็บปิ�
   ).toBeVisible();
 });
 
+test("TF-24 คำขอถึงระบบแต่รูปยังไม่ส่ง แจ้งสถานะจริงและลองส่งรูปซ้ำ", async ({ page, context }) => {
+  let succeed = false;
+  await context.route("**/api/cases", async (route) => {
+    await route.fulfill({
+      status: succeed ? 200 : 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        caseCode: "FL-TEST-PHOTO",
+        trackingToken: "a".repeat(32),
+        ...(succeed ? {} : { photosPending: true, error: "ส่งรูปยังไม่สำเร็จ" }),
+      }),
+    });
+  });
+  await page.goto("/request");
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("queue");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("queue", "readwrite");
+      tx.objectStore("queue").put(
+        {
+          id: "photo-retry-key",
+          body: JSON.stringify({ phone: "0812345678", photos: ["test"] }),
+          status: "pending",
+          lastAttempt: new Date().toISOString(),
+          lease: 0,
+        },
+        "current",
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    window.dispatchEvent(new Event("sos-queued"));
+  });
+  await expect(
+    page.getByRole("heading", { name: "ส่งคำขอถึงระบบแล้ว — กำลังส่งรูป" }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "ส่งรูปยังไม่สำเร็จ" })).toBeVisible();
+  succeed = true;
+  await page.getByRole("button", { name: "ลองส่งอีกครั้ง" }).click();
+  await expect(
+    page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
+  ).toBeVisible();
+});
+
 test("TF-15 ส่งคิวที่ยินยอมแล้วเข้า API จริงเพียงหนึ่งเคส", async ({ page, context }) => {
   const db = adminDb(); // ป้องกันไม่ให้ใช้ฐานที่ไม่ใช่ localhost
   const phone = randomPhone();
@@ -433,6 +482,21 @@ test("TF-15 ส่งคิวที่ยินยอมแล้วเข้�
   });
   await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ คิวออฟไลน์");
   await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 8;
+    canvas.height = 8;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "red";
+    ctx.fillRect(0, 0, 8, 8);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "offline.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(image, "base64"),
+  });
+  await expect(page.getByRole("button", { name: /^ลบรูป offline\./ })).toBeVisible();
   await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
   await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
   await context.setOffline(true);
@@ -456,12 +520,19 @@ test("TF-15 ส่งคิวที่ยินยอมแล้วเข้�
   );
   const result = await db
     .from("cases")
-    .select("case_code,consent_version,consented_at,health_consented_at")
+    .select("id,case_code,consent_version,consented_at,health_consented_at")
     .eq("idempotency_key", id);
   expect(result.error).toBeNull();
   expect(result.data).toHaveLength(1);
   expect(result.data![0]).toMatchObject({ consent_version: "2026-11-06" });
   expect(result.data![0].consented_at).toBeTruthy();
   expect(result.data![0].health_consented_at).toBeTruthy();
+  const media = await db
+    .from("case_media")
+    .select("storage_path")
+    .eq("case_id", result.data![0].id);
+  expect(media.data).toHaveLength(1);
+  const stored = await db.storage.from("case-media").download(media.data![0].storage_path);
+  expect(stored.error).toBeNull();
   await expect(page.getByText(result.data![0].case_code)).toBeVisible();
 });

@@ -4,6 +4,33 @@ import { runLineNotifications } from "@/features/notifications/line-worker";
 import { lineWorkerConfigFromEnv } from "@/features/notifications/server/line-config";
 import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { handleCreateSosCase, type SosCaseRpcClient } from "@/features/sos/server/create-case";
+import {
+  parseCasePhotos,
+  photoFingerprint,
+  saveCasePhotos,
+} from "@/features/sos/server/case-photos";
+
+const MAX_BODY_BYTES = 2_200_000;
+
+async function readBoundedJson(request: Request): Promise<unknown> {
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (declared > MAX_BODY_BYTES) throw new RangeError("request too large");
+  if (!request.body) throw new SyntaxError("empty body");
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      throw new RangeError("request too large");
+    }
+    chunks.push(value);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
 
 /**
  * POST /api/cases
@@ -17,22 +44,39 @@ export async function POST(request: Request): Promise<Response> {
   let rawBody: unknown;
 
   try {
-    rawBody = await request.json();
-  } catch {
+    rawBody = await readBoundedJson(request);
+  } catch (error) {
     return Response.json(
       {
-        error: "รูปแบบ JSON ในคำขอไม่ถูกต้อง",
+        error:
+          error instanceof RangeError
+            ? "ขนาดข้อมูลรวมใหญ่เกินกำหนด"
+            : "รูปแบบ JSON ในคำขอไม่ถูกต้อง",
         fieldErrors: {},
         formErrors: ["รูปแบบ JSON ในคำขอไม่ถูกต้อง"],
         fields: [],
       },
+      { status: error instanceof RangeError ? 413 : 400 },
+    );
+  }
+
+  let photos: Awaited<ReturnType<typeof parseCasePhotos>>;
+  try {
+    photos = await parseCasePhotos(
+      typeof rawBody === "object" && rawBody !== null && !Array.isArray(rawBody)
+        ? (rawBody as Record<string, unknown>).photos
+        : undefined,
+    );
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "รูปถ่ายไม่ถูกต้อง" },
       { status: 400 },
     );
   }
 
-  let supabase: SosCaseRpcClient;
+  let admin: ReturnType<typeof createAdminClient>;
   try {
-    supabase = createAdminClient() as unknown as SosCaseRpcClient;
+    admin = createAdminClient();
   } catch {
     return Response.json(
       {
@@ -41,6 +85,15 @@ export async function POST(request: Request): Promise<Response> {
       { status: 500 },
     );
   }
+
+  const supabase: SosCaseRpcClient = {
+    rpc(_name, args) {
+      return admin.rpc(
+        photos.length ? "create_sos_case_with_photos" : "create_sos_case",
+        photos.length ? { ...args, p_photo_fingerprint: photoFingerprint(photos) } : args,
+      ) as unknown as ReturnType<SosCaseRpcClient["rpc"]>;
+    },
+  };
 
   const result = await handleCreateSosCase({
     rawBody,
@@ -52,16 +105,37 @@ export async function POST(request: Request): Promise<Response> {
     ),
   });
 
-  // TF-34: ปลุก worker LINE หลังตอบผู้แจ้งแล้ว ให้เคสแดงถึงกู้ภัยในไม่กี่วินาที
-  // ไม่อยู่ในเส้นทางส่ง SOS — ล้มก็ไม่กระทบผู้แจ้ง และ pg_cron จะเก็บตกทุกนาที
+  // Schedule as soon as the case is created, including when a photo upload later needs retrying.
+  // A replay returns 200, so retries do not wake the worker again.
   if (result.status === 201 && process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN) {
     after(async () => {
       try {
         await runLineNotifications(lineWorkerConfigFromEnv(new URL(request.url).origin));
       } catch {
-        // ไม่ต้องทำอะไร: งานยังอยู่ในคิว
+        // The notification stays queued for the scheduled worker.
       }
     });
+  }
+
+  if ((result.status === 200 || result.status === 201) && photos.length) {
+    try {
+      const outcome = await saveCasePhotos(admin, result.body.caseId, photos);
+      if (outcome === "limit")
+        return Response.json(
+          { ...result.body, photoWarning: "ส่งรูปบางส่วนไม่ได้ เพราะเคสมีรูปครบ 3 รูปแล้ว" },
+          { status: result.status },
+        );
+    } catch {
+      return Response.json(
+        {
+          error: `คำขอ ${result.body.caseCode} ถึงระบบแล้ว แต่รูปยังส่งไม่สำเร็จ กรุณากดส่งอีกครั้งเพื่อส่งรูป`,
+          caseCode: result.body.caseCode,
+          trackingToken: result.body.trackingToken,
+          photosPending: true,
+        },
+        { status: 503 },
+      );
+    }
   }
 
   return Response.json(result.body, {

@@ -18,6 +18,35 @@ test.describe("TF-34 แจ้งเตือน LINE", () => {
     expect(item?.line_red_case_queue).toMatchObject({ case_id: item?.id });
   });
 
+  test("ส่งเคสแดงพร้อมรูป บันทึกทั้งรูปส่วนตัวและคิวแจ้งเตือน", async ({ baseURL, page }) => {
+    const photo = await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 8;
+      canvas.height = 8;
+      const context = canvas.getContext("2d")!;
+      context.fillStyle = "red";
+      context.fillRect(0, 0, 8, 8);
+      return canvas.toDataURL("image/jpeg");
+    });
+    const sent = await createCaseViaApi(baseURL!, {
+      dangerSigns: ["UNCONSCIOUS"],
+      photos: [photo],
+    });
+    const db = adminDb();
+    const { data: item, error } = await db
+      .from("cases")
+      .select("id, urgency, line_red_case_queue(case_id), case_media(storage_path)")
+      .eq("case_code", sent.caseCode)
+      .single();
+    expect(error).toBeNull();
+    expect(item?.urgency).toBe("RED");
+    expect(item?.line_red_case_queue).toMatchObject({ case_id: item?.id });
+    const media = item?.case_media as { storage_path: string }[];
+    expect(media).toHaveLength(1);
+    const stored = await db.storage.from("case-media").download(media[0].storage_path);
+    expect(stored.error).toBeNull();
+  });
+
   test("ผู้ใช้ทั่วไปเรียก worker เองไม่ได้", async ({ request }) => {
     expect((await request.post("/api/notifications/line")).status()).toBe(401);
     expect(

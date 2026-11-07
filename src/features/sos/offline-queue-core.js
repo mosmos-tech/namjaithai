@@ -50,11 +50,25 @@ export async function getOfflineSos() {
   return updateSosQueue((current) => ({ result: current }));
 }
 
-export async function saveOfflineSos(id, body) {
+export async function saveOfflineSos(id, body, received) {
   return updateSosQueue((current) => {
     if (current && current.id !== id) throw new Error("มีคำขอรอส่งอยู่แล้ว กรุณาตรวจสอบคำขอเดิม");
     if (current) return { result: current };
-    const value = { id, body, status: "pending", lastAttempt: new Date().toISOString(), lease: 0 };
+    const value = {
+      id,
+      body,
+      status: "pending",
+      lastAttempt: new Date().toISOString(),
+      lease: 0,
+      ...(received
+        ? {
+            caseReceived: true,
+            caseCode: received.caseCode,
+            trackingToken: received.trackingToken,
+            error: "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
+          }
+        : {}),
+    };
     return { value, result: value };
   });
 }
@@ -101,6 +115,17 @@ export async function processOfflineSos(manual = false) {
           .replace(/\D/g, "")
           .slice(-4),
         incidentType: body.incidentType,
+        photoWarning: data.photoWarning,
+      };
+    } else if (data.photosPending && data.caseCode && data.trackingToken) {
+      result = {
+        ...item,
+        lease: 0,
+        status: "pending",
+        caseReceived: true,
+        caseCode: data.caseCode,
+        trackingToken: data.trackingToken,
+        error: data.error || "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
       };
     } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
       result = {
@@ -125,4 +150,6 @@ export async function processOfflineSos(manual = false) {
   await updateSosQueue((current) =>
     current && current.id === item.id && current.lease === lease ? { value: result } : {},
   );
+  // Reject the background-sync event so Android retries while no page is open.
+  if (result.status === "pending" && result.caseReceived) throw new Error("Photos still pending");
 }

@@ -315,6 +315,62 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(sentHeaders["Idempotency-Key"]).toBe("idem-fixed-1");
   });
 
+  it("คำขอถึงระบบแล้วแต่ส่งรูปไม่สำเร็จ เก็บ payload เดิมให้คิวส่งซ้ำ", async () => {
+    const map = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => map.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        map.set(key, value);
+      },
+      removeItem: (key: string) => {
+        map.delete(key);
+      },
+    };
+    const dataUrl = "data:image/jpeg;base64,/9j/2Q==";
+    const result = await submitSosDraft({
+      draft: {
+        ...createInitialSosDraft(),
+        consent: true,
+        healthConsent: true,
+        currentStep: 5,
+        dangerSigns: [],
+        canSelfEvacuate: false,
+        waterLevel: WaterLevel.WAIST_CHEST,
+        lat: 13.75,
+        lng: 100.5,
+        landmark: "หน้าบ้าน",
+        name: "ทดสอบ",
+        phone: "0812345678",
+        photos: [
+          {
+            id: "1",
+            name: "test.jpg",
+            mimeType: "image/jpeg",
+            originalBytes: 4,
+            compressedBytes: 4,
+            width: 2,
+            height: 2,
+            dataUrl,
+          },
+        ],
+      },
+      storage,
+      generateIdempotencyKey: () => "photo-key",
+      fetchImpl: vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ photosPending: true, caseCode: "FL-TEST", trackingToken: "token" }),
+            { status: 503 },
+          ),
+      ) as typeof fetch,
+    });
+    expect(result.status).toBe("photo_pending");
+    if (result.status !== "photo_pending") throw new Error("expected pending photo upload");
+    expect(JSON.parse(result.requestBody).photos).toEqual([dataUrl]);
+    expect(result.caseCode).toBe("FL-TEST");
+    expect(loadSosDraft(storage).idempotencyKey).toBe("photo-key");
+  });
+
   it("TF-15: เมื่อเน็ตหลุด เก็บ payload และ idempotency key ของคำขอเดิมสำหรับคิว", async () => {
     const values = new Map<string, string>();
     const storage = {

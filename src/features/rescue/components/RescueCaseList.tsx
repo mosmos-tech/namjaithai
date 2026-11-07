@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   CaseStatus,
   INCIDENT_REGISTRY,
@@ -314,6 +315,12 @@ function RescueCaseCard({ item, now }: { item: RescueCase; now: number }) {
           {formatWaitDuration(waitingMs)}
         </p>
       )}
+      <Link
+        href={`/rescue/cases/${item.id}`}
+        className="text-primary-600 inline-flex min-h-12 w-fit items-center font-semibold underline"
+      >
+        ดูรายละเอียดเคส
+      </Link>
     </li>
   );
 }
