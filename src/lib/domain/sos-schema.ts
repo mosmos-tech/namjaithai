@@ -127,9 +127,7 @@ export const step5Schema = z.object({
     .string({ error: "กรุณาระบุเบอร์โทรศัพท์" })
     .transform((s) => s.replace(/[\s\-]/g, ""))
     .pipe(
-      z
-        .string()
-        .regex(thaiPhoneRegex, "กรุณาระบุเบอร์โทรศัพท์ไทยที่ถูกต้อง (เช่น 0812345678)"),
+      z.string().regex(thaiPhoneRegex, "กรุณาระบุเบอร์โทรศัพท์ไทยที่ถูกต้อง (เช่น 0812345678)"),
     ),
   lineId: z.string().optional(),
   notes: z.string().max(500, "รายละเอียดเพิ่มเติมต้องไม่เกิน 500 ตัวอักษร").optional(),
@@ -142,30 +140,24 @@ export const sosSchema = step1Schema
   .merge(step3BaseSchema)
   .merge(step4BaseSchema)
   .merge(step5Schema)
+  .extend({
+    consent: z.literal(true, { error: "กรุณายินยอมก่อนส่งคำขอ" }),
+    healthConsent: z.literal(true, { error: "กรุณายินยอมให้ใช้ข้อมูลสุขภาพ" }),
+  })
   .refine((d) => d.adults + d.elderly + d.bedridden + d.children > 0, {
     message: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน",
     path: ["adults"],
   })
-  // TF-65: GPS ไม่แม่น (เกิน 1000 ม.) ส่งได้ แต่ต้องมีที่อยู่ให้ทีมกู้ภัยหาเจอ
-  // ปักเอง/วางลิงก์ไม่นับ accuracy ที่ติดมา (ผู้แจ้งยืนยันจุดเองแล้ว)
   .refine(
     (d) =>
       !isInaccurateGps(accuracyForLocationSource(d.locationSource, d.accuracyM)) ||
       (d.addressLine?.length ?? 0) > 0,
-    {
-      message: ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE,
-      path: ["addressLine"],
-    },
+    { message: ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE, path: ["addressLine"] },
   )
-  .refine(
-    (d) =>
-      !d.needs.includes(Need.OTHER) ||
-      (d.otherDetail?.trim().length ?? 0) > 0,
-    {
-      message: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ",
-      path: ["otherDetail"],
-    },
-  );
+  .refine((d) => !d.needs.includes(Need.OTHER) || (d.otherDetail?.trim().length ?? 0) > 0, {
+    message: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ",
+    path: ["otherDetail"],
+  });
 
 export type SosFormData = z.infer<typeof sosSchema>;
 export type Step1Data = z.infer<typeof step1Schema>;

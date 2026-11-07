@@ -625,6 +625,12 @@ export function SosWizard() {
               lineId={draft.lineId}
               notes={draft.notes}
               photos={draft.photos}
+              consent={draft.consent}
+              healthConsent={draft.healthConsent}
+              onConsentChange={(field, value) => {
+                const next = updateDraft((prev) => ({ ...prev, [field]: value }));
+                if (step5Attempted) setStep5Errors(validateStep5Draft(next).errors);
+              }}
               errors={step5Errors}
               isSubmitting={isSubmitting}
               submitError={submitError}

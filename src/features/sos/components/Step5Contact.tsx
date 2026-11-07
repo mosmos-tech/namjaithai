@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, type ChangeEvent } from "react";
 import { Camera, Trash2, ShieldCheck, Loader2, CheckCircle2 } from "lucide-react";
 import {
@@ -16,6 +17,9 @@ interface Step5ContactProps {
   lineId: string;
   notes: string;
   photos: SosDraftPhoto[];
+  consent: boolean;
+  healthConsent: boolean;
+  onConsentChange: (field: "consent" | "healthConsent", value: boolean) => void;
   errors: Step5ValidationErrors;
   isSubmitting?: boolean;
   submitError?: string | null;
@@ -41,6 +45,9 @@ export function Step5Contact({
   lineId,
   notes,
   photos,
+  consent,
+  healthConsent,
+  onConsentChange,
   errors,
   isSubmitting = false,
   submitError = null,
@@ -65,7 +72,9 @@ export function Step5Contact({
 
     const files = Array.from(fileList);
     if (photos.length + files.length > MAX_SOS_PHOTOS) {
-      setPhotoError(`แนบรูปถ่ายได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป (เลือกเพิ่มได้อีก ${remainingSlots} รูป)`);
+      setPhotoError(
+        `แนบรูปถ่ายได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป (เลือกเพิ่มได้อีก ${remainingSlots} รูป)`,
+      );
       event.target.value = "";
       return;
     }
@@ -90,9 +99,7 @@ export function Step5Contact({
       }
     } catch (err) {
       setPhotoError(
-        err instanceof Error
-          ? err.message
-          : "เกิดข้อผิดพลาดในการบีบอัดรูปภาพ กรุณาลองใหม่อีกครั้ง",
+        err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการบีบอัดรูปภาพ กรุณาลองใหม่อีกครั้ง",
       );
     } finally {
       setIsCompressing(false);
@@ -104,26 +111,23 @@ export function Step5Contact({
     <div className="space-y-6">
       <section
         aria-labelledby="step5-contact-heading"
-        className="space-y-5 rounded-[14px] border border-border-default bg-bg-surface p-5 sm:p-6"
+        className="border-border-default bg-bg-surface space-y-5 rounded-[14px] border p-5 sm:p-6"
       >
         <div>
           <h2
             id="step5-contact-heading"
-            className="font-heading text-xl font-bold text-text-primary sm:text-[22px]"
+            className="font-heading text-text-primary text-xl font-bold sm:text-[22px]"
           >
             5. ข้อมูลติดต่อผู้แจ้งและรูปหน้างาน
           </h2>
-          <p className="mt-1 text-base text-text-secondary">
+          <p className="text-text-secondary mt-1 text-base">
             ระบุชื่อและเบอร์โทรศัพท์เพื่อให้ทีมกู้ภัยติดต่อกลับเมื่อรับเคสแล้ว
           </p>
         </div>
 
         {/* ป้ายแจ้งความเป็นส่วนตัวตาม CLAUDE.md */}
-        <div className="flex items-start gap-3 rounded-[12px] border border-primary-500/30 bg-bg-subtle p-3.5 text-sm text-text-primary">
-          <ShieldCheck
-            className="mt-0.5 h-5 w-5 shrink-0 text-primary-700"
-            aria-hidden="true"
-          />
+        <div className="border-primary-500/30 bg-bg-subtle text-text-primary flex items-start gap-3 rounded-[12px] border p-3.5 text-sm">
+          <ShieldCheck className="text-primary-700 mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <p>
             <strong>คุ้มครองข้อมูลส่วนบุคคล:</strong> ชื่อ เบอร์โทร และ LINE ID
             จะเปิดให้เห็นเฉพาะทีมกู้ภัยที่กดรับเคสของคุณและแอดมินเท่านั้น
@@ -134,7 +138,7 @@ export function Step5Contact({
         <div>
           <label
             htmlFor="sos-contact-name"
-            className="block font-heading text-base font-bold text-text-primary"
+            className="font-heading text-text-primary block text-base font-bold"
           >
             ชื่อผู้แจ้ง หรือชื่อผู้ติดต่อ <span className="text-red-600">*</span>
           </label>
@@ -146,13 +150,13 @@ export function Step5Contact({
             value={name}
             onChange={(e) => onChangeField("name", e.target.value)}
             placeholder="เช่น สมชาย ใจดี (หรือชื่อเล่น)"
-            className="mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border border-border-strong bg-bg-surface px-4 text-base text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 focus:outline-none"
+            className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border px-4 text-base focus:outline-none"
           />
           {errors.name && (
             <p
               role="alert"
               data-testid="error-contact-name"
-              className="mt-1.5 font-heading text-sm font-semibold text-red-600 sm:text-base"
+              className="font-heading mt-1.5 text-sm font-semibold text-red-600 sm:text-base"
             >
               • {errors.name}
             </p>
@@ -163,11 +167,11 @@ export function Step5Contact({
         <div>
           <label
             htmlFor="sos-contact-phone"
-            className="block font-heading text-base font-bold text-text-primary"
+            className="font-heading text-text-primary block text-base font-bold"
           >
             เบอร์โทรศัพท์ติดต่อกลับ <span className="text-red-600">*</span>
           </label>
-          <p className="mt-0.5 text-sm text-text-secondary">
+          <p className="text-text-secondary mt-0.5 text-sm">
             รองรับเบอร์มือถือไทย 10 หลัก (06x–09x) หรือเบอร์บ้าน (02x–05x)
           </p>
           <input
@@ -179,13 +183,13 @@ export function Step5Contact({
             value={phone}
             onChange={(e) => onChangeField("phone", e.target.value)}
             placeholder="เช่น 0812345678 หรือ 081-234-5678"
-            className="mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border border-border-strong bg-bg-surface px-4 font-mono text-base text-text-primary placeholder:font-sans placeholder:text-text-secondary/70 focus:border-primary-600 focus:outline-none"
+            className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border px-4 font-mono text-base placeholder:font-sans focus:outline-none"
           />
           {errors.phone && (
             <p
               role="alert"
               data-testid="error-contact-phone"
-              className="mt-1.5 font-heading text-sm font-semibold text-red-600 sm:text-base"
+              className="font-heading mt-1.5 text-sm font-semibold text-red-600 sm:text-base"
             >
               • {errors.phone}
             </p>
@@ -196,9 +200,9 @@ export function Step5Contact({
         <div>
           <label
             htmlFor="sos-contact-line-id"
-            className="block font-heading text-base font-bold text-text-primary"
+            className="font-heading text-text-primary block text-base font-bold"
           >
-            LINE ID <span className="text-sm font-normal text-text-secondary">(ไม่บังคับ)</span>
+            LINE ID <span className="text-text-secondary text-sm font-normal">(ไม่บังคับ)</span>
           </label>
           <input
             id="sos-contact-line-id"
@@ -207,7 +211,7 @@ export function Step5Contact({
             value={lineId}
             onChange={(e) => onChangeField("lineId", e.target.value)}
             placeholder="ระบุ LINE ID เผื่อสัญญาณโทรศัพท์ขัดข้อง"
-            className="mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border border-border-strong bg-bg-surface px-4 text-base text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 focus:outline-none"
+            className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border px-4 text-base focus:outline-none"
           />
         </div>
 
@@ -216,12 +220,12 @@ export function Step5Contact({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label
               htmlFor="sos-contact-notes"
-              className="font-heading text-base font-bold text-text-primary"
+              className="font-heading text-text-primary text-base font-bold"
             >
               รายละเอียดเพิ่มเติม{" "}
-              <span className="text-sm font-normal text-text-secondary">(ไม่บังคับ)</span>
+              <span className="text-text-secondary text-sm font-normal">(ไม่บังคับ)</span>
             </label>
-            <span className="font-mono text-xs font-semibold text-text-secondary">
+            <span className="text-text-secondary font-mono text-xs font-semibold">
               {notes.length}/500 ตัวอักษร
             </span>
           </div>
@@ -233,13 +237,13 @@ export function Step5Contact({
             value={notes}
             onChange={(e) => onChangeField("notes", e.target.value.slice(0, 500))}
             placeholder="เช่น อยู่ชั้น 2 เสื้อสีเหลือง, แบตมือถือเหลือ 15%, มีผู้ป่วยโรคหัวใจ..."
-            className="mt-1.5 w-full rounded-[10px] border border-border-strong bg-bg-surface p-3 text-base text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 focus:outline-none"
+            className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 w-full rounded-[10px] border p-3 text-base focus:outline-none"
           />
           {errors.notes && (
             <p
               role="alert"
               data-testid="error-contact-notes"
-              className="mt-1.5 font-heading text-sm font-semibold text-red-600"
+              className="font-heading mt-1.5 text-sm font-semibold text-red-600"
             >
               • {errors.notes}
             </p>
@@ -247,22 +251,22 @@ export function Step5Contact({
         </div>
 
         {/* 5. แนบรูปถ่ายไม่เกิน 3 รูป (บีบอัดเหลือไม่เกิน 500 KB ก่อนอัปโหลด) */}
-        <div className="border-t border-border-default pt-4">
+        <div className="border-border-default border-t pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="font-heading text-base font-bold text-text-primary">
+              <h3 className="font-heading text-text-primary text-base font-bold">
                 รูปถ่ายหน้างาน{" "}
-                <span className="text-sm font-normal text-text-secondary">
+                <span className="text-text-secondary text-sm font-normal">
                   (ไม่เกิน {MAX_SOS_PHOTOS} รูป · ระบบบีบอัดให้ไม่เกิน 500 KB อัตโนมัติ)
                 </span>
               </h3>
-              <p className="mt-0.5 text-sm text-text-secondary">
+              <p className="text-text-secondary mt-0.5 text-sm">
                 ถ่ายภาพระดับน้ำหรือตัวบ้านเพื่อให้ทีมกู้ภัยประเมินการเข้าช่วยเหลือได้เร็วขึ้น
               </p>
             </div>
             <span
               data-testid="photo-count-badge"
-              className="rounded-full bg-bg-subtle px-3 py-1 font-mono text-xs font-bold text-primary-700"
+              className="bg-bg-subtle text-primary-700 rounded-full px-3 py-1 font-mono text-xs font-bold"
             >
               {photos.length}/{MAX_SOS_PHOTOS} รูป
             </span>
@@ -287,7 +291,7 @@ export function Step5Contact({
                 data-testid="add-photo-button"
                 disabled={isCompressing}
                 onClick={() => fileInputRef.current?.click()}
-                className="flex min-h-[56px] w-full items-center justify-center gap-2.5 rounded-[12px] border-2 border-dashed border-primary-500 bg-primary-50/50 px-4 py-3 font-heading text-base font-semibold text-primary-700 transition-colors hover:bg-primary-50 disabled:opacity-60"
+                className="border-primary-500 bg-primary-50/50 font-heading text-primary-700 hover:bg-primary-50 flex min-h-[56px] w-full items-center justify-center gap-2.5 rounded-[12px] border-2 border-dashed px-4 py-3 text-base font-semibold transition-colors disabled:opacity-60"
               >
                 {isCompressing ? (
                   <>
@@ -308,7 +312,7 @@ export function Step5Contact({
             <p
               role="alert"
               data-testid="error-contact-photos"
-              className="mt-2 font-heading text-sm font-semibold text-red-600"
+              className="font-heading mt-2 text-sm font-semibold text-red-600"
             >
               • {photoError || errors.photos}
             </p>
@@ -321,17 +325,17 @@ export function Step5Contact({
                 <li
                   key={photo.id}
                   data-testid={`attached-photo-${photo.id}`}
-                  className="flex items-center justify-between gap-3 rounded-[12px] border border-border-default bg-bg-page p-2.5"
+                  className="border-border-default bg-bg-page flex items-center justify-between gap-3 rounded-[12px] border p-2.5"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={photo.dataUrl}
                       alt={photo.name}
-                      className="h-14 w-14 shrink-0 rounded-[8px] border border-border-default object-cover"
+                      className="border-border-default h-14 w-14 shrink-0 rounded-[8px] border object-cover"
                     />
                     <div className="min-w-0">
-                      <p className="truncate font-heading text-sm font-bold text-text-primary">
+                      <p className="font-heading text-text-primary truncate text-sm font-bold">
                         {photo.name}
                       </p>
                       <p className="font-mono text-xs text-green-700">
@@ -346,7 +350,7 @@ export function Step5Contact({
                     data-testid={`remove-photo-${photo.id}`}
                     aria-label={`ลบรูป ${photo.name}`}
                     onClick={() => onRemovePhoto(photo.id)}
-                    className="flex h-12 w-12 min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-full border border-border-strong bg-bg-surface text-red-600 transition-colors hover:bg-red-50"
+                    className="border-border-strong bg-bg-surface flex h-12 min-h-[48px] w-12 min-w-[48px] shrink-0 items-center justify-center rounded-full border text-red-600 transition-colors hover:bg-red-50"
                   >
                     <Trash2 className="h-5 w-5" aria-hidden="true" />
                   </button>
@@ -356,6 +360,32 @@ export function Step5Contact({
           )}
         </div>
 
+        <div className="border-border-default space-y-3 border-t pt-4">
+          <label className="flex min-h-12 items-start gap-3 text-base">
+            <input
+              type="checkbox"
+              className="mt-1 size-6 shrink-0"
+              checked={consent}
+              onChange={(e) => onConsentChange("consent", e.target.checked)}
+            />
+            <span>
+              ยินยอมให้ใช้ข้อมูลเพื่อช่วยเหลือ ตาม
+              <Link href="/privacy" className="text-primary-700 underline">
+                นโยบายความเป็นส่วนตัว
+              </Link>
+            </span>
+          </label>
+          <label className="flex min-h-12 items-start gap-3 text-base">
+            <input
+              type="checkbox"
+              className="mt-1 size-6 shrink-0"
+              checked={healthConsent}
+              onChange={(e) => onConsentChange("healthConsent", e.target.checked)}
+            />
+            <span>ยินยอมให้ใช้ข้อมูลสุขภาพเพื่อช่วยเหลือ</span>
+          </label>
+        </div>
+
         {/* กล่องแจ้งเตือนรวมเมื่อกรอกข้อมูลขั้นที่ 5 ไม่ครบ */}
         {errors.missingSummary.length > 0 && (
           <div
@@ -363,12 +393,8 @@ export function Step5Contact({
             data-testid="step5-missing-alert"
             className="rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
           >
-            <p className="font-heading font-bold">
-              ยังส่งคำขอไม่ได้ กรุณาตรวจสอบข้อมูล:
-            </p>
-            <p className="mt-1 font-medium">
-              ต้องแก้ไข: {errors.missingSummary.join(", ")}
-            </p>
+            <p className="font-heading font-bold">ยังส่งคำขอไม่ได้ กรุณาตรวจสอบข้อมูล:</p>
+            <p className="mt-1 font-medium">ต้องแก้ไข: {errors.missingSummary.join(", ")}</p>
           </div>
         )}
 
@@ -404,7 +430,7 @@ export function Step5Contact({
           data-testid="step5-prev-button"
           disabled={isSubmitting}
           onClick={onPrev}
-          className="flex h-14 min-h-[48px] w-full items-center justify-center rounded-full border border-border-strong bg-bg-surface px-6 font-heading text-[19px] font-semibold text-text-primary transition-colors hover:bg-bg-subtle disabled:opacity-50 sm:w-auto sm:min-w-[160px]"
+          className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle flex h-14 min-h-[48px] w-full items-center justify-center rounded-full border px-6 text-[19px] font-semibold transition-colors disabled:opacity-50 sm:w-auto sm:min-w-[160px]"
         >
           ← ย้อนกลับ
         </button>
@@ -414,7 +440,7 @@ export function Step5Contact({
           data-testid="step5-submit-button"
           disabled={isSubmitting || isCompressing}
           onClick={onSubmit}
-          className="flex h-14 min-h-[48px] w-full items-center justify-center gap-2 rounded-full bg-red-600 px-8 font-heading text-[19px] font-bold text-text-on-primary shadow-sm transition-colors hover:bg-red-600/90 active:bg-red-600 disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
+          className="font-heading text-text-on-primary flex h-14 min-h-[48px] w-full items-center justify-center gap-2 rounded-full bg-red-600 px-8 text-[19px] font-bold shadow-sm transition-colors hover:bg-red-600/90 active:bg-red-600 disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
         >
           {isSubmitting ? (
             <>

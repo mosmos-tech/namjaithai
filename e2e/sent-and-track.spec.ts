@@ -291,6 +291,8 @@ test("TF-53 ส่งฟอร์มจริงแล้วดูคำแน�
   await goToStep5(page);
   await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ TF-53");
   await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(randomPhone());
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
   await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
   const advice = page.getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" });
   await expect(advice).toContainText("หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม");

@@ -145,6 +145,8 @@ export interface SosDraft {
   lineId: string;
   notes: string;
   photos: SosDraftPhoto[];
+  consent: boolean;
+  healthConsent: boolean;
   // คีย์กันส่งซ้ำประจำร่างนี้ (ใช้ซ้ำถ้ากดส่งซ้ำหรือลองส่งใหม่ และถูกล้างเมื่อส่งสำเร็จ)
   idempotencyKey?: string;
   // เวลาที่บันทึกร่างล่าสุด (ISO string)
@@ -177,6 +179,8 @@ export function createInitialSosDraft(): SosDraft {
     lineId: "",
     notes: "",
     photos: [],
+    consent: false,
+    healthConsent: false,
   };
 }
 
@@ -702,6 +706,8 @@ export interface Step5ValidationErrors {
   phone?: string;
   notes?: string;
   photos?: string;
+  consent?: string;
+  healthConsent?: string;
   missingSummary: string[];
 }
 
@@ -715,6 +721,8 @@ export interface Step5ValidationErrors {
 export function validateStep5Draft(
   draft: Pick<SosDraft, "name" | "phone" | "lineId" | "notes"> & {
     photos?: readonly SosDraftPhoto[];
+    consent?: boolean;
+    healthConsent?: boolean;
   },
 ): {
   valid: boolean;
@@ -765,6 +773,15 @@ export function validateStep5Draft(
     }
   }
 
+  if (draft.consent !== true) {
+    errors.consent = "กรุณายินยอมก่อนส่งคำขอ";
+    errors.missingSummary.push("ความยินยอมในการใช้ข้อมูล");
+  }
+  if (draft.healthConsent !== true) {
+    errors.healthConsent = "กรุณายินยอมให้ใช้ข้อมูลสุขภาพ";
+    errors.missingSummary.push("ความยินยอมข้อมูลสุขภาพ");
+  }
+
   const photos = draft.photos ?? [];
   if (photos.length > MAX_SOS_PHOTOS) {
     errors.photos = `แนบรูปได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป`;
@@ -774,7 +791,14 @@ export function validateStep5Draft(
     errors.missingSummary.push("ขนาดรูปไม่เกิน 500 KB");
   }
 
-  const valid = !errors.name && !errors.phone && !errors.notes && !errors.photos && parsed.success;
+  const valid =
+    !errors.name &&
+    !errors.phone &&
+    !errors.notes &&
+    !errors.photos &&
+    !errors.consent &&
+    !errors.healthConsent &&
+    parsed.success;
 
   return {
     valid,
@@ -904,6 +928,8 @@ export function loadSosDraft(
       atScene,
       dangerSigns,
       canSelfEvacuate,
+      consent: false,
+      healthConsent: false,
       hasDisabled: parsed.hasDisabled === true,
       hasInjured: parsed.hasInjured === true,
       waterLevel,
@@ -1202,6 +1228,8 @@ export async function submitSosDraft(
       phone: nextDraft.phone,
       lineId: nextDraft.lineId || undefined,
       notes: nextDraft.notes || undefined,
+      consent: nextDraft.consent,
+      healthConsent: nextDraft.healthConsent,
     });
 
     try {

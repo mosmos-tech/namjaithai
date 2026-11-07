@@ -6,12 +6,13 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(12);
+select plan(14);
 
 -- จุดห่างกันเกิน 50 ม. และเบอร์ไม่ซ้ำ จะได้ไม่ชนการตรวจเคสซ้ำ (TF-16)
 create function pg_temp.sos_payload(lat double precision, phone text, extra jsonb) returns jsonb
 language sql as $$
   select jsonb_build_object(
+    'consent', true, 'healthConsent', true, 'consentVersion', '2026-11-06',
     'urgency', 'YELLOW', 'triageReasons', '["WATER_UNKNOWN"]'::jsonb,
     'canSelfEvacuate', false, 'lat', lat, 'lng', 99.95, 'landmark', 'หน้าวัด',
     'phone', phone, 'name', 'ทดสอบ TF-65', 'adults', 1, 'needs', '[]'::jsonb
@@ -29,6 +30,11 @@ select is(
   (select location_source || ' ' || accuracy_m from public.cases where idempotency_key = 'tf65-gps'),
   'GPS 16238',
   'GPS: เก็บวิธีได้พิกัดและ accuracy เดิม'
+);
+select ok(
+  (select consent_version = '2026-11-06' and consented_at is not null and health_consented_at is not null
+     from public.cases where idempotency_key = 'tf65-gps'),
+  'GPS: บันทึกความยินยอมพร้อมพิกัด'
 );
 select is(
   (select cc.detailed_address from public.case_contacts cc
@@ -84,6 +90,11 @@ select ok(
   (select location_source = 'MANUAL_PIN' and accuracy_m is null
      from public.cases where idempotency_key = 'tf65-gps'),
   'อัปเดตเคสเดิมด้วยการปักเอง: accuracy_m GPS เดิมถูกล้างเป็น null'
+);
+select ok(
+  (select consent_version = '2026-11-06' and consented_at is not null and health_consented_at is not null
+     from public.cases where idempotency_key = 'tf65-gps'),
+  'อัปเดตเคสเดิม: บันทึกความยินยอมพร้อมพิกัดใหม่'
 );
 
 -- ---------- ค่าที่ไม่รู้จักถูกปฏิเสธ ----------

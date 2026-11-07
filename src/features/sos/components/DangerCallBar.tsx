@@ -12,7 +12,7 @@ export function DangerCallBar() {
       role="region"
       aria-label="มีสัญญาณอันตราย โทร 1669 ทันที"
       data-testid="danger-call-bar"
-      className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-red-600 px-4 py-3 text-white lg:mb-4 lg:rounded-[14px] lg:px-6"
+      className="sticky top-0 z-[60] flex flex-wrap items-center gap-3 bg-red-600 px-4 py-3 text-white lg:mb-4 lg:rounded-[14px] lg:px-6"
     >
       <img src="/brand/icon-alert-white.svg" alt="" className="size-6 shrink-0" />
       <p className="min-w-0 flex-1 text-base leading-snug font-semibold sm:text-lg">

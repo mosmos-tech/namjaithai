@@ -82,6 +82,8 @@ test.describe("TF-65 ความแม่นยำของตำแหน่�
     const phone = randomPhone();
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ TF-65");
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
     await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
       timeout: 15_000,
@@ -104,6 +106,8 @@ test.describe("TF-65 ความแม่นยำของตำแหน่�
     const response = await request.post("/api/cases", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
       data: {
+        consent: true,
+        healthConsent: true,
         dangerSigns: [],
         canSelfEvacuate: false,
         ...uniqueTestPoint(),

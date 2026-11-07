@@ -114,6 +114,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "081-234-5678",
       lineId: "somying_line",
       notes: "อยู่ชั้น 2",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(validMobile.valid).toBe(true);
@@ -125,6 +127,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "02-123-4567",
       lineId: "",
       notes: "",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(validLandline.valid).toBe(true);
@@ -136,6 +140,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "0123456789",
       lineId: "",
       notes: "",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(invalidPhone.valid).toBe(false);
@@ -147,6 +153,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "0891234567",
       lineId: "",
       notes: "",
+      consent: true,
+      healthConsent: true,
       photos: [],
     });
     expect(missingName.valid).toBe(false);
@@ -188,6 +196,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
 
     const draftWithoutLocation = {
       ...createInitialSosDraft(),
+      consent: true,
+      healthConsent: true,
       currentStep: 5 as const,
       dangerSigns: [],
       canSelfEvacuate: false,
@@ -236,6 +246,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
 
     const fullDraft = {
       ...createInitialSosDraft(),
+      consent: true,
+      healthConsent: true,
       currentStep: 5 as const,
       dangerSigns: [],
       canSelfEvacuate: false,
@@ -291,7 +303,7 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     });
 
     const retryResult = await submitSosDraft({
-      draft: savedAfterError,
+      draft: { ...savedAfterError, consent: true, healthConsent: true },
       storage,
       inFlightRef,
       fetchImpl: retryFetchMock,
@@ -316,6 +328,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     };
     const draft = {
       ...createInitialSosDraft(),
+      consent: true,
+      healthConsent: true,
       currentStep: 5 as const,
       dangerSigns: [],
       canSelfEvacuate: false,
@@ -341,6 +355,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
       phone: "0812345678",
       lat: 13.7563,
       landmark: "หน้าวัด",
+      consent: true,
+      healthConsent: true,
     });
     expect(loadSosDraft(storage).idempotencyKey).toBe("offline-key");
   });
@@ -359,6 +375,8 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
 
     const fullDraft = {
       ...createInitialSosDraft(),
+      consent: true,
+      healthConsent: true,
       currentStep: 5 as const,
       dangerSigns: [],
       canSelfEvacuate: false,

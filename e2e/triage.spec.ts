@@ -42,6 +42,8 @@ test("ส่งจากฟอร์มพร้อมสัญญาณอั�
 
   await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ TF-55");
   await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(randomPhone());
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
   const responsePromise = page.waitForResponse(
     (r) => r.url().endsWith("/api/cases") && r.request().method() === "POST",
   );

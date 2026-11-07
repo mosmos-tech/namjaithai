@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { gzipSync } from "node:zlib";
 import { goToStep5 } from "./helpers/sos";
+import { adminDb, randomPhone } from "./helpers/db";
 
 async function offlineReady(page: Page) {
   await page.goto("/");
@@ -226,6 +227,11 @@ test("TF-15 เก็บคำขอออฟไลน์และส่งร�
   await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill("0812345678");
   await context.setOffline(true);
   await page.getByTestId("step5-submit-button").click();
+  await expect(page.getByTestId("step5-missing-alert")).toContainText("ความยินยอม");
+  await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toHaveCount(0);
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+  await page.getByTestId("step5-submit-button").click();
   await expect(
     page.getByRole("heading", { name: /บันทึกไว้ในเครื่องแล้ว — ยังไม่ถึงทีมกู้ภัย/ }),
   ).toBeVisible();
@@ -257,6 +263,7 @@ test("TF-15 เก็บคำขอออฟไลน์และส่งร�
   const keys: string[] = [];
   await context.route("**/api/cases", async (route) => {
     requests++;
+    expect(route.request().postDataJSON()).toMatchObject({ consent: true, healthConsent: true });
     keys.push(route.request().headers()["idempotency-key"]);
     await route.fulfill({
       status: 200,
@@ -399,4 +406,62 @@ test("TF-15 service worker ส่งคิวเมื่อแท็บปิ�
   await expect(
     reopened.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
   ).toBeVisible();
+});
+
+test("TF-15 ส่งคิวที่ยินยอมแล้วเข้า API จริงเพียงหนึ่งเคส", async ({ page, context }) => {
+  const db = adminDb(); // ป้องกันไม่ให้ใช้ฐานที่ไม่ใช่ localhost
+  const phone = randomPhone();
+  await context.route("**/api/cases", async (route) => {
+    await route.continue({
+      headers: {
+        ...route.request().headers(),
+        "x-forwarded-for": `10.71.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+      },
+    });
+  });
+  await offlineReady(page);
+  await page.goto("/request");
+  await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
+  await goToStep5(page);
+  await page.evaluate(() => {
+    const key = "namjaithai-sos-draft-v1";
+    const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
+    draft.lat = 14 + Math.random() * 0.4;
+    draft.lng = 100 + Math.random() * 0.4;
+    localStorage.setItem(key, JSON.stringify(draft));
+    window.dispatchEvent(new Event("storage"));
+  });
+  await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ คิวออฟไลน์");
+  await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+  await context.setOffline(true);
+  await page.getByTestId("step5-submit-button").click();
+  await expect(page.getByRole("heading", { name: /บันทึกไว้ในเครื่องแล้ว/ })).toBeVisible();
+  const id = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return await new Promise<string>((resolve, reject) => {
+      const req = db.transaction("queue").objectStore("queue").get("current");
+      req.onsuccess = () => resolve(req.result.id);
+      req.onerror = () => reject(req.error);
+    });
+  });
+  await context.setOffline(false);
+  await expect(page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" })).toBeVisible(
+    { timeout: 30000 },
+  );
+  const result = await db
+    .from("cases")
+    .select("case_code,consent_version,consented_at,health_consented_at")
+    .eq("idempotency_key", id);
+  expect(result.error).toBeNull();
+  expect(result.data).toHaveLength(1);
+  expect(result.data![0]).toMatchObject({ consent_version: "2026-11-06" });
+  expect(result.data![0].consented_at).toBeTruthy();
+  expect(result.data![0].health_consented_at).toBeTruthy();
+  await expect(page.getByText(result.data![0].case_code)).toBeVisible();
 });

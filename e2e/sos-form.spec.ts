@@ -82,6 +82,8 @@ test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-50
     const res = await page.request.post("/api/cases", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
       data: {
+        consent: true,
+        healthConsent: true,
         atScene: false,
         dangerSigns: [],
         canSelfEvacuate: false,
@@ -99,6 +101,7 @@ test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-50
       },
     });
     expect(res.status()).toBe(400);
+    expect((await res.json()).fields).toContain("atScene");
     expect(await countCasesByPhone(phone)).toBe(0);
   });
 
@@ -150,7 +153,13 @@ test.describe("ขั้นที่ 1 สถานการณ์ (TF-08, TF-50
       await expect(bar).toBeVisible();
       // แถบต้องอยู่บนสุดของจอ แม้เลื่อนลงล่างสุด
       await page.mouse.wheel(0, 4000);
-      expect((await bar.boundingBox())!.y).toBeLessThanOrEqual(1);
+      await expect.poll(async () => (await bar.boundingBox())?.y).toBeLessThanOrEqual(1);
+      const callButton = bar.getByRole("link", { name: /โทร 1669/ });
+      await expect.poll(() => callButton.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const topmost = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return topmost === element || element.contains(topmost);
+      })).toBe(true);
     }
   });
 
@@ -428,6 +437,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ ไม่มีตำแหน่ง");
     const phone = randomPhone();
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await submit(page).click();
     await expect(page.getByText(/ยังส่งคำขอไม่ได้/).first()).toBeVisible();
     await expect(page.getByText(/ส่งคำขอสำเร็จ/)).toHaveCount(0);
@@ -440,6 +451,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ ส่งสำเร็จ");
     const phone = randomPhone();
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     // กดสองครั้งติดกันเร็วๆ (นิ้วสั่น) ต้องได้เคสเดียว
     await submit(page).evaluate((b: HTMLButtonElement) => {
       b.click();
@@ -465,6 +478,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await seedLocationIntoDraft(page);
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ เบอร์ซ้ำ");
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(existing.phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await submit(page).click();
     await expect(page.getByRole("button", { name: /อัปเดตเคสเดิม/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /สร้างใหม่/ })).toBeVisible();
@@ -531,6 +546,8 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
         "X-Forwarded-For": `10.51.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
       },
       data: {
+        consent: true,
+        healthConsent: true,
         incidentType: "ROAD_ACCIDENT",
         atScene: true,
         dangerSigns: [],
@@ -552,6 +569,7 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
       },
     });
     expect(resMismatch.status()).toBe(400);
+    expect((await resMismatch.json()).fields).toContain("details");
     expect(await countCasesByPhone(phone)).toBe(0);
   });
 
@@ -579,6 +597,8 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
     const phoneFlood = randomPhone();
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ผู้แจ้ง น้ำท่วม");
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phoneFlood);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
     await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
       timeout: 15_000,
@@ -605,6 +625,8 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
     const phoneRoad = randomPhone();
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ผู้แจ้ง อุบัติเหตุ");
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phoneRoad);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     const roadResPromise = page.waitForResponse(
       (r) => r.url().endsWith("/api/cases") && r.request().method() === "POST",
     );
@@ -658,6 +680,8 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
     const phoneAnimal = randomPhone();
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ผู้แจ้ง สัตว์อันตราย");
     await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phoneAnimal);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
     await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
       timeout: 15_000,
