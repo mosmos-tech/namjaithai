@@ -1,7 +1,6 @@
 import { Need, WATER_LEVEL_DISPLAY_ORDER, waterLevelLabel } from "../enums";
 import {
   IncidentType,
-  TF55_TRIAGE_TABLE_SOURCE,
   UNIVERSAL_DANGER_SIGNS,
   UnitCapability,
   type IncidentDefinition,
@@ -50,10 +49,9 @@ export const flood: IncidentDefinition = {
       sensitive: true,
     },
   ],
-  // TODO(TF-54): ตรวจกับต้นฉบับ CBD สพฉ. อีกรอบ
   dangerSigns: [
     ...UNIVERSAL_DANGER_SIGNS,
-    { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ" }, source: TF55_TRIAGE_TABLE_SOURCE },
+    { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ" }, source: "https://www.disaster.go.th/" },
   ],
   needs: Object.values(Need),
   // FEMA flood guidance; these items are separate from the legacy survival checklist.

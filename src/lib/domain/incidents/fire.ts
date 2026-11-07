@@ -1,11 +1,12 @@
 import { Need } from "../enums";
 import {
   IncidentType,
-  TF55_TRIAGE_TABLE_SOURCE,
   UNIVERSAL_DANGER_SIGNS,
   UnitCapability,
   type IncidentDefinition,
 } from "./types";
+
+const FIRE_OFFICIAL_SOURCE = "https://www.disaster.go.th/apiv1/clickdownload/download/1606";
 
 export const fire: IncidentDefinition = {
   code: IncidentType.FIRE,
@@ -27,6 +28,15 @@ export const fire: IncidentDefinition = {
       ],
     },
     {
+      key: "buildingFloor",
+      kind: "number",
+      label: { th: "ชั้นที่เกิดเหตุเพลิงไหม้", en: "Floor of fire incident" },
+      min: 1,
+      max: 99,
+      required: true,
+      dependsOn: { key: "fireLocation", value: "HIGH_RISE" },
+    },
+    {
       key: "isTrappedInSmoke",
       kind: "boolean",
       label: { th: "มีคนติดอยู่ในอาคารหรือกลุ่มควันไหม", en: "Anyone trapped in building or smoke?" },
@@ -45,7 +55,7 @@ export const fire: IncidentDefinition = {
     {
       key: "TRAPPED_IN_FIRE",
       label: { th: "มีคนติดอยู่ในกองไฟหรือควันหนาแน่น" },
-      source: TF55_TRIAGE_TABLE_SOURCE,
+      source: FIRE_OFFICIAL_SOURCE,
     },
   ],
   needs: [
@@ -55,5 +65,20 @@ export const fire: IncidentDefinition = {
     Need.DRINKING_WATER,
     Need.OTHER,
   ],
-  waitingAdvice: [],
+  waitingAdvice: [
+    {
+      text: { th: "หมอบคลานต่ำใต้กลุ่มควัน และใช้ผ้าชุบน้ำปิดจมูกและปาก" },
+      source: FIRE_OFFICIAL_SOURCE,
+    },
+    {
+      text: { th: "ห้ามใช้ลิฟต์โดยเด็ดขาด ให้ใช้บันไดหนีไฟเพื่อออกจากอาคาร" },
+      source: FIRE_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "หากติดอยู่ในห้อง ให้ปิดประตู ใช้ผ้าชุบน้ำอุดตามช่องว่าง และส่งสัญญาณขอความช่วยเหลือที่หน้าต่าง",
+      },
+      source: FIRE_OFFICIAL_SOURCE,
+    },
+  ],
 };

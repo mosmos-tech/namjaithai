@@ -31,8 +31,12 @@ describe("session rescue permissions", () => {
       unit: { is_active: true },
     };
     expect((await getSessionUserRow(client([active])))?.role).toBe("RESCUER");
+    expect((await getSessionUserRow(client([{ ...active, unit: [{ is_active: true }] }])))?.role).toBe("RESCUER");
     expect(
       (await getSessionUserRow(client([{ ...active, unit: { is_active: false } }])))?.role,
+    ).toBe("USER");
+    expect(
+      (await getSessionUserRow(client([{ ...active, unit: [{ is_active: false }] }])))?.role,
     ).toBe("USER");
     expect((await getSessionUserRow(client([])))?.role).toBe("USER");
   });

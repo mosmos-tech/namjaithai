@@ -36,6 +36,13 @@ export interface LocalizedText {
   en?: string;
 }
 
+export interface QuestionCondition {
+  /** key ของคำถามอื่นที่คำถามนี้ขึ้นอยู่กับ */
+  key: string;
+  /** ค่าที่ตรงกับเงื่อนไขเพื่อให้คำถามนี้แสดง (ค่าเดี่ยว หรือ array ของค่าที่ยอมรับ) */
+  value: string | boolean | number | readonly (string | boolean | number)[];
+}
+
 interface QuestionBase {
   /** ชื่อ key ใน cases.details (หรือ case_sensitive_details ถ้า sensitive) */
   key: string;
@@ -46,15 +53,46 @@ interface QuestionBase {
    * (เห็นเฉพาะกู้ภัยที่รับเคส หัวหน้าหน่วยนั้น และแอดมิน) ห้ามลง cases.details
    */
   sensitive?: boolean;
+  /** เงื่อนไขในการแสดงคำถามย่อยนี้ (ถ้ามี) */
+  dependsOn?: QuestionCondition;
 }
 
 export type IncidentQuestion =
   | (QuestionBase & {
       kind: "choice";
       options: { value: string; label: LocalizedText }[];
+      /** true = ผู้ใช้เลือกได้มากกว่า 1 ตัวเลือก (เก็บเป็น string[]) */
+      multiple?: boolean;
     })
   | (QuestionBase & { kind: "number"; min: number; max: number })
-  | (QuestionBase & { kind: "boolean" });
+  | (QuestionBase & { kind: "boolean" })
+  | (QuestionBase & { kind: "text"; maxLength: number; placeholder?: LocalizedText });
+
+/**
+ * ตรวจว่าคำถามนี้ควรแสดงในแบบฟอร์มหรือไม่ ตามเงื่อนไข dependsOn และคำตอบที่มี
+ */
+export function isQuestionVisible(
+  q: IncidentQuestion,
+  answers: Record<string, unknown>,
+): boolean {
+  if (!q.dependsOn) return true;
+  const target = answers[q.dependsOn.key];
+  if (target === undefined || target === null) return false;
+
+  const expected = q.dependsOn.value;
+  if (Array.isArray(expected)) {
+    if (Array.isArray(target)) {
+      return expected.some((v) => target.includes(v));
+    }
+    return expected.includes(target as string | boolean | number);
+  }
+
+  if (Array.isArray(target)) {
+    return target.includes(expected);
+  }
+
+  return target === expected;
+}
 
 /** สัญญาณอันตราย — ผู้แจ้งตอบว่าใช่แล้วขึ้นแถบโทรสายด่วนทันที (TF-50) */
 export interface DangerSign {
@@ -69,18 +107,30 @@ export const TF55_TRIAGE_TABLE_SOURCE =
   "ตารางกติกา TF-55 (เอกสารสถาปัตยกรรม อ้างอิง CBD สพฉ.) — รอตรวจกับต้นฉบับใน TF-54";
 
 /**
- * สัญญาณอันตรายที่ใช้กับทุกประเภทเหตุ (แถวแรกของตารางกติกา TF-55)
+ * สัญญาณอันตรายที่ใช้กับทุกประเภทเหตุ (คู่มือปฏิบัติการแจ้งเหตุ 1669 สพฉ.)
  * แต่ละประเภทเหตุเพิ่มสัญญาณเฉพาะของตัวเองต่อท้าย เช่น น้ำท่วม = มีคนอยู่ในน้ำ
  */
 export const UNIVERSAL_DANGER_SIGNS: readonly DangerSign[] = [
-  { key: "UNCONSCIOUS", label: { th: "มีคนหมดสติ" }, source: TF55_TRIAGE_TABLE_SOURCE },
+  {
+    key: "UNCONSCIOUS",
+    label: { th: "มีคนหมดสติ" },
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
+  },
   {
     key: "ABNORMAL_BREATHING",
     label: { th: "มีคนหายใจผิดปกติ" },
-    source: TF55_TRIAGE_TABLE_SOURCE,
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
   },
-  { key: "SEVERE_BLEEDING", label: { th: "มีคนเลือดออกมาก" }, source: TF55_TRIAGE_TABLE_SOURCE },
-  { key: "CHEST_PAIN", label: { th: "มีคนเจ็บหน้าอก" }, source: TF55_TRIAGE_TABLE_SOURCE },
+  {
+    key: "SEVERE_BLEEDING",
+    label: { th: "มีคนเลือดออกมาก" },
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
+  },
+  {
+    key: "CHEST_PAIN",
+    label: { th: "มีคนเจ็บหน้าอก" },
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
+  },
 ];
 
 /** คำแนะนำระหว่างรอทีม (TF-53) */

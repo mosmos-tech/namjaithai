@@ -16,13 +16,14 @@ export async function getMyUnitCapabilities(userId: string): Promise<UnitCapabil
   if (error) throw error;
 
   const unitIds = (memberships ?? [])
-    .filter((m) =>
-      isMembershipActive({
+    .filter((m) => {
+      const unitObj = Array.isArray(m.unit) ? m.unit[0] : m.unit;
+      return isMembershipActive({
         status: m.status,
         expiresAt: m.expires_at,
-        unitIsActive: Boolean((m.unit as { is_active?: boolean } | null)?.is_active),
-      }),
-    )
+        unitIsActive: unitObj ? Boolean(unitObj.is_active) : undefined,
+      });
+    })
     .map((m) => m.unit_id as string);
   if (unitIds.length === 0) return [];
 

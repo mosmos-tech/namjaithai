@@ -6,6 +6,8 @@ import {
   type IncidentDefinition,
 } from "./types";
 
+const ANIMAL_OFFICIAL_SOURCE = "https://ddc.moph.go.th/odpc3/news.php?deptcode=odpc3&news=29303";
+
 export const animal: IncidentDefinition = {
   code: IncidentType.ANIMAL,
   label: { th: "สัตว์อันตราย" },
@@ -39,11 +41,37 @@ export const animal: IncidentDefinition = {
       sensitive: true,
     },
   ],
-  dangerSigns: [...UNIVERSAL_DANGER_SIGNS],
+  dangerSigns: [
+    ...UNIVERSAL_DANGER_SIGNS,
+    {
+      key: "VENOMOUS_BITE",
+      label: { th: "ถูกสัตว์มีพิษกัด/ต่อย และมีอาการแน่นหน้าอก หายใจลำบาก หรือบวมเฉียบพลัน" },
+      source: ANIMAL_OFFICIAL_SOURCE,
+    },
+  ],
   needs: [
     Need.MEDICINE,
     Need.FLASHLIGHT_POWER,
     Need.OTHER,
   ],
-  waitingAdvice: [],
+  waitingAdvice: [
+    {
+      text: {
+        th: "ถอยห่างจากสัตว์ ไม่พยายามจับหรือตีด้วยตนเอง และคอยสังเกตตำแหน่งจากระยะปลอดภัย",
+      },
+      source: ANIMAL_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "หากถูกงูกัด ให้ล้างแผลด้วยน้ำสะอาด ดามอวัยวะให้อยู่นิ่งระดับต่ำกว่าหัวใจ ห้ามขันชะเนาะและห้ามกรีดแผล",
+      },
+      source: ANIMAL_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "จดจำลักษณะ สี หรือถ่ายภาพสัตว์จากระยะปลอดภัยเพื่อช่วยแพทย์ในการเลือกเซรุ่มแก้พิษ",
+      },
+      source: ANIMAL_OFFICIAL_SOURCE,
+    },
+  ],
 };

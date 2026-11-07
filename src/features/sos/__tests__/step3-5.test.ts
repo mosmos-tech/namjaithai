@@ -491,7 +491,7 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     });
     expect(missingRoadQuestions.valid).toBe(false);
     expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("injuredCount");
-    expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("vehicleType");
+    expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("vehicleTypes");
     expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("isTrapped");
 
     // ตอบครบทั้ง 3 ข้อ (ตัวเลข + ตัวเลือก + ใช่/ไม่ใช่) -> ผ่าน
@@ -521,5 +521,236 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(roadNeeds).toContain(Need.OTHER);
     expect(animalNeeds).not.toContain(Need.EVACUATION_BOAT);
     expect(animalNeeds).toContain(Need.OTHER);
+  });
+
+  it("TF-54: validateStep3Draft รองรับ multi-select, text kind ไม่เกิน 200 ตัวอักษร และ conditional questions", () => {
+    // 1. multi-select vehicleTypes ใน ROAD_ACCIDENT
+    const roadMulti = validateStep3Draft({
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      details: {
+        injuredCount: 0,
+        vehicleTypes: ["CAR", "TRUCK"],
+        isTrapped: false,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(roadMulti.valid).toBe(true);
+
+    // 2. kind: text ใน OTHER (ไม่เกิน 200 ตัวอักษร)
+    const otherValidText = validateStep3Draft({
+      incidentType: IncidentType.OTHER,
+      details: {
+        otherCategory: "GENERAL",
+        otherDescription: "เสาไฟล้มทับกำแพงบ้าน",
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(otherValidText.valid).toBe(true);
+
+    const otherTooLong = validateStep3Draft({
+      incidentType: IncidentType.OTHER,
+      details: {
+        otherCategory: "GENERAL",
+        otherDescription: "ข้อความ".repeat(50), // 300 chars > 200
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(otherTooLong.valid).toBe(false);
+    expect(otherTooLong.errors.questionErrors).toHaveProperty("otherDescription");
+
+    // 3. Conditional sub-questions
+    // FIRE: fireLocation === HOUSE -> ไม่ต้องตอบ buildingFloor
+    const fireHouse = validateStep3Draft({
+      incidentType: IncidentType.FIRE,
+      details: {
+        fireLocation: "HOUSE",
+        isTrappedInSmoke: false,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(fireHouse.valid).toBe(true);
+
+    // FIRE: fireLocation === HIGH_RISE แต่ยังไม่ตอบ buildingFloor -> ไม่ผ่าน
+    const fireHighRiseMissing = validateStep3Draft({
+      incidentType: IncidentType.FIRE,
+      details: {
+        fireLocation: "HIGH_RISE",
+        isTrappedInSmoke: false,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(fireHighRiseMissing.valid).toBe(false);
+    expect(fireHighRiseMissing.errors.questionErrors).toHaveProperty("buildingFloor");
+
+    // FIRE: fireLocation === HIGH_RISE และตอบ buildingFloor -> ผ่าน
+    const fireHighRiseOk = validateStep3Draft({
+      incidentType: IncidentType.FIRE,
+      details: {
+        fireLocation: "HIGH_RISE",
+        buildingFloor: 15,
+        isTrappedInSmoke: false,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(fireHighRiseOk.valid).toBe(true);
+
+    // WATER_RESCUE: isFloatingVisible === false -> บังคับ submersionDuration
+    const waterRescueSubmergedMissing = validateStep3Draft({
+      incidentType: IncidentType.WATER_RESCUE,
+      details: {
+        victimsInWater: 1,
+        waterBodyType: "CANAL_RIVER",
+        isFloatingVisible: false,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(waterRescueSubmergedMissing.valid).toBe(false);
+    expect(waterRescueSubmergedMissing.errors.questionErrors).toHaveProperty("submersionDuration");
+
+    const waterRescueSubmergedOk = validateStep3Draft({
+      incidentType: IncidentType.WATER_RESCUE,
+      details: {
+        victimsInWater: 1,
+        waterBodyType: "CANAL_RIVER",
+        isFloatingVisible: false,
+        submersionDuration: "UNDER_5_MIN",
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(waterRescueSubmergedOk.valid).toBe(true);
+
+    // COLLAPSE: isTrappedUnderDebris === true -> บังคับ trappedCount
+    const collapseMissing = validateStep3Draft({
+      incidentType: IncidentType.COLLAPSE,
+      details: {
+        collapseType: "BUILDING_ROOF",
+        isTrappedUnderDebris: true,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(collapseMissing.valid).toBe(false);
+    expect(collapseMissing.errors.questionErrors).toHaveProperty("trappedCount");
+
+    const collapseOk = validateStep3Draft({
+      incidentType: IncidentType.COLLAPSE,
+      details: {
+        collapseType: "BUILDING_ROOF",
+        isTrappedUnderDebris: true,
+        trappedCount: 2,
+      },
+      adults: 1,
+      elderly: 0,
+      bedridden: 0,
+      children: 0,
+      pets: 0,
+    });
+    expect(collapseOk.valid).toBe(true);
+  });
+
+  it("TF-54: loadSosDraft คงค่า array ใน details และ submitSosDraft ตัดคำตอบคำถามย่อยที่ถูกซ่อนออก", async () => {
+    const map = new Map<string, string>();
+    const storage = {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        map.set(k, v);
+      },
+      removeItem: (k: string) => {
+        map.delete(k);
+      },
+    };
+
+    const roadDraft = {
+      ...createInitialSosDraft(),
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      atScene: true,
+      dangerSigns: [],
+      canSelfEvacuate: false,
+      lat: 13.7563,
+      lng: 100.5018,
+      landmark: "แยกรัชดา",
+      details: {
+        vehicleTypes: ["MOTORCYCLE", "CAR"],
+        injuredCount: 1,
+        isTrapped: false,
+      },
+      adults: 1,
+      needs: [Need.MEDICINE],
+      name: "สมชาย ทดสอบ",
+      phone: "0812345678",
+      consent: true,
+      healthConsent: true,
+    };
+
+    saveSosDraft(roadDraft, storage);
+    const reloaded = loadSosDraft(storage);
+    expect(reloaded.details?.vehicleTypes).toEqual(["MOTORCYCLE", "CAR"]);
+
+    let capturedBody: Record<string, unknown> | undefined;
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(JSON.stringify({ caseCode: "FR-2611-0001", trackingToken: "tok_fr" }), {
+        status: 201,
+      });
+    });
+
+    // กรณี FIRE ที่เปลี่ยนจาก HIGH_RISE เป็น HOUSE แต่ยังมี buildingFloor ค้างใน details
+    const fireDraft = {
+      ...roadDraft,
+      incidentType: IncidentType.FIRE,
+      details: {
+        fireLocation: "HOUSE",
+        buildingFloor: 12,
+        isTrappedInSmoke: false,
+        hasInjured: false,
+      },
+    };
+
+    const submitRes = await submitSosDraft({
+      draft: fireDraft,
+      storage,
+      fetchImpl: fetchMock,
+    });
+    expect(submitRes.status).toBe("submitted");
+    expect(capturedBody?.details).toEqual({
+      fireLocation: "HOUSE",
+      isTrappedInSmoke: false,
+      hasInjured: false,
+    });
   });
 });

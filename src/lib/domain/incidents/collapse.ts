@@ -1,11 +1,13 @@
 import { Need } from "../enums";
 import {
   IncidentType,
-  TF55_TRIAGE_TABLE_SOURCE,
   UNIVERSAL_DANGER_SIGNS,
   UnitCapability,
   type IncidentDefinition,
 } from "./types";
+
+const COLLAPSE_OFFICIAL_SOURCE =
+  "https://www.ddc.moph.go.th/uploads/publish/1666520250113085031.pdf";
 
 export const collapse: IncidentDefinition = {
   code: IncidentType.COLLAPSE,
@@ -14,24 +16,40 @@ export const collapse: IncidentDefinition = {
   capabilities: [UnitCapability.EXTRICATION, UnitCapability.EMS],
   questions: [
     {
-      key: "trappedUnderDebris",
-      kind: "number",
-      label: { th: "จำนวนคนที่คาดว่าติดใต้ซากอาคาร", en: "Estimated number of people trapped" },
-      min: 0,
-      max: 99,
-      required: true,
-    },
-    {
       key: "collapseType",
       kind: "choice",
       label: { th: "ลักษณะการถล่ม", en: "Collapse type" },
       required: true,
       options: [
-        { value: "BUILDING_ROOF", label: { th: "หลังคา / โครงสร้างอาคารทรุดตัว", en: "Roof / building structure collapse" } },
+        {
+          value: "BUILDING_ROOF",
+          label: {
+            th: "หลังคา / โครงสร้างอาคารทรุดตัว",
+            en: "Roof / building structure collapse",
+          },
+        },
         { value: "WALL_FENCE", label: { th: "กำแพง / ผนังพังทับ", en: "Wall / fence collapse" } },
         { value: "LANDSLIDE", label: { th: "ดินโคลนถล่มทับบ้าน", en: "Landslide / mudslide" } },
-        { value: "SCAFFOLD_CRANE", label: { th: "นั่งร้าน / เขตก่อสร้างถล่ม", en: "Scaffolding / construction collapse" } },
+        {
+          value: "SCAFFOLD_CRANE",
+          label: { th: "นั่งร้าน / เขตก่อสร้างถล่ม", en: "Scaffolding / construction collapse" },
+        },
       ],
+    },
+    {
+      key: "isTrappedUnderDebris",
+      kind: "boolean",
+      label: { th: "มีคนติดอยู่ใต้ซากปรักหักพังไหม", en: "Anyone trapped under debris?" },
+      required: true,
+    },
+    {
+      key: "trappedCount",
+      kind: "number",
+      label: { th: "จำนวนคนที่คาดว่าติดใต้ซาก", en: "Estimated number of people trapped" },
+      min: 1,
+      max: 99,
+      required: true,
+      dependsOn: { key: "isTrappedUnderDebris", value: true },
     },
     {
       key: "hasInjured",
@@ -46,7 +64,7 @@ export const collapse: IncidentDefinition = {
     {
       key: "TRAPPED_UNDER_DEBRIS",
       label: { th: "มีคนติดอยู่ใต้ซากอาคารหรือดินถล่ม" },
-      source: TF55_TRIAGE_TABLE_SOURCE,
+      source: COLLAPSE_OFFICIAL_SOURCE,
     },
   ],
   needs: [
@@ -56,5 +74,24 @@ export const collapse: IncidentDefinition = {
     Need.FLASHLIGHT_POWER,
     Need.OTHER,
   ],
-  waitingAdvice: [],
+  waitingAdvice: [
+    {
+      text: {
+        th: "ประเมินความปลอดภัยก่อนเข้าช่วย ระวังโครงสร้างทรุดตัวซ้ำ เสาไฟ หรือสายไฟที่ขาด",
+      },
+      source: COLLAPSE_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "หากติดใต้ซาก ให้ใช้ผ้าปิดจมูกและปาก เคาะท่อหรือผนังเป็นจังหวะเพื่อให้สัญญาณ หลีกเลี่ยงการตะโกนต่อเนื่องเพื่อไม่ให้สูดฝุ่น",
+      },
+      source: COLLAPSE_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "ห้ามจุดไฟแช็กหรือไม้ขีดไฟเด็ดขาด เพราะอาจมีแก๊สรั่วไหลใต้ซากปรักหักพัง",
+      },
+      source: COLLAPSE_OFFICIAL_SOURCE,
+    },
+  ],
 };

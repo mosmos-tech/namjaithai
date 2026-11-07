@@ -32,12 +32,13 @@ export async function getSessionUserRow(supabase: SupabaseClient): Promise<UserR
     .select("status, expires_at, unit:units(is_active)")
     .eq("user_id", data.id)
     .eq("status", "APPROVED");
-  const hasActiveMembership = (memberships ?? []).some((m) =>
-    isMembershipActive({
+  const hasActiveMembership = (memberships ?? []).some((m) => {
+    const unitObj = Array.isArray(m.unit) ? m.unit[0] : m.unit;
+    return isMembershipActive({
       status: m.status,
       expiresAt: m.expires_at,
-      unitIsActive: (m.unit as unknown as { is_active?: boolean } | null)?.is_active,
-    }),
-  );
+      unitIsActive: unitObj ? Boolean(unitObj.is_active) : undefined,
+    });
+  });
   return { ...data, role: effectiveUserRole(data.role, hasActiveMembership) };
 }

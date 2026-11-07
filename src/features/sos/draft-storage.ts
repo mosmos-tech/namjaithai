@@ -16,7 +16,9 @@ import {
   ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE,
   accuracyForLocationSource,
   isInaccurateGps,
+  isQuestionVisible,
   type LocatedArea,
+  type IncidentDetailValue,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
 
@@ -127,7 +129,7 @@ export interface SosDraft {
   gmapsUrl?: string;
   landmark: string;
   // ขั้นที่ 3: คำถามเฉพาะประเภทเหตุ (TF-51) และผู้ติดค้าง (TF-11)
-  details?: Record<string, string | number | boolean | undefined>;
+  details?: Record<string, string | number | boolean | string[] | undefined>;
   adults: number;
   elderly: number;
   bedridden: number;
@@ -574,12 +576,34 @@ export function validateStep3Draft(
   const activeType = draft.incidentType ?? IncidentType.FLOOD;
   const questions = INCIDENT_REGISTRY[activeType].questions;
 
+  const allAnswers: Record<string, unknown> = {
+    ...(draft.details ?? {}),
+    waterLevel: draft.waterLevel,
+    canSelfEvacuate: draft.canSelfEvacuate,
+    hasInjured: draft.hasInjured,
+  };
+  if (allAnswers.vehicleTypes === undefined && draft.details?.vehicleType !== undefined) {
+    allAnswers.vehicleTypes = Array.isArray(draft.details.vehicleType)
+      ? draft.details.vehicleType
+      : [draft.details.vehicleType];
+  }
+
   for (const q of questions) {
-    let val: string | number | boolean | undefined = draft.details?.[q.key];
+    // ถ้าคำถามมีเงื่อนไข dependsOn และคำตอบปัจจุบันไม่ตรงเงื่อนไข ให้ข้ามการตรวจ
+    if (q.dependsOn && !isQuestionVisible(q, allAnswers)) {
+      continue;
+    }
+
+    let val: string | number | boolean | string[] | undefined = draft.details?.[q.key];
     if (val === undefined) {
       if (q.key === "waterLevel") val = draft.waterLevel;
       else if (q.key === "canSelfEvacuate") val = draft.canSelfEvacuate;
       else if (q.key === "hasInjured") val = draft.hasInjured;
+      else if (q.key === "vehicleTypes" && draft.details?.vehicleType !== undefined) {
+        val = Array.isArray(draft.details.vehicleType)
+          ? draft.details.vehicleType
+          : [draft.details.vehicleType as string];
+      }
     }
 
     // สำหรับ FLOOD คำถาม canSelfEvacuate ถูกบังคับตั้งแต่ขั้นที่ 1 แล้ว
@@ -593,7 +617,12 @@ export function validateStep3Draft(
       continue;
     }
 
-    if (q.required && (val === undefined || val === "")) {
+    const isEmpty =
+      val === undefined ||
+      val === "" ||
+      (Array.isArray(val) && val.length === 0);
+
+    if (q.required && isEmpty) {
       questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
       errors.missingSummary.push(q.label.th);
       continue;
@@ -601,9 +630,20 @@ export function validateStep3Draft(
 
     if (val !== undefined && val !== "") {
       if (q.kind === "choice") {
-        if (typeof val !== "string" || !q.options.some((o) => o.value === val)) {
-          questionErrors[q.key] = `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`;
-          errors.missingSummary.push(q.label.th);
+        if (q.multiple) {
+          if (
+            !Array.isArray(val) ||
+            val.length === 0 ||
+            !val.every((v) => typeof v === "string" && q.options.some((o) => o.value === v))
+          ) {
+            questionErrors[q.key] = `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`;
+            errors.missingSummary.push(q.label.th);
+          }
+        } else {
+          if (typeof val !== "string" || !q.options.some((o) => o.value === val)) {
+            questionErrors[q.key] = `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`;
+            errors.missingSummary.push(q.label.th);
+          }
         }
       } else if (q.kind === "number") {
         if (typeof val !== "number" || !Number.isInteger(val) || val < q.min || val > q.max) {
@@ -613,6 +653,11 @@ export function validateStep3Draft(
       } else if (q.kind === "boolean") {
         if (typeof val !== "boolean") {
           questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
+          errors.missingSummary.push(q.label.th);
+        }
+      } else if (q.kind === "text") {
+        if (typeof val !== "string" || val.length > q.maxLength) {
+          questionErrors[q.key] = `"${q.label.th}" ต้องไม่เกิน ${q.maxLength} ตัวอักษร`;
           errors.missingSummary.push(q.label.th);
         }
       }
@@ -890,14 +935,19 @@ export function loadSosDraft(
       ? parsed.photos.slice(0, MAX_SOS_PHOTOS)
       : initial.photos;
 
-    const details: Record<string, string | number | boolean | undefined> = {};
+    const details: Record<string, IncidentDetailValue | undefined> = {};
     if (
       typeof parsed.details === "object" &&
       parsed.details !== null &&
       !Array.isArray(parsed.details)
     ) {
       for (const [k, v] of Object.entries(parsed.details)) {
-        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        if (
+          typeof v === "string" ||
+          typeof v === "number" ||
+          typeof v === "boolean" ||
+          (Array.isArray(v) && v.every((item): item is string => typeof item === "string"))
+        ) {
           details[k] = v;
         }
       }
@@ -1193,13 +1243,21 @@ export async function submitSosDraft(
     saveSosDraft(nextDraft, storage);
 
     const activeType = nextDraft.incidentType ?? IncidentType.FLOOD;
-    const detailsPayload: Record<string, string | number | boolean> = {};
+    const detailsPayload: Record<string, IncidentDetailValue> = {};
     for (const q of INCIDENT_REGISTRY[activeType].questions) {
-      let val: string | number | boolean | undefined = nextDraft.details?.[q.key];
+      if (q.dependsOn && !isQuestionVisible(q, nextDraft.details ?? {})) {
+        continue;
+      }
+      let val: IncidentDetailValue | undefined = nextDraft.details?.[q.key];
       if (val === undefined) {
         if (q.key === "waterLevel") val = nextDraft.waterLevel;
         else if (q.key === "canSelfEvacuate") val = nextDraft.canSelfEvacuate;
         else if (q.key === "hasInjured" && nextDraft.hasInjured) val = true;
+        else if (q.key === "vehicleTypes" && nextDraft.details?.vehicleType !== undefined) {
+          val = Array.isArray(nextDraft.details.vehicleType)
+            ? nextDraft.details.vehicleType
+            : [String(nextDraft.details.vehicleType)];
+        }
       }
       if (val !== undefined) {
         detailsPayload[q.key] = val;
