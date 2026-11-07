@@ -516,9 +516,9 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
     await expectStep(page, 3);
     await expect(page.getByTestId("step3-missing-alert")).toBeVisible();
 
-    // ตอบคำถามทั้ง 3 ชนิด (ตัวเลข, ตัวเลือก, ใช่-ไม่ใช่)
+    // ตอบคำถามทั้ง 3 ชนิด (ตัวเลข, ตัวเลือกหลายข้อ, ใช่-ไม่ใช่)
     await page.getByTestId("question-injuredCount-input").fill("2");
-    await page.getByTestId("question-vehicleType-option-MOTORCYCLE").click();
+    await page.getByTestId("question-vehicleTypes-option-MOTORCYCLE").click();
     await page.getByTestId("question-isTrapped-yes").click();
 
     await nextButton(page).click();
@@ -615,7 +615,8 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
     await nextButton(page).click();
     await expectStep(page, 3);
     await page.getByTestId("question-injuredCount-input").fill("2");
-    await page.getByTestId("question-vehicleType-option-CAR").click();
+    await page.getByTestId("question-vehicleTypes-option-CAR").click();
+    await page.getByTestId("question-vehicleTypes-option-MOTORCYCLE").click();
     await page.getByTestId("question-isTrapped-yes").click();
     await nextButton(page).click();
     await expectStep(page, 4);
@@ -639,7 +640,7 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
     });
     expect(await countCasesByPhone(phoneRoad)).toBe(1);
 
-    // ตรวจในฐานข้อมูลว่า ROAD_ACCIDENT เก็บ vehicleType/isTrapped ใน cases.details และแยก injuredCount ไป case_sensitive_details
+    // ตรวจในฐานข้อมูลว่า ROAD_ACCIDENT เก็บ vehicleTypes/isTrapped ใน cases.details และแยก injuredCount ไป case_sensitive_details
     const { data: roadCase, error: roadErr } = await adminDb()
       .from("cases")
       .select("incident_type, details, case_sensitive_details(details)")
@@ -648,7 +649,7 @@ test.describe("TF-51: ขั้น 3–4 วาดจากทะเบียน
     expect(roadErr).toBeNull();
     expect(roadCase?.incident_type).toBe("ROAD_ACCIDENT");
     expect(roadCase?.details).toMatchObject({
-      vehicleType: "CAR",
+      vehicleTypes: ["CAR", "MOTORCYCLE"],
       isTrapped: true,
     });
     expect(roadCase?.details).not.toHaveProperty("injuredCount");

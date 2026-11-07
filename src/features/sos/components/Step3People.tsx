@@ -573,8 +573,8 @@ export function Step3People({
             <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
             {errors.totalPeople && <p className="mt-1 font-medium">• {errors.totalPeople}</p>}
             {errors.questionErrors &&
-              Object.values(errors.questionErrors).map((msg) => (
-                <p key={msg} className="mt-1 font-medium">
+              Object.entries(errors.questionErrors).map(([key, msg]) => (
+                <p key={key} className="mt-1 font-medium">
                   • {msg}
                 </p>
               ))}

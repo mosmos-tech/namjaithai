@@ -624,9 +624,6 @@ export function validateStep3Draft(
 
     if (q.required && isEmpty) {
       questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
-      if (q.key === "vehicleTypes") {
-        questionErrors.vehicleType = `กรุณาตอบคำถาม "${q.label.th}"`;
-      }
       errors.missingSummary.push(q.label.th);
       continue;
     }

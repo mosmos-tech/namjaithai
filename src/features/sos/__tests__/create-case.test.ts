@@ -339,4 +339,30 @@ describe("handleCreateSosCase — ระดับความเร่งด่�
       injuredCount: 3,
     });
   });
+
+  it("TF-54: ส่ง details ของ ROAD_ACCIDENT แบบ multi-select vehicleTypes ตอบ 201 และแยก injuredCount ไป sensitive", async () => {
+    const { waterLevel: _w, ...withoutWaterLevel } = validPayload;
+    void _w;
+    const { result, payload } = await send({
+      ...withoutWaterLevel,
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      needs: [Need.MEDICINE],
+      details: {
+        injuredCount: 2,
+        vehicleTypes: ["CAR", "MOTORCYCLE"],
+        isTrapped: true,
+      },
+    });
+
+    expect(result.status).toBe(201);
+    expect(payload?.incidentType).toBe(IncidentType.ROAD_ACCIDENT);
+    expect(payload?.details).toEqual({
+      vehicleTypes: ["CAR", "MOTORCYCLE"],
+      isTrapped: true,
+    });
+    expect(payload?.details).not.toHaveProperty("injuredCount");
+    expect(payload?.sensitive).toEqual({
+      injuredCount: 2,
+    });
+  });
 });

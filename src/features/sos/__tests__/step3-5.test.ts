@@ -435,7 +435,7 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     });
     expect(missingRoadQuestions.valid).toBe(false);
     expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("injuredCount");
-    expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("vehicleType");
+    expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("vehicleTypes");
     expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("isTrapped");
 
     // ตอบครบทั้ง 3 ข้อ (ตัวเลข + ตัวเลือก + ใช่/ไม่ใช่) -> ผ่าน
