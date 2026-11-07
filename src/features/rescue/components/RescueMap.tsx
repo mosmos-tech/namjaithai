@@ -627,10 +627,13 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
               data-testid="map-cluster"
               data-cluster-count={cl.count}
               aria-label={`กลุ่มเคส ${cl.count} รายการ`}
-              onClick={() => {
+              onClick={async () => {
                 const map = mapRef.current;
                 if (!map) return;
-                map.easeTo({ center: cl.coords, zoom: map.getZoom() + 2 });
+                const source = map.getSource("cases-source") as GeoJSONSource | undefined;
+                if (!source) return;
+                const zoom = await source.getClusterExpansionZoom(cl.id);
+                map.easeTo({ center: cl.coords, zoom: Math.max(zoom, map.getZoom() + 2) });
               }}
               style={{
                 position: "absolute",

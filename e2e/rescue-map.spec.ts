@@ -4,7 +4,7 @@ import { applySession, createAccount, deleteAccount, type TestAccount } from "./
 
 /**
  * TF-22 แผนที่กู้ภัย (/rescue/map)
- * จอคอมกับมือถือรันพร้อมกัน จึงแยกข้อมูลคนละจังหวัด (ตราด / จันทบุรี)
+ * แยกพื้นที่จาก TF-23 และแยกระหว่างจอคอมกับมือถือเพื่อให้รันพร้อมกันได้
  *
  * เคสทดสอบ:
  *   C1 RED    NEW       ~1 กม.   รอ 2 ชม. 15 นาที  GPS ±16,238 ม.  ติดเตียง 1  น้ำท่วม
@@ -15,8 +15,8 @@ import { applySession, createAccount, deleteAccount, type TestAccount } from "./
 test.describe.configure({ mode: "serial" });
 
 const CENTER: Record<string, { province: string; lat: number; lng: number }> = {
-  desktop: { province: "ตราด", lat: 12.24, lng: 102.52 },
-  mobile: { province: "จันทบุรี", lat: 12.61, lng: 102.1 },
+  desktop: { province: "ระยอง", lat: 12.68, lng: 101.28 },
+  mobile: { province: "ชลบุรี", lat: 13.36, lng: 100.98 },
 };
 const SECRET_PHONE = "0899992222";
 const SECRET_NAME = "ผู้แจ้งลับ TF22";
