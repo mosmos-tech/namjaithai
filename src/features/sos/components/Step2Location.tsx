@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- ไอคอน SVG จาก Figma */
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   parseGoogleMapsUrl,
   isInaccurateGps,
@@ -18,6 +18,7 @@ import {
   type SosDraft,
   type Step2ValidationErrors,
 } from "../draft-storage";
+import { isIosDevice, startGpsRefine, type GpsFix } from "../gps-refine";
 import { SosStepActions } from "./SosStepActions";
 
 /**
@@ -35,6 +36,9 @@ const LazyStep2LocationMap = dynamic(() => import("./Step2LocationMap"), {
     </div>
   ),
 });
+
+// ค่าที่ไม่เปลี่ยนระหว่างใช้งาน (เช่น เป็น iPhone ไหม) — อ่านในเบราว์เซอร์ ฝั่งเซิร์ฟเวอร์ได้ false
+const subscribeNever = () => () => {};
 
 function subscribeConnection(onChange: () => void) {
   window.addEventListener("online", onChange);
@@ -82,6 +86,10 @@ export function Step2Location({
 }: Step2LocationProps) {
   const online = useSyncExternalStore(subscribeConnection, () => navigator.onLine, () => false);
   const [isLocating, setIsLocating] = useState(false);
+  // TF-67: ค่าที่แม่นที่สุดระหว่างรอ GPS แม่นขึ้น (ยังไม่ปักหมุด)
+  const [refineBest, setRefineBest] = useState<GpsFix | null>(null);
+  const stopGpsRef = useRef<(() => void) | null>(null);
+  const ios = useSyncExternalStore(subscribeNever, () => isIosDevice(navigator), () => false);
   const [gpsError, setGpsError] = useState<GpsErrorCode | null>(null);
   const [gmapsError, setGmapsError] = useState<string | null>(null);
   const [isResolvingGmaps, setIsResolvingGmaps] = useState(false);
@@ -180,49 +188,56 @@ export function Step2Location({
     [onAutoFillArea],
   );
 
-  // ปุ่มดึงพิกัด GPS อัตโนมัติ
+  // TF-67: หยุดหา GPS เมื่อออกจากขั้นนี้ (component ถูกถอด) กันแบตหมด
+  useEffect(() => () => stopGpsRef.current?.(), []);
+
+  function stopRefiningGps() {
+    stopGpsRef.current?.();
+    stopGpsRef.current = null;
+    setIsLocating(false);
+    setRefineBest(null);
+  }
+
+  // ปุ่มดึงพิกัด GPS อัตโนมัติ (TF-67: รอให้แม่นขึ้นก่อนตัดสิน ดู gps-refine.ts)
   function handleRequestGps() {
     setGpsError(null);
 
     if (
       typeof navigator === "undefined" ||
       !navigator.geolocation ||
-      typeof navigator.geolocation.getCurrentPosition !== "function"
+      typeof navigator.geolocation.watchPosition !== "function"
     ) {
       setGpsError("UNSUPPORTED");
       return;
     }
 
+    stopRefiningGps();
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
+    stopGpsRef.current = startGpsRefine({
+      geolocation: navigator.geolocation,
+      onProgress: setRefineBest,
+      onDone: (fix) => {
+        stopGpsRef.current = null;
         setIsLocating(false);
-        setGpsError(null);
-        const { latitude, longitude, accuracy } = position.coords;
-        onGpsPosition({ latitude, longitude, accuracy });
+        setRefineBest(null);
+        onGpsPosition(fix);
         // พิกัดคลาดเคลื่อนหลายกิโลเมตรอาจเติมตำบลผิด ให้ผู้แจ้งเลือกเอง (TF-65)
-        if (!isInaccurateGps(accuracy)) void reverseGeocodeCoordinates(latitude, longitude);
-      },
-      (error) => {
-        setIsLocating(false);
-        if (error.code === 1) {
-          setGpsError("PERMISSION_DENIED");
-        } else if (error.code === 3) {
-          setGpsError("TIMEOUT");
-        } else {
-          setGpsError("POSITION_UNAVAILABLE");
+        if (!isInaccurateGps(fix.accuracy)) {
+          void reverseGeocodeCoordinates(fix.latitude, fix.longitude);
         }
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
+      onError: (error) => {
+        stopGpsRef.current = null;
+        setIsLocating(false);
+        setRefineBest(null);
+        setGpsError(error);
       },
-    );
+    });
   }
 
   // เมื่อผู้ใช้แตะหรือลากหมุดบนแผนที่เอง
   function handleMapPinChange(coords: { lat: number; lng: number }) {
+    stopRefiningGps();
     setGpsError(null);
     onManualPin(coords);
     void reverseGeocodeCoordinates(coords.lat, coords.lng);
@@ -236,6 +251,7 @@ export function Step2Location({
 
     const direct = parseGoogleMapsUrl(trimmed);
     if (direct.ok) {
+      stopRefiningGps();
       setGpsError(null);
       onManualPin({ lat: direct.lat, lng: direct.lng }, LocationSource.GMAPS_LINK);
       void reverseGeocodeCoordinates(direct.lat, direct.lng);
@@ -263,6 +279,7 @@ export function Step2Location({
         setGmapsError(data.error ?? "ไม่สามารถแปลงลิงก์ Google Maps นี้ได้");
         return;
       }
+      stopRefiningGps();
       setGpsError(null);
       onManualPin({ lat: data.lat, lng: data.lng }, LocationSource.GMAPS_LINK);
       void reverseGeocodeCoordinates(data.lat, data.lng);
@@ -443,8 +460,30 @@ export function Step2Location({
           />
         </button>
 
+        {/* TF-67: ระหว่างรอ GPS แม่นขึ้น ตัวเลขลดลงสดๆ และปักเองได้ตลอดไม่ต้องรอ */}
+        {isLocating && (
+          <div
+            role="status"
+            data-testid="gps-refine-status"
+            className="border-primary-600/30 bg-primary-50 text-primary-700 order-2 flex w-full flex-col gap-3 rounded-[12px] border px-4 py-[14px] sm:flex-row sm:items-center sm:justify-between lg:order-2 lg:px-5"
+          >
+            <p className="text-lg leading-[1.55] font-semibold">
+              {refineBest
+                ? `กำลังหาตำแหน่งที่แม่นขึ้น... ±${Math.round(refineBest.accuracy).toLocaleString("th-TH")} ม.`
+                : "กำลังหาตำแหน่ง..."}
+            </p>
+            <button
+              type="button"
+              onClick={stopRefiningGps}
+              className="border-primary-600 bg-bg-surface text-primary-700 font-heading min-h-12 shrink-0 rounded-full border px-5 text-base font-semibold"
+            >
+              ปักหมุดเองบนแผนที่
+            </button>
+          </div>
+        )}
+
         {/* แถบสถานะพิกัด / แจ้งเตือนความแม่นยำเกิน 100 ม. / แจ้งเมื่อไม่อนุญาต GPS */}
-        {statusBanner && (
+        {!isLocating && statusBanner && (
           <div
             role="status"
             data-testid="gps-status-banner"
@@ -471,6 +510,17 @@ export function Step2Location({
               <span className="hidden lg:inline">{statusBanner.desktopText}</span>
             </p>
           </div>
+        )}
+
+        {/* TF-67: iPhone ที่ปิด "ตำแหน่งที่แม่นยำ" จะได้พิกัดหยาบเป็นกิโลเมตรเสมอ */}
+        {!isLocating && ios && statusBanner?.tone === "error" && (
+          <p
+            data-testid="ios-precise-location-hint"
+            className="text-text-primary order-2 rounded-[12px] bg-amber-50 px-4 py-3 text-base leading-[1.55] lg:order-2"
+          >
+            ถ้าใช้ iPhone ให้เปิด ตั้งค่า &gt; ความเป็นส่วนตัว &gt; บริการหาตำแหน่ง &gt; Safari &gt;
+            ตำแหน่งที่แม่นยำ
+          </p>
         )}
 
         {/* แผนที่ MapLibre โหลดเฉพาะเมื่อเปิดขั้นที่ 2 */}
