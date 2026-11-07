@@ -21,4 +21,5 @@ const response = await fetch(new URL("/api/notifications/line", origin.origin), 
 });
 if (!response.ok) throw new Error(`Notification worker returned HTTP ${response.status}`);
 const result = await response.json();
-console.log(JSON.stringify({ processed: result.processed, accepted: result.accepted }));
+// TF-34: ผลแยกตามคิว (cases / redAlerts / members) และ paused เมื่อโควตาหมด — ไม่มีข้อมูลส่วนตัว
+console.log(JSON.stringify(result));
