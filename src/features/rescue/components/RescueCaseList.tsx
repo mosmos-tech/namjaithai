@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CaseStatus,
@@ -113,6 +114,15 @@ export function RescueCaseList({ capabilities }: { capabilities: UnitCapability[
       </h2>
 
       <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/rescue/map"
+            className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle inline-flex min-h-12 items-center rounded-full border px-5 text-base font-semibold transition-colors"
+          >
+            ดูบนแผนที่
+          </Link>
+        </div>
+
         <div role="group" aria-label="เรียงเคส" className="flex flex-wrap gap-2">
           {Object.values(RescueCaseSort).map((option) => {
             const disabled = option === RescueCaseSort.DISTANCE && !hasLocation;
