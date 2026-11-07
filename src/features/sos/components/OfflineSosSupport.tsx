@@ -30,12 +30,41 @@ export function OfflineSosSupport() {
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
   const running = useRef(false);
   const announced = useRef<string | null>(null);
+  const remembered = useRef<string | null>(null);
   const loaded = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
       const next = await getOfflineSos();
       setItem(next);
+      if (
+        next?.caseReceived &&
+        next.caseCode &&
+        next.trackingToken &&
+        remembered.current !== next.id
+      ) {
+        let phoneLast4 = "";
+        let incidentType: IncidentType | undefined;
+        try {
+          const body = JSON.parse(next.body ?? "{}") as {
+            phone?: string;
+            incidentType?: IncidentType;
+          };
+          phoneLast4 = String(body.phone ?? "")
+            .replace(/\D/g, "")
+            .slice(-4);
+          incidentType = body.incidentType;
+        } catch {
+          /* No contact data. */
+        }
+        rememberSentCase({
+          caseCode: next.caseCode,
+          trackingToken: next.trackingToken,
+          phoneLast4,
+          incidentType,
+        });
+        remembered.current = next.id;
+      }
       if (!loaded.current) {
         loaded.current = true;
         if (next) setOpen(true);
@@ -144,7 +173,9 @@ export function OfflineSosSupport() {
           onClick={() => setOpen(true)}
           className="w-full bg-orange-600 px-4 py-3 text-center text-lg font-bold text-white"
         >
-          มี 1 คำขอรอส่ง — กดดูรายละเอียด
+          {item.caseReceived
+            ? "ส่งคำขอแล้ว กำลังส่งรูป — กดดูรายละเอียด"
+            : "มี 1 คำขอรอส่ง — กดดูรายละเอียด"}
         </button>
       )}
       {open && (
@@ -155,11 +186,14 @@ export function OfflineSosSupport() {
             {pending ? (
               <>
                 <h1 className="text-3xl font-bold text-orange-900">
-                  บันทึกไว้ในเครื่องแล้ว — ยังไม่ถึงทีมกู้ภัย
+                  {item.caseReceived
+                    ? "ส่งคำขอถึงระบบแล้ว — กำลังส่งรูป"
+                    : "บันทึกไว้ในเครื่องแล้ว — ยังไม่ถึงทีมกู้ภัย"}
                 </h1>
                 <p className="text-lg text-orange-950">
                   ระบบจะลองส่งเมื่อกลับมาออนไลน์ หากต้องการความช่วยเหลือด่วนกรุณาโทรสายด่วน
                 </p>
+                {item.caseReceived && <p className="font-semibold">รหัสเคส: {item.caseCode}</p>}
                 {ios && (
                   <p className="font-bold text-orange-950">เปิดหน้านี้ค้างไว้จนกว่าจะส่งสำเร็จ</p>
                 )}
@@ -210,6 +244,11 @@ export function OfflineSosSupport() {
                   {item.caseCode}
                 </p>
                 <p>โปรดจดรหัสเคสและเปิดเสียงโทรศัพท์ไว้</p>
+                {item.photoWarning && (
+                  <p role="alert" className="font-semibold text-amber-900">
+                    {item.photoWarning}
+                  </p>
+                )}
                 <button
                   className={`${button} bg-green-700 text-white`}
                   onClick={() => {

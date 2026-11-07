@@ -419,14 +419,33 @@ export function SosWizard() {
         }
       }
 
-      if (result.status === "network_error" && result.requestBody) {
+      if (
+        result.status === "photo_pending" ||
+        (result.status === "network_error" && result.requestBody)
+      ) {
+        if (result.status === "photo_pending") {
+          rememberSentCase({
+            caseCode: result.caseCode,
+            trackingToken: result.trackingToken,
+            phoneLast4: draft.phone.replace(/\D/g, "").slice(-4),
+            incidentType: draft.incidentType ?? IncidentType.FLOOD,
+          });
+        }
         try {
-          await saveOfflineSos(result.idempotencyKey, result.requestBody);
+          await saveOfflineSos(
+            result.idempotencyKey,
+            result.requestBody!,
+            result.status === "photo_pending"
+              ? { caseCode: result.caseCode, trackingToken: result.trackingToken }
+              : undefined,
+          );
           clearSosDraft();
           window.dispatchEvent(new Event("sos-queued"));
         } catch {
           setSubmitError(
-            "บันทึกคำขอรอส่งไม่สำเร็จ กรุณาเปิดพื้นที่เก็บข้อมูลหรือติดต่อ 1669 / 1784",
+            result.status === "photo_pending"
+              ? `คำขอ ${result.caseCode} ถึงระบบแล้ว แต่ยังส่งรูปไม่ได้ กรุณากดส่งอีกครั้งหรือติดต่อ 1669 / 1784`
+              : "บันทึกคำขอรอส่งไม่สำเร็จ กรุณาเปิดพื้นที่เก็บข้อมูลหรือติดต่อ 1669 / 1784",
           );
         }
         return;

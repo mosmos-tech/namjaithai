@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(13);
+select plan(15);
 select is((select public from storage.buckets where id='case-media'),false,'bucket รูปเป็นแบบส่วนตัว');
 
 insert into auth.users(id) values
@@ -42,11 +42,13 @@ select is((select count(*)::int from storage.objects where bucket_id='case-media
 select set_config('request.jwt.claims','{"sub":"a2400000-0000-4000-8000-000000000003","role":"authenticated"}',true);
 select throws_ok($$select public.case_detail_permissions('d2400000-0000-4000-8000-000000000001')$$,'42501',null,'กู้ภัยต่างพื้นที่เปิดเคสไม่ได้');
 select set_config('request.jwt.claims','{"sub":"a2400000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select is((select count(*)::int from public.case_contacts where case_id='d2400000-0000-4000-8000-000000000001'),0,'ผู้รับเคสอ่านเบอร์โดยตรงเพื่อเลี่ยง audit ไม่ได้');
 select is((public.case_detail_permissions('d2400000-0000-4000-8000-000000000001')->>'contact')::boolean,true,'ผู้รับเคสมีสิทธิ์เปิดเบอร์');
 select is(public.reveal_case_contact('d2400000-0000-4000-8000-000000000001')->>'phone','0891234567','ผู้รับเคสเปิดเบอร์ได้');
 select is((select count(*)::int from public.case_sensitive_details),1,'ผู้รับเคสเห็นข้อมูลสุขภาพ');
 select is((select count(*)::int from storage.objects where bucket_id='case-media' and name='tf24/test.jpg'),1,'ผู้รับเคสเห็นรูป');
 select set_config('request.jwt.claims','{"sub":"a2400000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select is((select count(*)::int from public.case_contacts where case_id='d2400000-0000-4000-8000-000000000001'),0,'แอดมินอ่านเบอร์โดยตรงเพื่อเลี่ยง audit ไม่ได้');
 select is(public.reveal_case_contact('d2400000-0000-4000-8000-000000000001')->>'phone','0891234567','แอดมินเปิดเบอร์ได้');
 select is((select count(*)::int from public.audit_logs where case_id='d2400000-0000-4000-8000-000000000001' and action='CASE_CONTACT_REVEALED'),2,'เปิดเบอร์แต่ละครั้งมี audit log');
 select * from finish();
