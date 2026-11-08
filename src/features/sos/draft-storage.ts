@@ -17,8 +17,10 @@ import {
   accuracyForLocationSource,
   isInaccurateGps,
   isQuestionVisible,
+  locationSourceSchema,
   type LocatedArea,
   type IncidentDetailValue,
+  type WebLocationSource,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
 
@@ -117,7 +119,7 @@ export interface SosDraft {
   lng?: number;
   accuracyM?: number;
   // TF-65: ได้พิกัดมาจาก GPS / ปักเอง / ลิงก์ และผู้แจ้งเลือก "ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน" หรือยัง
-  locationSource?: LocationSource;
+  locationSource?: WebLocationSource;
   addressFallback?: boolean;
   provinceCode?: string;
   districtCode?: string;
@@ -914,11 +916,7 @@ export function loadSosDraft(
     const canSelfEvacuate =
       typeof parsed.canSelfEvacuate === "boolean" ? parsed.canSelfEvacuate : undefined;
 
-    const locationSource =
-      typeof parsed.locationSource === "string" &&
-      (Object.values(LocationSource) as string[]).includes(parsed.locationSource)
-        ? (parsed.locationSource as LocationSource)
-        : undefined;
+    const locationSource = locationSourceSchema.safeParse(parsed.locationSource).data;
 
     const waterLevel =
       typeof parsed.waterLevel === "string" && validWaterLevels.includes(parsed.waterLevel)

@@ -13,6 +13,10 @@ try {
   // ไม่มีไฟล์ (เช่นใน CI) ใช้ env ที่มีอยู่แล้ว
 }
 
+// TF-36: ค่าทดสอบของ SMS gateway ให้ dev server ที่ playwright เปิดเอง (ไม่มี API key = ไม่ส่ง SMS จริง)
+// ถ้าเปิด npm run dev ค้างไว้เอง ต้องใส่ค่านี้ใน .env.local ด้วย ไม่งั้น webhook ตอบ 503
+process.env.HTTPSMS_WEBHOOK_SIGNING_KEY ||= "e2e-tf36-signing-key-not-secret";
+
 const PORT = 3000;
 
 export default defineConfig({

@@ -36,7 +36,8 @@ export type CaseEventType =
   | "MERGED_DUPLICATE"
   | "MARKED_UNREACHABLE"
   | "AUTO_ESCALATED"
-  | "NOTE_ADDED";
+  | "NOTE_ADDED"
+  | "SMS_REPEATED";
 
 export type TrackedCase = {
   caseCode: string;
@@ -156,6 +157,8 @@ const EVENT_LABEL: Record<CaseEventType, string> = {
   MARKED_UNREACHABLE: "ทีมติดต่อคุณไม่ได้",
   AUTO_ESCALATED: "ระบบเร่งหาทีมเพิ่ม",
   NOTE_ADDED: "ทีมเพิ่มบันทึก",
+  // TF-36: เบอร์เดิมส่ง SMS SOS มาอีกขณะเคสยังเปิด (ไม่เก็บเนื้อความ)
+  SMS_REPEATED: "ได้รับ SMS ซ้ำจากผู้แจ้ง",
 };
 
 export function timelineLabel(type: CaseEventType, toStatus: CaseStatus | null): string {

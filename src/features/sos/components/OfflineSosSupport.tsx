@@ -9,6 +9,47 @@ import {
 } from "../offline-queue-core";
 import { rememberSentCase } from "../sent-case";
 import type { IncidentType } from "@/lib/domain/incidents/types";
+import type { WaterLevel } from "@/lib/domain/enums";
+import { formatSmsSos, smsHref, SMS_SUPPORTED_INCIDENTS } from "@/lib/domain/sms-format";
+
+// TF-36: เบอร์ซิมในเครื่อง SMS gateway — ไม่ได้ตั้ง = ปุ่มเปิดแอปข้อความแบบไม่มีเบอร์ (ส่งให้ญาติเอง)
+const SMS_GATEWAY_NUMBER = process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER?.trim() ?? "";
+
+/** ลิงก์ปุ่ม "ส่งทาง SMS": มี gateway = ข้อความรูปแบบที่ระบบอ่านได้ ไม่งั้นข้อความทั่วไปให้ส่งต่อเอง */
+function smsLink(rawBody: string | undefined): { href: string; toSystem: boolean } {
+  let body: {
+    lat?: number;
+    lng?: number;
+    phone?: string;
+    landmark?: string;
+    incidentType?: IncidentType;
+    waterLevel?: WaterLevel;
+    adults?: number;
+    elderly?: number;
+    bedridden?: number;
+    children?: number;
+  } = {};
+  try {
+    body = JSON.parse(rawBody ?? "{}");
+  } catch {
+    /* Use the generic message. */
+  }
+  const located = typeof body.lat === "number" && typeof body.lng === "number";
+  if (
+    SMS_GATEWAY_NUMBER &&
+    located &&
+    SMS_SUPPORTED_INCIDENTS.includes(body.incidentType ?? ("FLOOD" as IncidentType))
+  ) {
+    return {
+      href: smsHref(SMS_GATEWAY_NUMBER, formatSmsSos({ ...body, lat: body.lat!, lng: body.lng! })),
+      toSystem: true,
+    };
+  }
+  const text = located
+    ? `ขอความช่วยเหลือฉุกเฉิน พิกัด ${body.lat},${body.lng} จุดสังเกต ${body.landmark ?? ""} โทรกลับ ${body.phone ?? ""}`
+    : "ขอความช่วยเหลือฉุกเฉิน กรุณาติดต่อกลับ";
+  return { href: `sms:?body=${encodeURIComponent(text)}`, toSystem: false };
+}
 
 type SyncRegistration = ServiceWorkerRegistration & {
   sync?: { register(tag: string): Promise<void> };
@@ -148,20 +189,7 @@ export function OfflineSosSupport() {
 
   if (!item) return null;
   const pending = item.status !== "sent";
-  let sms = "ขอความช่วยเหลือฉุกเฉิน กรุณาติดต่อกลับ";
-  if (item.body) {
-    try {
-      const body = JSON.parse(item.body) as {
-        lat?: number;
-        lng?: number;
-        phone?: string;
-        landmark?: string;
-      };
-      sms = `ขอความช่วยเหลือฉุกเฉิน พิกัด ${body.lat},${body.lng} จุดสังเกต ${body.landmark ?? ""} โทรกลับ ${body.phone ?? ""}`;
-    } catch {
-      /* Use the generic message. */
-    }
-  }
+  const sms = smsLink(item.body);
   const button =
     "flex min-h-14 w-full items-center justify-center rounded-xl px-5 py-3 text-center text-lg font-semibold";
 
@@ -218,10 +246,15 @@ export function OfflineSosSupport() {
                 </button>
                 <a
                   className={`${button} border-2 border-orange-700 bg-white text-orange-900`}
-                  href={`sms:?body=${encodeURIComponent(sms)}`}
+                  href={sms.href}
                 >
                   ส่งทาง SMS
                 </a>
+                <p className="-mt-3 text-sm text-orange-950">
+                  {sms.toSystem
+                    ? "ใช้ได้แม้ไม่มีเน็ต กดส่งข้อความโดยไม่ต้องแก้ ระบบจะตอบรหัสเคสกลับ"
+                    : "เปิดแอปข้อความพร้อมพิกัด เลือกส่งให้ญาติหรือคนที่ช่วยได้"}
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <a className={`${button} bg-red-700 text-white`} href="tel:1669">
                     โทร 1669

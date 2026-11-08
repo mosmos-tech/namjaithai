@@ -58,4 +58,11 @@ describe("TF-23 ป้ายพิกัดไม่แม่น (ข้อม�
     expect(locationAccuracyWarning(LocationSource.GPS, null)).toBeNull();
     expect(locationAccuracyWarning(null, 5000)).toBeNull();
   });
+
+  it("TF-36 พิกัดจาก SMS ขึ้นป้ายเสมอ แม้ไม่มีค่าความคลาดเคลื่อน", () => {
+    expect(locationAccuracyWarning(LocationSource.SMS, null)).toEqual({
+      level: "warn",
+      text: "พิกัดจาก SMS",
+    });
+  });
 });

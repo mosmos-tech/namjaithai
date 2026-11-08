@@ -10,6 +10,7 @@ import {
   duplicateResolutionSchema,
   duplicateActionLabels,
   formatAdminDuplicateNotice,
+  SMS_CONSENT_VERSION,
   type SosFormData,
   type CaseStatus,
   type TriageReason,
@@ -27,6 +28,8 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   urgency: Urgency;
   triageReasons: TriageReason[];
   consentVersion: string;
+  // TF-36: ไม่ส่งมา = ฟอร์มเว็บ · SMS = webhook รับ SMS (ฐานข้อมูลตั้งพิกัดเป็น "จาก SMS" เอง)
+  channel?: "SMS";
   details?: Record<string, IncidentDetailValue>;
   sensitive?: {
     dangerSigns?: string[];
@@ -205,8 +208,16 @@ export async function handleCreateSosCase(params: {
   supabase: SosCaseRpcClient;
   reporterUserId?: string | null;
   now?: Date;
+  channel?: "WEB" | "SMS";
 }): Promise<CreateSosCaseResult> {
-  const { rawBody, headers, supabase, reporterUserId = null, now = new Date() } = params;
+  const {
+    rawBody,
+    headers,
+    supabase,
+    reporterUserId = null,
+    now = new Date(),
+    channel = "WEB",
+  } = params;
 
   // 1. ตรวจว่าข้อมูลที่ส่งมาเป็น Object และผ่านกติกา sosSchema จาก src/lib/domain
   if (typeof rawBody !== "object" || rawBody === null || Array.isArray(rawBody)) {
@@ -334,7 +345,9 @@ export async function handleCreateSosCase(params: {
     waterLevel: effectiveWaterLevel,
     canSelfEvacuate: effectiveCanSelfEvacuate,
     accuracyM: accuracyForLocationSource(answers.locationSource, answers.accuracyM),
-    consentVersion: "2026-11-06",
+    // TF-36: คนพิมพ์ SMS เองไม่เคยเห็นหน้ายินยอมของฟอร์ม จึงบันทึกฉบับของช่องทาง SMS แยก
+    consentVersion: channel === "SMS" ? SMS_CONSENT_VERSION : "2026-11-06",
+    ...(channel === "SMS" ? { channel: "SMS" as const } : {}),
     urgency: triage.level,
     triageReasons: triage.reasons,
     ...(Object.keys(detailsCheck.publicDetails).length > 0

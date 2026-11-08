@@ -26,7 +26,7 @@ const incidentTypeValues = Object.values(IncidentType) as [
 ];
 
 // เบอร์โทรไทย: มือถือ 06x-09x (10 หลัก) หรือบ้าน/สำนักงาน 02x-05x (9-10 หลัก)
-const thaiPhoneRegex = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
+export const THAI_PHONE_REGEX = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
 
 // สัญญาณอันตรายทั้งหมดจากทะเบียนประเภทเหตุ (TF-49 / TF-50 / TF-55)
 const allDangerSignKeys = Array.from(
@@ -128,7 +128,7 @@ export const step5Schema = z.object({
     .string({ error: "กรุณาระบุเบอร์โทรศัพท์" })
     .transform((s) => s.replace(/[\s\-]/g, ""))
     .pipe(
-      z.string().regex(thaiPhoneRegex, "กรุณาระบุเบอร์โทรศัพท์ไทยที่ถูกต้อง (เช่น 0812345678)"),
+      z.string().regex(THAI_PHONE_REGEX, "กรุณาระบุเบอร์โทรศัพท์ไทยที่ถูกต้อง (เช่น 0812345678)"),
     ),
   lineId: z.string().optional(),
   notes: z.string().max(500, "รายละเอียดเพิ่มเติมต้องไม่เกิน 500 ตัวอักษร").optional(),

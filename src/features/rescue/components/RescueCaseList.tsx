@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LocationAccuracyBadge } from "./LocationAccuracyBadge";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CaseStatus,
@@ -10,7 +11,6 @@ import {
   formatDistance,
   formatWaitDuration,
   isLongWait,
-  locationAccuracyWarning,
   openCaseStatusLabel,
   rescueCaseSortLabel,
   type RescueRadiusM,
@@ -243,7 +243,6 @@ export function RescueCaseList({ capabilities }: { capabilities: UnitCapability[
 function RescueCaseCard({ item, now }: { item: RescueCase; now: number }) {
   const waitingMs = now - new Date(item.createdAt).getTime();
   const longWait = isLongWait(waitingMs);
-  const accuracy = locationAccuracyWarning(item.locationSource, item.accuracyM);
   const people = item.people;
   const totalPeople = people.adults + people.elderly + people.bedridden + people.children;
 
@@ -279,19 +278,7 @@ function RescueCaseCard({ item, now }: { item: RescueCase; now: number }) {
         overrideReason={item.overrideReason}
       />
 
-      {accuracy && (
-        <p
-          data-testid="accuracy-warning"
-          data-level={accuracy.level}
-          className={
-            accuracy.level === "danger"
-              ? "rounded-[12px] border-2 border-red-600 bg-red-50 px-4 py-3 text-base font-bold text-red-600"
-              : "rounded-[12px] border border-amber-500/40 bg-amber-50 px-3 py-2 text-base font-semibold text-amber-700"
-          }
-        >
-          {accuracy.text}
-        </p>
-      )}
+      <LocationAccuracyBadge source={item.locationSource} accuracyM={item.accuracyM} />
 
       <div className="flex flex-wrap gap-2 text-sm">
         {people.bedridden > 0 && (

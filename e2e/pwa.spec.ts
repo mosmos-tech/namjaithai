@@ -238,7 +238,12 @@ test("TF-15 เก็บคำขอออฟไลน์และส่งร�
   await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "โทร 1669" })).toHaveAttribute("href", "tel:1669");
   await expect(page.getByRole("link", { name: "โทร 1784" })).toHaveAttribute("href", "tel:1784");
-  await expect(page.getByRole("link", { name: "ส่งทาง SMS" })).toHaveAttribute("href", /^sms:/);
+  // TF-36: มีเบอร์ gateway = ข้อความรูปแบบที่ระบบอ่านได้ ส่งถึงเบอร์ gateway
+  const gateway = process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER?.trim();
+  await expect(page.getByRole("link", { name: "ส่งทาง SMS" })).toHaveAttribute(
+    "href",
+    gateway ? new RegExp(`^sms:${gateway}\\?body=SOS%20FLOOD%20`) : /^sms:/,
+  );
   if (isMobile) await expect(page.getByText("เปิดหน้านี้ค้างไว้จนกว่าจะส่งสำเร็จ")).toBeVisible();
   const queued = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
