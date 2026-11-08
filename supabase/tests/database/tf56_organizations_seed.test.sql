@@ -22,7 +22,7 @@ select is((select count(*)::int from public.cases where is_demo and (created_at 
 select ok(not has_table_privilege('anon', 'public.organizations', 'SELECT'), 'ผู้ไม่ล็อกอินอ่านรายชื่อองค์กรไม่ได้');
 select ok(has_table_privilege('authenticated', 'public.organizations', 'SELECT'), 'ผู้ล็อกอินมีสิทธิ์อ่านองค์กรผ่าน RLS');
 select throws_ok($$insert into public.units(name, province, source) values ('bad', 'test', 'INVALID')$$, '23514', null, 'ปฏิเสธ source ที่ไม่รองรับ');
-select lives_ok($$insert into public.units(name, province, source) values ('TF56 OSM', 'TF56 province', 'OSM')$$, 'รองรับหน่วยจาก OSM');
+select lives_ok($$insert into public.units(name, province, source, osm_id) values ('TF56 OSM', 'TF56 province', 'OSM', 'node/5600001')$$, 'รองรับหน่วยจาก OSM (TF-60: ต้องมี osm_id)');
 insert into public.units(name, province) values ('TF56 default source', 'TF56 province');
 select is((select source from public.units where name = 'TF56 default source'), 'ADMIN', 'หน่วยที่สร้างปกติใช้ source ADMIN');
 select throws_ok($$delete from public.units where id = (select assigned_unit_id from public.cases where is_demo limit 1)$$, '23514', 'demo cases require a DEMO unit', 'ลบหน่วยตัวอย่างที่ยังมีเคสผูกอยู่ไม่ได้');
