@@ -65,6 +65,9 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
             echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+            # TF-36: ค่าทดสอบของ SMS gateway (ไม่ใช่ความลับ ไม่มี API key = ไม่ส่ง SMS จริง)
+            echo "NEXT_PUBLIC_SMS_GATEWAY_NUMBER=0800000036"
+            echo "HTTPSMS_WEBHOOK_SIGNING_KEY=e2e-tf36-signing-key-not-secret"
           } > .env.local
 
       # TF-43: verify owner-only reads and notification outbox permissions.

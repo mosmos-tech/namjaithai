@@ -10,6 +10,7 @@ import { TriageTag } from "@/features/cases/components/TriageTag";
 import { TriageOverrideForm } from "@/features/cases/components/TriageOverrideForm";
 import { CaseContact } from "@/features/rescue/components/CaseContact";
 import { CaseWait } from "@/features/rescue/components/CaseWait";
+import { LocationAccuracyBadge } from "@/features/rescue/components/LocationAccuracyBadge";
 import { createClient } from "@/lib/supabase/server";
 import {
   INCIDENT_REGISTRY,
@@ -41,6 +42,8 @@ type CaseRow = {
   created_at: string;
   lat: number;
   lng: number;
+  accuracy_m: number | null;
+  location_source: string | null;
   province: string | null;
   district: string | null;
   subdistrict: string | null;
@@ -72,7 +75,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
   const { data: item } = await supabase
     .from("cases")
     .select(
-      "id, case_code, status, incident_type, urgency, triage_reasons, system_urgency, urgency_override_reason, version, created_at, lat, lng, province, district, subdistrict, landmark, details",
+      "id, case_code, status, incident_type, urgency, triage_reasons, system_urgency, urgency_override_reason, version, created_at, lat, lng, accuracy_m, location_source, province, district, subdistrict, landmark, details",
     )
     .eq("id", id)
     .maybeSingle<CaseRow>();
@@ -166,6 +169,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
             .filter(Boolean)
             .join(" · ")}
         </p>
+        <LocationAccuracyBadge source={item.location_source} accuracyM={item.accuracy_m} />
         <a
           href={`https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`}
           target="_blank"

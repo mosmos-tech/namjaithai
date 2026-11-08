@@ -20,8 +20,11 @@ export const LocationSource = {
   GPS: "GPS",
   MANUAL_PIN: "MANUAL_PIN",
   GMAPS_LINK: "GMAPS_LINK",
+  // TF-36: พิกัดที่อ่านจากข้อความ SMS (อาจพิมพ์เอง ไม่รู้ความแม่นยำ) — ฟอร์มเว็บส่งค่านี้ไม่ได้
+  SMS: "SMS",
 } as const;
 export type LocationSource = (typeof LocationSource)[keyof typeof LocationSource];
+export type WebLocationSource = Exclude<LocationSource, typeof LocationSource.SMS>;
 
 // GPS ที่คลาดเคลื่อนเกินนี้ (เช่น MacBook ที่เดาจาก Wi-Fi ได้ ±16 กม.) ไม่ปักหมุดให้
 // ผู้แจ้งต้องปักเอง วางลิงก์ หรือกด "ส่งพร้อมที่อยู่แทน" (ต้องกรอกที่อยู่) — ไม่บล็อกการขอความช่วยเหลือ
@@ -45,20 +48,24 @@ export function isInaccurateGps(accuracyM: number | null | undefined): boolean {
 /**
  * ความคลาดเคลื่อนที่เก็บกับเคสตามวิธีได้พิกัด
  * ปักเอง/วางลิงก์ = ผู้แจ้งยืนยันจุดเอง ไม่มีค่าความคลาดเคลื่อน (null) แม้ร่างจะมีค่า GPS เก่าค้างอยู่
+ * SMS = ไม่รู้ว่าพิกัดมาจากไหน ไม่มีค่าความคลาดเคลื่อน (null)
  */
 export function accuracyForLocationSource(
   source: LocationSource | undefined,
   accuracyM: number | undefined,
 ): number | undefined {
-  return source === LocationSource.MANUAL_PIN || source === LocationSource.GMAPS_LINK
+  return source === LocationSource.MANUAL_PIN ||
+    source === LocationSource.GMAPS_LINK ||
+    source === LocationSource.SMS
     ? undefined
     : accuracyM;
 }
 
 export const accuracyMSchema = z.number().min(0, "ค่าความคลาดเคลื่อนต้องไม่ติดลบ");
 
+// ฟอร์มเว็บรับเฉพาะ 3 วิธีนี้ — SMS ตั้งได้จากเซิร์ฟเวอร์เท่านั้น (TF-36)
 export const locationSourceSchema = z.enum(
-  Object.values(LocationSource) as [LocationSource, ...LocationSource[]],
+  [LocationSource.GPS, LocationSource.MANUAL_PIN, LocationSource.GMAPS_LINK],
   { error: "ไม่รู้จักวิธีระบุตำแหน่งนี้" },
 );
 

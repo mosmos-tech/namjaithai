@@ -69,14 +69,18 @@ export type LocationAccuracyWarning = {
   text: string;
 };
 
+export const SMS_LOCATION_LABEL = "พิกัดจาก SMS";
+
 /**
  * ป้ายเตือนพิกัดไม่แม่น (TF-23 ใช้ข้อมูลจาก TF-65)
- * เฉพาะพิกัดจาก GPS — ปักเอง/วางลิงก์ไม่มีค่าความคลาดเคลื่อน
+ * พิกัดจาก GPS ดูจากค่าความคลาดเคลื่อน — ปักเอง/วางลิงก์ไม่มีค่าความคลาดเคลื่อน
+ * พิกัดจาก SMS (TF-36) ขึ้นป้ายเสมอ เพราะอาจพิมพ์เองและไม่รู้ว่าแม่นแค่ไหน
  */
 export function locationAccuracyWarning(
   source: string | null | undefined,
   accuracyM: number | null | undefined,
 ): LocationAccuracyWarning | null {
+  if (source === LocationSource.SMS) return { level: "warn", text: SMS_LOCATION_LABEL };
   if (source !== LocationSource.GPS || typeof accuracyM !== "number") return null;
   if (accuracyM <= RESCUE_ACCURACY_WARN_M) return null;
   const text = `พิกัดคลาดได้ ~${formatKm(accuracyM)} กม.`;

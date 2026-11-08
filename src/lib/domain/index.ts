@@ -13,3 +13,4 @@ export * from "./triage";
 export * from "./unit-membership";
 export * from "./rescue-cases";
 export * from "./line-messages";
+export * from "./sms-sos";
