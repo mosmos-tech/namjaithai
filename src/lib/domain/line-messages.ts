@@ -28,13 +28,23 @@ type CaseRef = {
   origin: string;
 };
 
-/** ผู้แจ้ง: สถานะเคสเปลี่ยน (เช่น มีทีมรับเคสแล้ว) */
+/**
+ * TF-25: สถานะกลับเป็น NEW ได้ทางเดียวคือทีมปล่อยเคส (ตอนแจ้งครั้งแรกไม่มีข้อความ LINE สถานะ)
+ * จึงบอกผู้แจ้งตรงๆ ว่ากำลังหาทีมใหม่ ไม่ใช้คำว่า "รอทีมรับเคส" ที่ฟังเหมือนเพิ่งเริ่ม
+ */
+export const REPORTER_RELEASED_LINE_TEXT = "ทีมเดิมไม่สามารถไปได้ กำลังหาทีมใหม่ให้";
+
+/** ผู้แจ้ง: สถานะเคสเปลี่ยน (เช่น มีทีมรับเคสแล้ว / ทีมปล่อยเคส) */
 export function formatCaseStatusLine(
   input: CaseRef & { toStatus: CaseStatus; at: string | Date },
 ): string {
+  const statusText =
+    input.toStatus === "NEW"
+      ? REPORTER_RELEASED_LINE_TEXT
+      : reporterStatusView(input.toStatus).badge;
   return [
     `${HEADER} · เคส ${input.caseCode}`,
-    `อัปเดตเมื่อ ${formatThaiDateTime(input.at)}: ${reporterStatusView(input.toStatus).badge}`,
+    `อัปเดตเมื่อ ${formatThaiDateTime(input.at)}: ${statusText}`,
     [incidentText(input.incidentType), areaText(input.district, input.province)]
       .filter(Boolean)
       .join(" · "),

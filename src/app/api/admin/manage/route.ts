@@ -47,7 +47,11 @@ export async function GET(request: NextRequest) {
   if (search) userQuery = userQuery.ilike("display_name", `%${search.replace(/[%_\\]/g, "\\$&")}%`);
   const [users, units, capabilities, incidents, provinces] = await Promise.all([
     userQuery,
-    db.from("units").select("id,name,province,lead_user_id,is_active").order("name").limit(300),
+    db
+      .from("units")
+      .select("id,name,province,lead_user_id,is_active,source")
+      .order("name")
+      .limit(300),
     db.from("unit_capabilities").select("unit_id,capability"),
     db.from("incident_types").select("code,is_enabled").order("sort_order"),
     db.from("provinces").select("name_th").order("name_th"),

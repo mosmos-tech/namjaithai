@@ -5,9 +5,10 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { z } from "zod";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
-import { requireAccess } from "@/features/auth/server/require-role";
+import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { TriageTag } from "@/features/cases/components/TriageTag";
 import { TriageOverrideForm } from "@/features/cases/components/TriageOverrideForm";
+import { CaseClaimActions } from "@/features/rescue/components/CaseClaimActions";
 import { CaseContact } from "@/features/rescue/components/CaseContact";
 import { CaseWait } from "@/features/rescue/components/CaseWait";
 import { LocationAccuracyBadge } from "@/features/rescue/components/LocationAccuracyBadge";
@@ -68,7 +69,9 @@ export default function Page({ params }: PageProps<"/rescue/cases/[id]">) {
 }
 
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
-  await requireAccess("/rescue/cases");
+  // SignedInShell ตรวจสิทธิ์และ redirect ให้แล้ว — ที่นี่แค่อ่านผู้ใช้ ห้าม redirect ซ้ำกลางการวาดหน้า
+  // (redirect ซ้ำทำให้หน้าโหลดวนตอนเปิดพร้อมกันหลายคน แบบเดียวกับที่เคยเกิดกับ /unit)
+  if (!(await getCurrentAppUser())) return null;
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) notFound();
   const supabase = await createClient();
@@ -108,7 +111,12 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
       supabase.from("case_needs").select("need, other_detail").eq("case_id", id),
     ]);
   if (permissionResult.error || !permissionResult.data) notFound();
-  const permissions = permissionResult.data as { contact: boolean; override: boolean };
+  const permissions = permissionResult.data as {
+    contact: boolean;
+    override: boolean;
+    accept: boolean;
+    release: boolean;
+  };
   const incident = INCIDENT_REGISTRY[item.incident_type];
   const sensitive = sensitiveResult.data?.details ?? null;
   const answers =
@@ -164,6 +172,12 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
           overrideReason={item.urgency_override_reason}
         />
         {item.status === "NEW" && <CaseWait createdAt={item.created_at} />}
+        <CaseClaimActions
+          caseId={item.id}
+          version={item.version}
+          canAccept={permissions.accept}
+          canRelease={permissions.release}
+        />
         <p className="break-words">
           {[item.subdistrict, item.district, item.province, item.landmark]
             .filter(Boolean)

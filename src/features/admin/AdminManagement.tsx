@@ -10,6 +10,7 @@ type Unit = {
   province: string;
   lead_user_id: string | null;
   is_active: boolean;
+  source: "DEMO" | "OSM" | "ADMIN";
 };
 type Data = {
   currentUserId: string;
@@ -256,6 +257,21 @@ export function AdminManagement() {
                 ))}
               </select>
             </label>
+            {/* TF-60: หน่วยที่นำเข้าจาก OpenStreetMap ต้องให้เครดิตตามสัญญา ODbL */}
+            {data.units.some((unit) => unit.source === "OSM") && (
+              <p className="text-text-secondary text-sm">
+                ข้อมูลหน่วยบางส่วน ©{" "}
+                <a
+                  className="underline"
+                  href="https://www.openstreetmap.org/copyright"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  OpenStreetMap contributors
+                </a>{" "}
+                (ODbL)
+              </p>
+            )}
             <label>
               แต่งตั้งหัวหน้า
               <select
