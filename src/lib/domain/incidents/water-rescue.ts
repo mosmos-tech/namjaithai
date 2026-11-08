@@ -1,11 +1,13 @@
 import { Need } from "../enums";
 import {
   IncidentType,
-  TF55_TRIAGE_TABLE_SOURCE,
   UNIVERSAL_DANGER_SIGNS,
   UnitCapability,
   type IncidentDefinition,
 } from "./types";
+
+const WATER_RESCUE_OFFICIAL_SOURCE =
+  "https://ddc.moph.go.th/odpc7/news.php?deptcode=odpc7&news=35920";
 
 export const waterRescue: IncidentDefinition = {
   code: IncidentType.WATER_RESCUE,
@@ -39,10 +41,27 @@ export const waterRescue: IncidentDefinition = {
       label: { th: "ยังมองเห็นตัวผู้ประสบภัยเหนือน้ำไหม", en: "Is the person still visible above water?" },
       required: true,
     },
+    {
+      key: "submersionDuration",
+      kind: "choice",
+      label: { th: "จมหายไปนานเท่าใดโดยประมาณ", en: "Estimated time underwater" },
+      required: true,
+      dependsOn: { key: "isFloatingVisible", value: false },
+      options: [
+        { value: "UNDER_5_MIN", label: { th: "ไม่เกิน 5 นาที", en: "Under 5 minutes" } },
+        { value: "5_TO_15_MIN", label: { th: "5–15 นาที", en: "5–15 minutes" } },
+        { value: "OVER_15_MIN", label: { th: "มากกว่า 15 นาที", en: "Over 15 minutes" } },
+        { value: "UNKNOWN", label: { th: "ไม่ทราบเวลาแน่ชัด", en: "Unknown time" } },
+      ],
+    },
   ],
   dangerSigns: [
     ...UNIVERSAL_DANGER_SIGNS,
-    { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ" }, source: TF55_TRIAGE_TABLE_SOURCE },
+    {
+      key: "PERSON_IN_WATER",
+      label: { th: "มีคนอยู่ในน้ำหรือจมหายไป" },
+      source: WATER_RESCUE_OFFICIAL_SOURCE,
+    },
   ],
   needs: [
     Need.EVACUATION_BOAT,
@@ -50,5 +69,24 @@ export const waterRescue: IncidentDefinition = {
     Need.MEDICINE,
     Need.OTHER,
   ],
-  waitingAdvice: [],
+  waitingAdvice: [
+    {
+      text: {
+        th: "ใช้หลัก ตะโกน โยน ยื่น — ตะโกนขอความช่วยเหลือ โยนสิ่งของที่ลอยน้ำได้ หรือยื่นไม้ยาว/เชือกให้เกาะ",
+      },
+      source: WATER_RESCUE_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "ห้ามกระโดดลงน้ำไปช่วยเองโดยเด็ดขาด หากไม่ได้รับการฝึกฝน เพราะอาจถูกกอดจมน้ำไปด้วยกัน",
+      },
+      source: WATER_RESCUE_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "เมื่อช่วยขึ้นมาได้และหมดสติไม่หายใจ ให้รีบทำ CPR กดหน้าอกทันทีพร้อมโทร 1669",
+      },
+      source: WATER_RESCUE_OFFICIAL_SOURCE,
+    },
+  ],
 };

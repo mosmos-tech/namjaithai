@@ -15,6 +15,7 @@ import {
   INCIDENT_REGISTRY,
   IncidentType,
   UNIVERSAL_DANGER_SIGNS,
+  isQuestionVisible,
 } from "./incidents";
 
 const waterLevelValues = Object.values(WaterLevel) as [WaterLevel, ...WaterLevel[]];
@@ -166,7 +167,7 @@ export type Step3Data = z.infer<typeof step3Schema>;
 export type Step4Data = z.infer<typeof step4Schema>;
 export type Step5Data = z.infer<typeof step5Schema>;
 
-// ── TF-51: ตรวจ details ตามประเภทเหตุด้วย Zod และแยกข้อมูลสุขภาพ ──────────────
+// ── TF-51 / TF-54: ตรวจ details ตามประเภทเหตุด้วย Zod และแยกข้อมูลสุขภาพ ──────────────
 export function incidentDetailsSchema(incidentType: IncidentType) {
   const def = INCIDENT_REGISTRY[incidentType];
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -175,31 +176,75 @@ export function incidentDetailsSchema(incidentType: IncidentType) {
     let fieldSchema: z.ZodTypeAny;
     if (q.kind === "choice") {
       const optionValues = q.options.map((o) => o.value) as [string, ...string[]];
-      fieldSchema = z.enum(optionValues, {
+      const baseEnum = z.enum(optionValues, {
         error: `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`,
       });
+      if (q.multiple) {
+        fieldSchema = z
+          .array(baseEnum, { error: `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง` })
+          .min(1, `กรุณาเลือกอย่างน้อย 1 ตัวเลือกสำหรับ "${q.label.th}"`);
+      } else {
+        fieldSchema = baseEnum;
+      }
     } else if (q.kind === "number") {
       fieldSchema = z
         .number({ error: `กรุณาระบุ "${q.label.th}" เป็นตัวเลข` })
         .int(`"${q.label.th}" ต้องเป็นจำนวนเต็ม`)
         .min(q.min, `"${q.label.th}" ต้องไม่น้อยกว่า ${q.min}`)
         .max(q.max, `"${q.label.th}" ต้องไม่เกิน ${q.max}`);
-    } else {
+    } else if (q.kind === "boolean") {
       fieldSchema = z.boolean({ error: `กรุณาตอบคำถาม "${q.label.th}"` });
+    } else {
+      fieldSchema = z
+        .string({ error: `กรุณาระบุ "${q.label.th}"` })
+        .trim()
+        .max(q.maxLength, `"${q.label.th}" ต้องไม่เกิน ${q.maxLength} ตัวอักษร`);
     }
 
-    shape[q.key] = q.required ? fieldSchema : fieldSchema.optional();
+    // คำถามที่มี dependsOn จะไม่บังคับที่ระดับ object โดยตรง แต่จะตรวจผ่าน superRefine เมื่อเงื่อนไขตรง
+    const isAlwaysRequired = q.required && !q.dependsOn;
+    shape[q.key] = isAlwaysRequired ? fieldSchema : fieldSchema.optional();
   }
 
-  return z.strictObject(shape, {
-    error: `ข้อมูล details ไม่ตรงกับประเภทเหตุ ${def.label.th}`,
-  });
+  // รองรับ legacy vehicleType เดี่ยวสำหรับ ROAD_ACCIDENT เพื่อความเข้ากันได้ย้อนหลัง
+  if (def.questions.some((q) => q.key === "vehicleTypes")) {
+    shape.vehicleType = z.string().optional();
+  }
+
+  return z
+    .strictObject(shape, {
+      error: `ข้อมูล details ไม่ตรงกับประเภทเหตุ ${def.label.th}`,
+    })
+    .superRefine((data, ctx) => {
+      const record = data as Record<string, unknown>;
+      for (const q of def.questions) {
+        if (q.dependsOn && q.required) {
+          if (isQuestionVisible(q, record)) {
+            const val = record[q.key];
+            if (
+              val === undefined ||
+              val === null ||
+              val === "" ||
+              (Array.isArray(val) && val.length === 0)
+            ) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `กรุณาตอบคำถาม "${q.label.th}"`,
+                path: [q.key],
+              });
+            }
+          }
+        }
+      }
+    });
 }
+
+export type IncidentDetailValue = string | number | boolean | string[];
 
 export interface ValidatedIncidentDetailsSuccess {
   ok: true;
-  publicDetails: Record<string, string | number | boolean>;
-  sensitiveDetails: Record<string, string | number | boolean>;
+  publicDetails: Record<string, IncidentDetailValue>;
+  sensitiveDetails: Record<string, IncidentDetailValue>;
 }
 
 export interface ValidatedIncidentDetailsError {
@@ -255,6 +300,22 @@ export function validateAndSplitIncidentDetails(
     }
   }
 
+  // ความเข้ากันได้ย้อนหลังสำหรับ vehicleType -> vehicleTypes
+  const hadLegacyVehicleType = candidate.vehicleType !== undefined;
+  const hadVehicleTypes = candidate.vehicleTypes !== undefined;
+  if (hadLegacyVehicleType && !hadVehicleTypes) {
+    candidate.vehicleTypes = Array.isArray(candidate.vehicleType)
+      ? candidate.vehicleType
+      : [candidate.vehicleType];
+  }
+
+  // ล้างคำตอบของคำถามย่อยที่เงื่อนไข dependsOn ไม่เป็นจริงก่อนตรวจ schema
+  for (const q of INCIDENT_REGISTRY[incidentType].questions) {
+    if (q.dependsOn && !isQuestionVisible(q, candidate)) {
+      delete candidate[q.key];
+    }
+  }
+
   const schema = incidentDetailsSchema(incidentType);
   const parsed = schema.safeParse(candidate);
 
@@ -284,13 +345,18 @@ export function validateAndSplitIncidentDetails(
     };
   }
 
-  const publicDetails: Record<string, string | number | boolean> = {};
-  const sensitiveDetails: Record<string, string | number | boolean> = {};
-  const data = parsed.data as Record<string, string | number | boolean | undefined>;
+  const publicDetails: Record<string, IncidentDetailValue> = {};
+  const sensitiveDetails: Record<string, IncidentDetailValue> = {};
+  const data = parsed.data as Record<string, IncidentDetailValue | undefined>;
 
   for (const q of INCIDENT_REGISTRY[incidentType].questions) {
     const val = data[q.key];
     if (val === undefined) continue;
+
+    // ถ้าคำถามมี dependsOn และเงื่อนไขไม่ตรง ให้ข้ามไม่บันทึกคำตอบเก่า
+    if (q.dependsOn && !isQuestionVisible(q, data as Record<string, unknown>)) {
+      continue;
+    }
 
     if (q.sensitive || (FORBIDDEN_DETAIL_KEYS as readonly string[]).includes(q.key)) {
       if (q.kind === "boolean") {
@@ -299,9 +365,20 @@ export function validateAndSplitIncidentDetails(
         if (typeof val === "number" && val > 0) sensitiveDetails[q.key] = val;
       } else if (typeof val === "string" && val.length > 0) {
         sensitiveDetails[q.key] = val;
+      } else if (Array.isArray(val) && val.length > 0) {
+        sensitiveDetails[q.key] = val;
       }
     } else {
-      publicDetails[q.key] = val;
+      if (q.key === "vehicleTypes" && hadLegacyVehicleType && !hadVehicleTypes) {
+        publicDetails.vehicleType = candidate.vehicleType as string;
+      } else if (typeof val === "string") {
+        const trimmed = val.trim();
+        if (trimmed.length > 0) publicDetails[q.key] = trimmed;
+      } else if (Array.isArray(val)) {
+        if (val.length > 0) publicDetails[q.key] = val;
+      } else {
+        publicDetails[q.key] = val;
+      }
     }
   }
 

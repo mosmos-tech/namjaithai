@@ -5,6 +5,9 @@ import {
   type IncidentDefinition,
 } from "./types";
 
+const OTHER_OFFICIAL_SOURCE =
+  "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf";
+
 export const other: IncidentDefinition = {
   code: IncidentType.OTHER,
   label: { th: "เหตุอื่นๆ" },
@@ -25,6 +28,14 @@ export const other: IncidentDefinition = {
       ],
     },
     {
+      key: "otherDescription",
+      kind: "text",
+      maxLength: 200,
+      label: { th: "รายละเอียดเหตุเพิ่มเติม", en: "Additional description" },
+      placeholder: { th: "พิมพ์รายละเอียดสั้นๆ ไม่เกิน 200 ตัวอักษร", en: "Up to 200 characters" },
+      required: false,
+    },
+    {
       key: "hasInjured",
       kind: "boolean",
       label: { th: "มีผู้บาดเจ็บไหม", en: "Anyone injured?" },
@@ -32,7 +43,14 @@ export const other: IncidentDefinition = {
       sensitive: true,
     },
   ],
-  dangerSigns: [...UNIVERSAL_DANGER_SIGNS],
+  dangerSigns: [
+    ...UNIVERSAL_DANGER_SIGNS,
+    {
+      key: "SEVERE_HAZARD",
+      label: { th: "มีอันตรายร้ายแรงต่อชีวิตหรือสารเคมีอันตราย" },
+      source: OTHER_OFFICIAL_SOURCE,
+    },
+  ],
   needs: [
     Need.EVACUATE_BEDRIDDEN,
     Need.MEDICINE,
@@ -42,5 +60,24 @@ export const other: IncidentDefinition = {
     Need.CUT_POWER,
     Need.OTHER,
   ],
-  waitingAdvice: [],
+  waitingAdvice: [
+    {
+      text: {
+        th: "ตั้งสติ อยู่ในพื้นที่ปลอดภัย และแจ้งข้อมูลตำแหน่งและสถานการณ์แก่เจ้าหน้าที่อย่างชัดเจน",
+      },
+      source: OTHER_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "หากมีผู้บาดเจ็บ ให้สังเกตสัญญาณชีพและอาการ ห้ามเคลื่อนย้ายผู้บาดเจ็บหากไม่จำเป็น",
+      },
+      source: OTHER_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "หากมีสายไฟขาดหรือวัตถุอันตราย ให้อยู่ห่างอย่างน้อย 8–10 เมตร และกันผู้อื่นออกจากพื้นที่",
+      },
+      source: OTHER_OFFICIAL_SOURCE,
+    },
+  ],
 };

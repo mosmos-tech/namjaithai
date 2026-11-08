@@ -6,6 +6,9 @@ import {
   type IncidentDefinition,
 } from "./types";
 
+const MEDICAL_OFFICIAL_SOURCE =
+  "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf";
+
 export const medical: IncidentDefinition = {
   code: IncidentType.MEDICAL,
   label: { th: "เจ็บป่วยฉุกเฉิน" },
@@ -42,11 +45,35 @@ export const medical: IncidentDefinition = {
       sensitive: true,
     },
   ],
-  dangerSigns: [...UNIVERSAL_DANGER_SIGNS],
+  dangerSigns: [
+    ...UNIVERSAL_DANGER_SIGNS,
+    {
+      key: "CRITICAL_MEDICAL_EMERGENCY",
+      label: { th: "หมดสติ ปลุกไม่ตื่น หยุดหายใจ หรือเขียวคล้ำ" },
+      source: MEDICAL_OFFICIAL_SOURCE,
+    },
+  ],
   needs: [
     Need.MEDICINE,
     Need.EVACUATE_BEDRIDDEN,
     Need.OTHER,
   ],
-  waitingAdvice: [],
+  waitingAdvice: [
+    {
+      text: {
+        th: "จัดผู้ป่วยให้นอนนิ่งๆ ในที่อากาศถ่ายเทสะดวก หากหมดสติแต่หายใจให้จัดท่านอนตะแคงกึ่งคว่ำ",
+      },
+      source: MEDICAL_OFFICIAL_SOURCE,
+    },
+    {
+      text: {
+        th: "หากผู้ป่วยหยุดหายใจหรือไม่รู้สึกตัว ให้เริ่มทำ CPR กดหน้าอกทันทีตามคำแนะนำของเจ้าหน้าที่ 1669",
+      },
+      source: MEDICAL_OFFICIAL_SOURCE,
+    },
+    {
+      text: { th: "ห้ามป้อนน้ำ ยา หรืออาหารแก่ผู้ป่วยที่หมดสติหรือซึมลงโดยเด็ดขาด" },
+      source: MEDICAL_OFFICIAL_SOURCE,
+    },
+  ],
 };

@@ -17,6 +17,7 @@ import {
   type Urgency,
   type DuplicateAction,
   type DuplicateCandidateMatch,
+  type IncidentDetailValue,
 } from "../../../lib/domain";
 
 // คำตอบด้านสุขภาพไม่ส่งตรงๆ แต่รวมไว้ใน sensitive → ฐานข้อมูลเก็บลง case_sensitive_details
@@ -29,7 +30,7 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   consentVersion: string;
   // TF-36: ไม่ส่งมา = ฟอร์มเว็บ · SMS = webhook รับ SMS (ฐานข้อมูลตั้งพิกัดเป็น "จาก SMS" เอง)
   channel?: "SMS";
-  details?: Record<string, string | number | boolean>;
+  details?: Record<string, IncidentDetailValue>;
   sensitive?: {
     dangerSigns?: string[];
     hasDisabled?: true;

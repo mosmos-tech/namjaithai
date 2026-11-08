@@ -1,10 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { User, HeartHandshake, Bed, Baby, PawPrint, Minus, Plus } from "lucide-react";
+import { User, HeartHandshake, Bed, Baby, PawPrint, Minus, Plus, Check } from "lucide-react";
 import {
   INCIDENT_REGISTRY,
   IncidentType,
+  isQuestionVisible,
   type IncidentQuestion,
   type WaterLevel,
 } from "../../../lib/domain";
@@ -64,7 +65,7 @@ export const PEOPLE_GROUPS: readonly PeopleGroupConfig[] = [
 
 interface Step3PeopleProps {
   incidentType?: IncidentType;
-  details?: Record<string, string | number | boolean | undefined>;
+  details?: Record<string, string | number | boolean | string[] | undefined>;
   waterLevel?: WaterLevel;
   canSelfEvacuate?: boolean;
   adults: number;
@@ -74,7 +75,10 @@ interface Step3PeopleProps {
   pets: number;
   hasInjured: boolean;
   errors: Step3ValidationErrors;
-  onChangeDetail?: (key: string, value: string | number | boolean | undefined) => void;
+  onChangeDetail?: (
+    key: string,
+    value: string | number | boolean | string[] | undefined,
+  ) => void;
   onChangeCount: (group: PeopleGroupKey, nextValue: number) => void;
   onToggleInjured: (next: boolean) => void;
   onPrev: () => void;
@@ -82,8 +86,10 @@ interface Step3PeopleProps {
 }
 
 /**
- * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 3 (TF-11, TF-51):
- * - วาดคำถามเฉพาะประเภทจากทะเบียน INCIDENT_REGISTRY (เลือก/ตัวเลข/ใช่-ไม่ใช่) ไม่เกิน 3 คำถาม
+ * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 3 (TF-11, TF-51, TF-54):
+ * - วาดคำถามเฉพาะประเภทจากทะเบียน INCIDENT_REGISTRY (เลือก/ตัวเลข/ใช่-ไม่ใช่/ข้อความสั้น) ไม่เกิน 4 คำถามหลัก
+ * - ซ่อน/แสดงคำถามย่อยตามเงื่อนไข dependsOn
+ * - ตัวเลือกแบบหลายข้อ (multi-select) และปุ่มกดอย่างน้อย 48px
  * - ต่อด้วยตัวนับจำนวนผู้ติดค้างและสัตว์เลี้ยง 5 กลุ่ม
  * - ปุ่ม + และ − ขนาด 48x48px (min-h-[48px] min-w-[48px]) กดง่ายสำหรับผู้สูงอายุ
  * - จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน
@@ -109,16 +115,40 @@ export function Step3People({
   const incident = INCIDENT_REGISTRY[incidentType];
   const questions = incident.questions;
 
-  function getQuestionValue(q: IncidentQuestion): string | number | boolean | undefined {
+  const allAnswers: Record<string, unknown> = {
+    ...details,
+    waterLevel,
+    canSelfEvacuate,
+    hasInjured,
+  };
+  if (allAnswers.vehicleTypes === undefined && details.vehicleType !== undefined) {
+    allAnswers.vehicleTypes = Array.isArray(details.vehicleType)
+      ? details.vehicleType
+      : [details.vehicleType];
+  }
+
+  const visibleQuestions = questions.filter((q) => isQuestionVisible(q, allAnswers));
+
+  function getQuestionValue(
+    q: IncidentQuestion,
+  ): string | number | boolean | string[] | undefined {
     const fromDetails = details[q.key];
     if (fromDetails !== undefined) return fromDetails;
+    if (q.key === "vehicleTypes" && details.vehicleType !== undefined) {
+      return Array.isArray(details.vehicleType)
+        ? details.vehicleType
+        : [details.vehicleType as string];
+    }
     if (q.key === "waterLevel") return waterLevel;
     if (q.key === "canSelfEvacuate") return canSelfEvacuate;
     if (q.key === "hasInjured") return hasInjured ? true : undefined;
     return undefined;
   }
 
-  function handleAnswer(q: IncidentQuestion, nextValue: string | number | boolean | undefined) {
+  function handleAnswer(
+    q: IncidentQuestion,
+    nextValue: string | number | boolean | string[] | undefined,
+  ) {
     if (q.key === "hasInjured" && typeof nextValue === "boolean") {
       onToggleInjured(nextValue);
     }
@@ -147,8 +177,8 @@ export function Step3People({
 
   return (
     <div className="space-y-6">
-      {/* คำถามเฉพาะประเภทเหตุจากทะเบียน INCIDENT_REGISTRY (TF-51: ไม่เกิน 3 คำถาม) */}
-      {questions.length > 0 && (
+      {/* คำถามเฉพาะประเภทเหตุจากทะเบียน INCIDENT_REGISTRY (TF-51 / TF-54) */}
+      {visibleQuestions.length > 0 && (
         <section
           aria-labelledby="step3-questions-heading"
           data-testid="step3-incident-questions"
@@ -167,7 +197,7 @@ export function Step3People({
           </div>
 
           <div className="space-y-5">
-            {questions.map((q) => {
+            {visibleQuestions.map((q) => {
               const currentValue = getQuestionValue(q);
               const questionError = errors.questionErrors?.[q.key];
 
@@ -186,7 +216,7 @@ export function Step3People({
                     )}
                   </p>
 
-                  {q.kind === "choice" && (
+                  {q.kind === "choice" && !q.multiple && (
                     <div
                       role="radiogroup"
                       aria-label={q.label.th}
@@ -224,6 +254,78 @@ export function Step3People({
                           </button>
                         );
                       })}
+                    </div>
+                  )}
+
+                  {q.kind === "choice" && q.multiple && (
+                    <div
+                      role="group"
+                      aria-label={q.label.th}
+                      className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2"
+                    >
+                      {q.options.map((opt) => {
+                        const selected =
+                          Array.isArray(currentValue) && currentValue.includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={selected}
+                            data-testid={`question-${q.key}-option-${opt.value}`}
+                            onClick={() => {
+                              const currentArr = Array.isArray(currentValue) ? currentValue : [];
+                              const next = selected
+                                ? currentArr.filter((v) => v !== opt.value)
+                                : [...currentArr, opt.value];
+                              handleAnswer(q, next.length > 0 ? next : undefined);
+                            }}
+                            className={`flex min-h-[48px] items-center justify-between gap-3 rounded-[10px] px-4 py-3 text-left font-heading text-base font-semibold transition-colors ${
+                              selected
+                                ? "border-2 border-primary-600 bg-primary-50 text-primary-700"
+                                : "border border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
+                            }`}
+                          >
+                            <span>{opt.label.th}</span>
+                            <span
+                              aria-hidden="true"
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 ${
+                                selected
+                                  ? "border-primary-600 bg-primary-600 text-white"
+                                  : "border-border-strong"
+                              }`}
+                            >
+                              {selected && <Check className="h-3.5 w-3.5 stroke-[3]" />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {q.kind === "text" && (
+                    <div className="mt-3">
+                      <textarea
+                        rows={3}
+                        maxLength={q.maxLength}
+                        aria-label={q.label.th}
+                        data-testid={`question-${q.key}-input`}
+                        placeholder={
+                          q.placeholder?.th ?? `ระบุข้อมูลไม่เกิน ${q.maxLength} ตัวอักษร`
+                        }
+                        value={typeof currentValue === "string" ? currentValue : ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          handleAnswer(q, val.length > 0 ? val : undefined);
+                        }}
+                        className="min-h-[48px] w-full rounded-[10px] border border-border-strong bg-bg-surface p-3 font-sans text-base text-text-primary focus:border-primary-600 focus:outline-none"
+                      />
+                      <div className="mt-1 flex justify-end text-xs text-text-secondary">
+                        <span data-testid={`question-${q.key}-counter`}>
+                          {typeof currentValue === "string" ? currentValue.length : 0} /{" "}
+                          {q.maxLength} ตัวอักษร
+                        </span>
+                      </div>
                     </div>
                   )}
 
@@ -471,8 +573,8 @@ export function Step3People({
             <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
             {errors.totalPeople && <p className="mt-1 font-medium">• {errors.totalPeople}</p>}
             {errors.questionErrors &&
-              Object.values(errors.questionErrors).map((msg) => (
-                <p key={msg} className="mt-1 font-medium">
+              Object.entries(errors.questionErrors).map(([key, msg]) => (
+                <p key={key} className="mt-1 font-medium">
                   • {msg}
                 </p>
               ))}
