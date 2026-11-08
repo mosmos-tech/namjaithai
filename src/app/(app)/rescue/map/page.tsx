@@ -28,5 +28,5 @@ export default function Page({ searchParams }: PageProps<"/rescue/map">) {
 
 async function RescueMapWithCapabilities() {
   const user = await requireAccess("/rescue/map");
-  return <RescueMap capabilities={await getMyUnitCapabilities(user.id)} />;
+  return <RescueMap capabilities={await getMyUnitCapabilities(user.id)} userRole={user.role} />;
 }

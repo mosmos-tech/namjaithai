@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, Car, CircleHelp, Flame, HeartPulse, LifeBuoy, PawPrint, Waves } from "lucide-react";
+import {
+  Building2,
+  Car,
+  CircleHelp,
+  Flame,
+  HeartPulse,
+  LifeBuoy,
+  PawPrint,
+  Waves,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeoJSONSource, Map as MapLibreMap, Point as MapPoint } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -19,22 +28,19 @@ import {
   type IncidentType,
   type RescueRadiusM,
   type UnitCapability,
+  type UserRole,
 } from "@/lib/domain";
 import { createClient } from "@/lib/supabase/client";
 import { CapabilityFilter } from "@/features/cases/components/CapabilityFilter";
 import { TriageTag } from "@/features/cases/components/TriageTag";
 import { useCapabilityFilter } from "@/features/cases/use-capability-filter";
 import { DEFAULT_THAILAND_CENTER } from "@/features/sos/draft-storage";
-import {
-  fetchAllRescueCases,
-  type RescueCase,
-  type RescueCaseQuery,
-} from "../rescue-cases";
+import { RescueLiveStatus } from "./RescueLiveStatus";
+import { useRescueCasesLive } from "../use-rescue-cases-live";
+import { fetchAllRescueCases, type RescueCase, type RescueCaseQuery } from "../rescue-cases";
 
 type LocationState =
-  | { kind: "locating" }
-  | { kind: "ready"; lat: number; lng: number }
-  | { kind: "unavailable" };
+  { kind: "locating" } | { kind: "ready"; lat: number; lng: number } | { kind: "unavailable" };
 
 type ScreenPin = {
   case: RescueCase;
@@ -69,13 +75,24 @@ const OSM_RASTER_STYLE = {
   ],
 };
 
+const EMPTY_GEOJSON: GeoJSON.FeatureCollection<GeoJSON.Point> = {
+  type: "FeatureCollection",
+  features: [],
+};
+
 const URGENCY_COLORS: Record<Urgency, { hex: string; bgClass: string; label: string }> = {
   RED: { hex: "#C62828", bgClass: "bg-[#C62828]", label: "วิกฤต" },
   YELLOW: { hex: "#F2A516", bgClass: "bg-[#F2A516]", label: "เร่งด่วน" },
   GREEN: { hex: "#1B7A3A", bgClass: "bg-[#1B7A3A]", label: "ทั่วไป" },
 };
 
-export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) {
+export function RescueMap({
+  capabilities,
+  userRole,
+}: {
+  capabilities: UnitCapability[];
+  userRole: UserRole;
+}) {
   const [location, setLocation] = useState<LocationState>(() =>
     typeof window !== "undefined" && !("geolocation" in navigator)
       ? { kind: "unavailable" }
@@ -94,6 +111,13 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const casesRef = useRef<RescueCase[]>([]);
+  const geojsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point>>(EMPTY_GEOJSON);
+  const locationRef = useRef<LocationState>(location);
+  const centeredReadyLocationRef = useRef(false);
+  const pendingPinSyncRef = useRef(false);
+  const queryRef = useRef<RescueCaseQuery | null>(null);
+  const requestSeqRef = useRef(0);
+  const activeForegroundLoadsRef = useRef(0);
   const [sourceLoaded, setSourceLoaded] = useState(false);
 
   const [screenPins, setScreenPins] = useState<ScreenPin[]>([]);
@@ -127,27 +151,67 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
     };
   }, [location, hasLocation, radiusM]);
 
-  const loadCases = useCallback(async (q: RescueCaseQuery) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchAllRescueCases(createClient(), q);
-      setCases(result.cases);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "โหลดข้อมูลเคสกู้ภัยไม่สำเร็จ กรุณาลองใหม่",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadCases = useCallback(
+    async (q: RescueCaseQuery, options?: { silent?: boolean }): Promise<boolean> => {
+      const seq = ++requestSeqRef.current;
+      const foreground = !options?.silent;
+      if (foreground) {
+        activeForegroundLoadsRef.current += 1;
+        setLoading(true);
+        setError(null);
+      }
+      try {
+        const result = await fetchAllRescueCases(createClient(), q);
+        if (seq !== requestSeqRef.current) return false;
+        setCases(result.cases);
+        setSelectedCase((prev) =>
+          prev ? (result.cases.find((c) => c.id === prev.id) ?? null) : null,
+        );
+        setError(null);
+        return true;
+      } catch (err) {
+        if (seq === requestSeqRef.current && foreground) {
+          setError(
+            err instanceof Error ? err.message : "โหลดข้อมูลเคสกู้ภัยไม่สำเร็จ กรุณาลองใหม่",
+          );
+        }
+        return false;
+      } finally {
+        if (foreground) {
+          activeForegroundLoadsRef.current = Math.max(0, activeForegroundLoadsRef.current - 1);
+          if (activeForegroundLoadsRef.current === 0) {
+            setLoading(false);
+          }
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
+    queryRef.current = query;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- โหลดใหม่เมื่อเงื่อนไข query เปลี่ยน
     if (query) void loadCases(query);
   }, [query, loadCases]);
+
+  const refreshCases = useCallback(async () => {
+    const currentQuery = queryRef.current;
+    if (!currentQuery) return false;
+    return loadCases(currentQuery, { silent: true });
+  }, [loadCases]);
+
+  const live = useRescueCasesLive({
+    role: userRole,
+    enabled: query !== null,
+    onRefresh: refreshCases,
+  });
+  const { notifyManualSync } = live;
+
+  const handleManualRefresh = useCallback(async () => {
+    if (!query) return;
+    const ok = await loadCases(query);
+    if (ok) notifyManualSync();
+  }, [loadCases, notifyManualSync, query]);
 
   // ตัวกรองความสามารถหน่วย (TF-52)
   const filterAvailable = capabilities.length > 0;
@@ -164,9 +228,11 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
     });
   }, [baseCases, urgencyFilter, statusFilter, incidentTypeFilter]);
 
+  const visibleCaseMap = useMemo(() => new Map(visibleCases.map((c) => [c.id, c])), [visibleCases]);
+
   useEffect(() => {
-    casesRef.current = visibleCases;
-  }, [visibleCases]);
+    locationRef.current = location;
+  }, [location]);
 
   // นับจำนวนเคสแต่ละความเร่งด่วน
   const urgencyCounts = useMemo(() => {
@@ -198,10 +264,26 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
     };
   }, [visibleCases]);
 
-  // ซิงค์ตำแหน่งหมุดและกลุ่มบนหน้าจอ
-  const syncScreenElements = useCallback(() => {
+  useEffect(() => {
+    casesRef.current = visibleCases;
+    geojsonRef.current = geojson;
+  }, [visibleCases, geojson]);
+
+  // ซิงค์ตำแหน่งหมุดและกลุ่มบนหน้าจอ โดยไม่อ้างอิงสถานะการโหลดของไทล์พื้นหลัง OSM
+  const syncScreenElements = useCallback((options?: { markRendered?: boolean }) => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (
+      !map ||
+      !map.getSource("cases-source") ||
+      !map.getLayer("unclustered-point") ||
+      !map.getLayer("clusters")
+    ) {
+      return;
+    }
+    if (!map.isSourceLoaded("cases-source")) {
+      pendingPinSyncRef.current = true;
+      return;
+    }
 
     try {
       const renderedPoints = map.queryRenderedFeatures({ layers: ["unclustered-point"] });
@@ -237,14 +319,18 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
         });
       }
       setScreenClusters(clusters);
+      if (options?.markRendered) {
+        pendingPinSyncRef.current = false;
+      }
     } catch {
       // ignore querying errors during map transition
     }
   }, []);
 
-  // เริ่มต้นแผนที่ MapLibre GL
+  // เริ่มต้นแผนที่ MapLibre GL เพียงครั้งเดียวและตั้งค่า source/layers ทันทีที่ style.load (ไม่รอไทล์ OSM)
   useEffect(() => {
     let cancelled = false;
+    let localMap: MapLibreMap | null = null;
     const container = containerRef.current;
     if (!container) return;
 
@@ -257,103 +343,106 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
           new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).href,
         );
 
+        const initialLocation = locationRef.current;
+        if (initialLocation.kind === "ready") {
+          centeredReadyLocationRef.current = true;
+        }
         const initialLat =
-          location.kind === "ready" ? location.lat : DEFAULT_THAILAND_CENTER.lat;
+          initialLocation.kind === "ready" ? initialLocation.lat : DEFAULT_THAILAND_CENTER.lat;
         const initialLng =
-          location.kind === "ready" ? location.lng : DEFAULT_THAILAND_CENTER.lng;
+          initialLocation.kind === "ready" ? initialLocation.lng : DEFAULT_THAILAND_CENTER.lng;
 
         const map = new maplibregl.Map({
           container: containerRef.current,
           style: OSM_RASTER_STYLE,
           center: [initialLng, initialLat],
-          zoom: location.kind === "ready" ? 11 : 6,
+          zoom: initialLocation.kind === "ready" ? 11 : 6,
           attributionControl: false,
         });
+        localMap = map;
+        mapRef.current = map;
 
-        map.addControl(
-          new maplibregl.NavigationControl({ showCompass: false }),
-          "top-right",
-        );
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
-        map.on("load", () => {
+        map.once("style.load", () => {
           if (cancelled) return;
 
-          map.addSource("cases-source", {
-            type: "geojson",
-            data: geojson,
-            cluster: true,
-            clusterMaxZoom: 14,
-            clusterRadius: 50,
-          });
+          if (!map.getSource("cases-source")) {
+            map.addSource("cases-source", {
+              type: "geojson",
+              data: geojsonRef.current,
+              cluster: true,
+              clusterMaxZoom: 14,
+              clusterRadius: 50,
+            });
+          }
 
           // กลุ่มหมุดเมื่อซูมออก
-          map.addLayer({
-            id: "clusters",
-            type: "circle",
-            source: "cases-source",
-            filter: ["has", "point_count"],
-            paint: {
-              "circle-color": [
-                "step",
-                ["get", "point_count"],
-                "#3B86E0",
-                5,
-                "#1F6FD1",
-                15,
-                "#1757A6",
-              ],
-              "circle-radius": [
-                "step",
-                ["get", "point_count"],
-                20,
-                5,
-                26,
-                15,
-                32,
-              ],
-              "circle-stroke-width": 3,
-              "circle-stroke-color": "#ffffff",
-            },
-          });
+          if (!map.getLayer("clusters")) {
+            map.addLayer({
+              id: "clusters",
+              type: "circle",
+              source: "cases-source",
+              filter: ["has", "point_count"],
+              paint: {
+                "circle-color": [
+                  "step",
+                  ["get", "point_count"],
+                  "#3B86E0",
+                  5,
+                  "#1F6FD1",
+                  15,
+                  "#1757A6",
+                ],
+                "circle-radius": ["step", ["get", "point_count"], 20, 5, 26, 15, 32],
+                "circle-stroke-width": 3,
+                "circle-stroke-color": "#ffffff",
+              },
+            });
+          }
 
           // ตัวเลขจำนวนในกลุ่ม
-          map.addLayer({
-            id: "cluster-count",
-            type: "symbol",
-            source: "cases-source",
-            filter: ["has", "point_count"],
-            layout: {
-              "text-field": "{point_count_abbreviated}",
-              "text-size": 15,
-            },
-            paint: {
-              "text-color": "#ffffff",
-            },
-          });
+          if (!map.getLayer("cluster-count")) {
+            map.addLayer({
+              id: "cluster-count",
+              type: "symbol",
+              source: "cases-source",
+              filter: ["has", "point_count"],
+              layout: {
+                "text-field": "{point_count_abbreviated}",
+                "text-size": 15,
+              },
+              paint: {
+                "text-color": "#ffffff",
+              },
+            });
+          }
 
           // หมุดเดี่ยว สีตามความเร่งด่วน: แดง (#C62828), เหลือง (#F2A516), เขียว (#1B7A3A)
-          map.addLayer({
-            id: "unclustered-point",
-            type: "circle",
-            source: "cases-source",
-            filter: ["!", ["has", "point_count"]],
-            paint: {
-              "circle-color": [
-                "match",
-                ["get", "urgency"],
-                "RED",
-                "#C62828",
-                "YELLOW",
-                "#F2A516",
-                "GREEN",
-                "#1B7A3A",
-                "#1F6FD1",
-              ],
-              "circle-radius": 14,
-              "circle-stroke-width": 3,
-              "circle-stroke-color": "#ffffff",
-            },
-          });
+          if (!map.getLayer("unclustered-point")) {
+            map.addLayer({
+              id: "unclustered-point",
+              type: "circle",
+              source: "cases-source",
+              filter: ["!", ["has", "point_count"]],
+              paint: {
+                "circle-color": [
+                  "match",
+                  ["get", "urgency"],
+                  "RED",
+                  "#C62828",
+                  "YELLOW",
+                  "#F2A516",
+                  "GREEN",
+                  "#1B7A3A",
+                  "#1F6FD1",
+                ],
+                "circle-radius": 14,
+                "circle-stroke-width": 3,
+                "circle-stroke-color": "#ffffff",
+              },
+            });
+          }
 
           // คลิกที่กลุ่มเพื่อขยาย
           map.on("click", "clusters", async (e) => {
@@ -388,15 +477,31 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
             map.getCanvas().style.cursor = "";
           });
 
-          mapRef.current = map;
+          pendingPinSyncRef.current = true;
           setSourceLoaded(true);
           syncScreenElements();
         });
 
-        const onMapMove = () => syncScreenElements();
+        const onMapMove = () => {
+          pendingPinSyncRef.current = true;
+          syncScreenElements();
+        };
         map.on("move", onMapMove);
         map.on("moveend", onMapMove);
-        map.on("idle", onMapMove);
+        map.on("idle", () => syncScreenElements({ markRendered: true }));
+        map.on("sourcedata", (e) => {
+          if (e.sourceId === "cases-source") {
+            pendingPinSyncRef.current = true;
+            if (e.isSourceLoaded) {
+              syncScreenElements();
+            }
+          }
+        });
+        map.on("render", () => {
+          if (pendingPinSyncRef.current) {
+            syncScreenElements({ markRendered: true });
+          }
+        });
       } catch {
         setError("ไม่สามารถโหลดแผนที่ได้");
       }
@@ -406,23 +511,39 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
 
     return () => {
       cancelled = true;
+      setSourceLoaded(false);
+      centeredReadyLocationRef.current = false;
+      if (localMap) {
+        localMap.remove();
+        localMap = null;
+      }
       if (mapRef.current) {
-        mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, [location, syncScreenElements]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [syncScreenElements]);
+
+  // ย้ายจุดศูนย์กลางเมื่อได้รับพิกัดกู้ภัยครั้งแรกหลังจากสร้างแผนที่แล้ว
+  useEffect(() => {
+    if (location.kind === "ready" && mapRef.current && !centeredReadyLocationRef.current) {
+      centeredReadyLocationRef.current = true;
+      pendingPinSyncRef.current = true;
+      mapRef.current.jumpTo({
+        center: [location.lng, location.lat],
+        zoom: 11,
+      });
+    }
+  }, [location, sourceLoaded]);
 
   // อัปเดตข้อมูล GeoJSON เมื่อ visibleCases เปลี่ยน
   useEffect(() => {
     if (!mapRef.current || !sourceLoaded) return;
-    const source = mapRef.current.getSource("cases-source") as
-      | GeoJSONSource
-      | undefined;
+    const source = mapRef.current.getSource("cases-source") as GeoJSONSource | undefined;
     if (source) {
+      pendingPinSyncRef.current = true;
       source.setData(geojson);
-      // ซิงค์ตำแหน่งหมุดบนหน้าจอหลังจากอัปเดตข้อมูล
-      setTimeout(syncScreenElements, 50);
+      const timer = setTimeout(() => syncScreenElements(), 50);
+      return () => clearTimeout(timer);
     }
   }, [geojson, sourceLoaded, syncScreenElements]);
 
@@ -446,12 +567,13 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => void loadCases(query)}
+                onClick={() => void handleManualRefresh()}
                 className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle inline-flex min-h-12 items-center rounded-full border px-4 text-base font-semibold disabled:opacity-50"
               >
                 {loading ? "กำลังโหลด…" : "รีเฟรช"}
               </button>
             )}
+            <RescueLiveStatus mode={live.mode} reason={live.reason} />
           </div>
 
           <p
@@ -505,7 +627,7 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
         <div className="flex flex-wrap items-center gap-3">
           {/* สถานะ */}
           <label className="flex min-h-12 items-center gap-2 text-base">
-            <span className="font-semibold text-text-primary">สถานะ</span>
+            <span className="text-text-primary font-semibold">สถานะ</span>
             <select
               aria-label="ตัวกรองสถานะ"
               value={statusFilter}
@@ -523,14 +645,12 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
           {/* รัศมีจากตำแหน่งกู้ภัย */}
           {hasLocation ? (
             <label className="flex min-h-12 items-center gap-2 text-base">
-              <span className="font-semibold text-text-primary">รัศมี</span>
+              <span className="text-text-primary font-semibold">รัศมี</span>
               <select
                 aria-label="ตัวกรองรัศมี"
                 value={radiusM ?? ""}
                 onChange={(e) =>
-                  setRadiusM(
-                    e.target.value ? (Number(e.target.value) as RescueRadiusM) : null,
-                  )
+                  setRadiusM(e.target.value ? (Number(e.target.value) as RescueRadiusM) : null)
                 }
                 className="border-border-strong bg-bg-surface min-h-12 rounded-lg border px-3 text-base"
               >
@@ -555,13 +675,11 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
 
           {/* ประเภทเหตุ */}
           <label className="flex min-h-12 items-center gap-2 text-base">
-            <span className="font-semibold text-text-primary">ประเภทเหตุ</span>
+            <span className="text-text-primary font-semibold">ประเภทเหตุ</span>
             <select
               aria-label="ตัวกรองประเภทเหตุ"
               value={incidentTypeFilter}
-              onChange={(e) =>
-                setIncidentTypeFilter(e.target.value as IncidentType | "ALL")
-              }
+              onChange={(e) => setIncidentTypeFilter(e.target.value as IncidentType | "ALL")}
               className="border-border-strong bg-bg-surface min-h-12 rounded-lg border px-3 text-base"
             >
               <option value="ALL">ทุกประเภทเหตุ</option>
@@ -596,29 +714,33 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
 
         {/* เลเยอร์หมุดแบบโต้ตอบและทดสอบได้ (Interactive Screen Overlay) */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="false">
-          {screenPins.map(({ case: c, pos }) => (
-            <button
-              key={c.id}
-              type="button"
-              data-testid={`map-pin-${c.caseCode}`}
-              data-urgency={c.urgency}
-              data-status={c.status}
-              data-incident={c.incident_type}
-              aria-label={`หมุดเคส ${c.caseCode} ${INCIDENT_REGISTRY[c.incident_type].label.th} ความเร่งด่วน ${c.urgency}`}
-              onClick={() => setSelectedCase(c)}
-              style={{
-                position: "absolute",
-                left: `${pos.x}px`,
-                top: `${pos.y}px`,
-                transform: "translate(-50%, -50%)",
-              }}
-              className={`pointer-events-auto flex size-10 items-center justify-center rounded-full border-3 border-white text-white shadow-md transition-transform hover:scale-110 active:scale-95 ${
-                URGENCY_COLORS[c.urgency]?.bgClass ?? "bg-primary-600"
-              }`}
-            >
-              <PinIcon incidentType={c.incident_type} />
-            </button>
-          ))}
+          {screenPins.map(({ case: staleCase, pos }) => {
+            const c = visibleCaseMap.get(staleCase.id);
+            if (!c) return null;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                data-testid={`map-pin-${c.caseCode}`}
+                data-urgency={c.urgency}
+                data-status={c.status}
+                data-incident={c.incident_type}
+                aria-label={`หมุดเคส ${c.caseCode} ${INCIDENT_REGISTRY[c.incident_type].label.th} ความเร่งด่วน ${c.urgency}`}
+                onClick={() => setSelectedCase(c)}
+                style={{
+                  position: "absolute",
+                  left: `${pos.x}px`,
+                  top: `${pos.y}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+                className={`pointer-events-auto flex size-10 items-center justify-center rounded-full border-3 border-white text-white shadow-md transition-transform hover:scale-110 active:scale-95 ${
+                  URGENCY_COLORS[c.urgency]?.bgClass ?? "bg-primary-600"
+                }`}
+              >
+                <PinIcon incidentType={c.incident_type} />
+              </button>
+            );
+          })}
 
           {screenClusters.map((cl) => (
             <button
@@ -641,7 +763,7 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
                 top: `${cl.pos.y}px`,
                 transform: "translate(-50%, -50%)",
               }}
-              className="pointer-events-auto bg-primary-600 flex size-11 items-center justify-center rounded-full border-3 border-white text-base font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+              className="bg-primary-600 pointer-events-auto flex size-11 items-center justify-center rounded-full border-3 border-white text-base font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
             >
               {cl.count}
             </button>
@@ -650,11 +772,7 @@ export function RescueMap({ capabilities }: { capabilities: UnitCapability[] }) 
 
         {/* แผ่นรายละเอียดเมื่อแตะหมุด (Figma 48:3142 Bottom sheet) */}
         {selectedCase && (
-          <CaseDetailSheet
-            item={selectedCase}
-            now={now}
-            onClose={() => setSelectedCase(null)}
-          />
+          <CaseDetailSheet item={selectedCase} now={now} onClose={() => setSelectedCase(null)} />
         )}
       </div>
     </section>
@@ -705,7 +823,7 @@ function CaseDetailSheet({
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-base font-semibold text-text-primary">
+            <span className="text-text-primary font-mono text-base font-semibold">
               {item.caseCode}
             </span>
             <span className="bg-bg-subtle text-text-secondary rounded-full px-3 py-0.5 text-xs font-semibold">
@@ -749,9 +867,7 @@ function CaseDetailSheet({
           <span className="text-text-secondary text-sm">เวลารอ:</span>
           <span
             data-testid="wait-duration"
-            className={`text-base font-semibold ${
-              longWait ? "text-red-600" : "text-amber-700"
-            }`}
+            className={`text-base font-semibold ${longWait ? "text-red-600" : "text-amber-700"}`}
           >
             {formatWaitDuration(waitingMs)}
           </span>
@@ -779,18 +895,12 @@ function CaseDetailSheet({
         </p>
       )}
 
-      {item.area && (
-        <p className="text-text-secondary text-sm">
-          {item.area}
-        </p>
-      )}
+      {item.area && <p className="text-text-secondary text-sm">{item.area}</p>}
 
       {accuracy && (
         <p
           className={`rounded-lg px-3 py-2 text-sm ${
-            accuracy.level === "danger"
-              ? "bg-red-50 text-red-600"
-              : "bg-amber-50 text-amber-700"
+            accuracy.level === "danger" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"
           }`}
         >
           {accuracy.text}
