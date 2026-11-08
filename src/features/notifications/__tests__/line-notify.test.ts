@@ -126,6 +126,13 @@ describe("TF-34 ข้อความ LINE ไม่มีข้อมูลส�
     expect(text).not.toMatch(/วิกฤต|เร่งด่วน|ทั่วไป/);
   });
 
+  it("TF-25 ทีมปล่อยเคส (สถานะกลับเป็น NEW) บอกว่ากำลังหาทีมใหม่ ไม่ใช่ข้อความรอรับครั้งแรก", () => {
+    const text = formatCaseStatusLine({ ...ref, toStatus: "NEW", at: "2026-11-07T08:00:00Z" });
+    expect(text).toContain("ทีมเดิมไม่สามารถไปได้ กำลังหาทีมใหม่ให้");
+    expect(text).not.toContain("รอทีมรับเคส");
+    expect(text).toContain(`${ORIGIN}/track/FL-2611-0042?t=`);
+  });
+
   it("ยืนยันปิดเคส (จุดเชื่อม TF-58)", () => {
     const text = formatCloseConfirmationLine(ref);
     expect(text).toContain("กรุณากดยืนยัน");
