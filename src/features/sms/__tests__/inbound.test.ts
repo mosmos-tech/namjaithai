@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleInboundSms, type CreateSmsCase, type InboundSms } from "../inbound";
+import {
+  handleInboundSms,
+  type CreateSmsCase,
+  type InboundSms,
+  type SmsReplySender,
+} from "../inbound";
 import type { CreateSosCaseResult } from "../../sos/server/create-case";
 
 const message: InboundSms = {
@@ -54,7 +59,7 @@ function setup(opts: { results?: CreateSosCaseResult[]; handled?: boolean; allow
   };
   const results = [...(opts.results ?? [created])];
   const createCase = vi.fn<CreateSmsCase>(async () => results.shift()!);
-  const sendReply = vi.fn(async () => true);
+  const sendReply = vi.fn<SmsReplySender>(async () => true);
   const run = () =>
     handleInboundSms({ message, db, createCase, sendReply, origin: "https://example.test" });
   const finish = () => calls.find((c) => c.name === "finish_sms_inbound")?.args;
