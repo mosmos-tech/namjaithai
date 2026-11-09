@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { DeviceConfirmationBanner } from "@/features/sos/components/DeviceConfirmationBanner";
 import type { Metadata, Viewport } from "next";
 import { PwaSupport } from "@/features/pwa/PwaSupport";
@@ -44,9 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <EnvBanner />
         <OfflineSosSupport />
-        <Suspense fallback={null}>
-          <DeviceConfirmationBanner />
-        </Suspense>
+        <DeviceConfirmationBanner />
         {children}
         <PwaSupport />
         <Footer />

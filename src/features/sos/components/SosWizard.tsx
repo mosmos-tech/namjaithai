@@ -416,6 +416,7 @@ export function SosWizard() {
           rememberSentCase({
             caseCode: result.caseCode,
             trackingToken: result.trackingToken,
+            confirmationToken: result.confirmationToken,
             phoneLast4: draft.phone.replace(/\D/g, "").slice(-4),
             incidentType: draft.incidentType ?? IncidentType.FLOOD,
           });
@@ -425,7 +426,11 @@ export function SosWizard() {
             result.idempotencyKey,
             result.requestBody!,
             result.status === "photo_pending"
-              ? { caseCode: result.caseCode, trackingToken: result.trackingToken }
+              ? {
+                  caseCode: result.caseCode,
+                  trackingToken: result.trackingToken,
+                  confirmationToken: result.confirmationToken,
+                }
               : undefined,
           );
           clearSosDraft();
@@ -451,6 +456,7 @@ export function SosWizard() {
           rememberSentCase({
             caseCode: result.caseCode,
             trackingToken: result.trackingToken,
+            confirmationToken: result.confirmationToken,
             phoneLast4: draft.phone.replace(/\D/g, "").slice(-4),
             incidentType,
           });

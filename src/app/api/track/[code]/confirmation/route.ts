@@ -8,7 +8,7 @@ export async function POST(
   context: RouteContext<"/api/track/[code]/confirmation">,
 ) {
   const code = caseCodeSchema.safeParse((await context.params).code);
-  const token = trackingTokenSchema.safeParse(request.headers.get("X-Tracking-Token"));
+  const token = trackingTokenSchema.safeParse(request.headers.get("X-Confirmation-Token"));
   const input = decisionSchema.safeParse(await request.json().catch(() => null));
   const headers = { "Cache-Control": "no-store" };
   if (!code.success || !token.success || !input.success)

@@ -1,5 +1,5 @@
 // TF-58: keep only the capability needed to find this device's pending confirmations.
-export type DeviceCaseRef = { caseCode: string; trackingToken: string };
+export type DeviceCaseRef = { caseCode: string; trackingToken: string; confirmationToken: string };
 const KEY = "namjaithai:confirmation-cases";
 export function readDeviceCases(storage: Storage): DeviceCaseRef[] {
   try {
@@ -8,7 +8,9 @@ export function readDeviceCases(storage: Storage): DeviceCaseRef[] {
     return data
       .filter(
         (x): x is DeviceCaseRef =>
-          typeof x?.caseCode === "string" && typeof x?.trackingToken === "string",
+          typeof x?.caseCode === "string" &&
+          typeof x?.trackingToken === "string" &&
+          typeof x?.confirmationToken === "string",
       )
       .slice(-20);
   } catch {

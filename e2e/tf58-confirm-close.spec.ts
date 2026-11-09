@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { adminDb, closeTestCases } from "./helpers/db";
+import { adminDb, closeTestCases, randomPhone, uniqueTestPoint } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
 test.describe.configure({ mode: "serial" });
+test.setTimeout(60_000);
 let lead: TestAccount;
 let unitId: string;
-let cases: { id: string; case_code: string; tracking_token: string }[];
+let createdCaseId: string | undefined;
+let cases: { id: string; case_code: string; tracking_token: string; confirmation_token: string }[];
 test.beforeAll(async () => {
   const db = adminDb();
   const tag = crypto.randomUUID().slice(0, 6);
@@ -40,10 +42,24 @@ test.beforeAll(async () => {
     )
     .select("id,case_code,tracking_token")
     .throwOnError();
-  cases = result.data!;
+  await db
+    .from("case_contacts")
+    .insert({ case_id: result.data![1].id, phone_last4: "5678", phone: "0812345678" })
+    .throwOnError();
+  cases = await Promise.all(
+    result.data!.map(async (item) => {
+      const secret = await db.rpc("confirmation_secret_for_case", { p_case_code: item.case_code });
+      if (secret.error || !secret.data) throw new Error("missing confirmation token");
+      return { ...item, confirmation_token: secret.data as string };
+    }),
+  );
 });
 test.afterAll(async () => {
-  if (cases?.length) await closeTestCases(cases.map((item) => item.id));
+  if (cases?.length)
+    await closeTestCases([
+      ...cases.map((item) => item.id),
+      ...(createdCaseId ? [createdCaseId] : []),
+    ]);
   if (unitId) await adminDb().from("units").update({ is_active: false }).eq("id", unitId);
   if (lead) await adminDb().from("users").update({ status: "SUSPENDED" }).eq("id", lead.id);
 });
@@ -55,7 +71,11 @@ test("เปิดเว็บจากเครื่องเดิมแล�
   const item = cases[0];
   await page.addInitScript(
     (ref) => localStorage.setItem("namjaithai:confirmation-cases", JSON.stringify([ref])),
-    { caseCode: item.case_code, trackingToken: item.tracking_token },
+    {
+      caseCode: item.case_code,
+      trackingToken: item.tracking_token,
+      confirmationToken: item.confirmation_token,
+    },
   );
   await page.goto("/");
   const banner = page.getByRole("region", { name: "ยืนยันการช่วยเหลือ" });
@@ -69,19 +89,46 @@ test("เปิดเว็บจากเครื่องเดิมแล�
     .single()
     .throwOnError();
   expect(data!.status).toBe("NEW");
+  await page.close();
   await applySession(context, lead);
-  await page.goto("/unit");
-  const queue = page.getByRole("region", { name: "คิวยืนยันเคส" });
-  await expect(queue.getByText(item.case_code)).toBeVisible();
+  const leaderPage = await context.newPage();
+  await leaderPage.goto("/unit");
+  const queue = leaderPage.getByRole("region", { name: "คิวยืนยันเคส" });
+  await expect(queue.getByText(item.case_code)).toBeVisible({ timeout: 20_000 });
   await expect(queue.getByText(/ผู้แจ้งระบุว่ายังไม่ได้รับ/)).toBeVisible();
   expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    await leaderPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
 });
-test("ลิงก์จาก LINE ยืนยันเคส และเคสเกิน 24 ชั่วโมงเข้าคิวหัวหน้า", async ({ page, context }) => {
+test("โทเค็นติดตามยืนยันไม่ได้ แต่เครื่องผู้แจ้งยืนยันได้ และเคสเกิน 24 ชั่วโมงเข้าคิวหัวหน้า", async ({
+  page,
+  context,
+}) => {
   const item = cases[1];
   await page.goto(`/track/${item.case_code}?t=${item.tracking_token}`);
   const actions = page.getByRole("region", { name: "ยืนยันการช่วยเหลือ" });
+  await expect(page.getByText("ทีมแจ้งว่าช่วยเหลือเสร็จแล้ว").first()).toBeVisible();
+  await expect(actions).toHaveCount(0);
+  const lookup = await context.request.post("/api/track", {
+    data: { caseCode: item.case_code, phoneLast4: "5678" },
+  });
+  expect(lookup.ok()).toBeTruthy();
+  const tracking = await lookup.json();
+  expect(tracking.confirmationToken).toBeUndefined();
+  const denied = await context.request.post(`/api/track/${item.case_code}/confirmation`, {
+    headers: { "X-Confirmation-Token": tracking.trackingToken },
+    data: { decision: "CONFIRM" },
+  });
+  expect(denied.status()).toBe(404);
+  await page.evaluate(
+    (ref) => localStorage.setItem("namjaithai:confirmation-cases", JSON.stringify([ref])),
+    {
+      caseCode: item.case_code,
+      trackingToken: item.tracking_token,
+      confirmationToken: item.confirmation_token,
+    },
+  );
+  await page.reload();
   await expect(actions).toBeVisible();
   await actions.getByRole("button", { name: "ได้รับแล้ว" }).click();
   await expect(actions).toHaveCount(0);
@@ -106,4 +153,39 @@ test("ลิงก์จาก LINE ยืนยันเคส และเค�
     .single()
     .throwOnError();
   expect(result.data).toMatchObject({ status: "RESOLVED", close_confirmation: "LEAD_UNCONFIRMED" });
+});
+
+test("ส่ง SOS ได้โทเค็นยืนยันแยก และส่งซ้ำด้วย idempotency key เดิมได้ค่าเดิม", async ({
+  request,
+}) => {
+  const phone = randomPhone();
+  const key = crypto.randomUUID();
+  const payload = {
+    consent: true,
+    healthConsent: true,
+    dangerSigns: [],
+    canSelfEvacuate: false,
+    ...uniqueTestPoint(),
+    landmark: "TF58 SOS",
+    adults: 1,
+    elderly: 0,
+    bedridden: 0,
+    children: 0,
+    pets: 0,
+    needs: [],
+    name: "TF58",
+    duplicateAction: "CREATE_NEW",
+    phone,
+  };
+  const send = () =>
+    request.post("/api/cases", { headers: { "Idempotency-Key": key }, data: payload });
+  const first = await send();
+  expect(first.ok()).toBeTruthy();
+  const body = await first.json();
+  createdCaseId = body.caseId;
+  expect(body.confirmationToken).toMatch(/^[0-9a-f]{32}$/);
+  expect(body.confirmationToken).not.toBe(body.trackingToken);
+  const replay = await send();
+  expect(replay.ok()).toBeTruthy();
+  expect((await replay.json()).confirmationToken).toBe(body.confirmationToken);
 });

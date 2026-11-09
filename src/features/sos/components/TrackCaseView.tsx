@@ -1,5 +1,4 @@
 "use client";
-import { ConfirmationActions } from "./ConfirmationActions";
 
 import Link from "next/link";
 import { use, useState } from "react";
@@ -100,13 +99,6 @@ function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string 
 
       {state.kind === "ready" && (
         <>
-          {state.data.status === "AWAITING_CONFIRMATION" && (
-            <ConfirmationActions
-              caseCode={caseCode}
-              token={token}
-              onChanged={() => setRevision((value) => value + 1)}
-            />
-          )}
           <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
           {!isClosedStatus(state.data.status) && (
             <WaitingAdvice incidentType={state.data.incidentType} />

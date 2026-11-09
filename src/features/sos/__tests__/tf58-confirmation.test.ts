@@ -26,9 +26,19 @@ describe("TF-58 confirmation", () => {
   });
   it("remembers tokens on this device, deduplicates and forgets confirmed cases", () => {
     const store = storage();
-    rememberDeviceCase(store, { caseCode: "FL-2611-0001", trackingToken: "first" });
-    rememberDeviceCase(store, { caseCode: "FL-2611-0001", trackingToken: "second" });
-    expect(readDeviceCases(store)).toEqual([{ caseCode: "FL-2611-0001", trackingToken: "second" }]);
+    rememberDeviceCase(store, {
+      caseCode: "FL-2611-0001",
+      trackingToken: "first",
+      confirmationToken: "secret-1",
+    });
+    rememberDeviceCase(store, {
+      caseCode: "FL-2611-0001",
+      trackingToken: "second",
+      confirmationToken: "secret-2",
+    });
+    expect(readDeviceCases(store)).toEqual([
+      { caseCode: "FL-2611-0001", trackingToken: "second", confirmationToken: "secret-2" },
+    ]);
     forgetDeviceCase(store, "FL-2611-0001");
     expect(readDeviceCases(store)).toEqual([]);
   });

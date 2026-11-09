@@ -18,7 +18,7 @@ export function ConfirmationActions({
     try {
       const response = await fetch(`/api/track/${encodeURIComponent(caseCode)}/confirmation`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Tracking-Token": token },
+        headers: { "Content-Type": "application/json", "X-Confirmation-Token": token },
         body: JSON.stringify({ decision }),
       });
       if (!response.ok)

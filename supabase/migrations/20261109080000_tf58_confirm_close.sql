@@ -1,4 +1,28 @@
 -- TF-58: reporter confirmation and lead follow-up, enforced transactionally.
+-- Confirmation capability is separate from the tracking token, which can be obtained with four phone digits.
+create table rls.case_confirmation_secrets (
+  case_id uuid primary key references public.cases(id) on delete cascade,
+  secret text not null default encode(extensions.gen_random_bytes(16), 'hex')
+);
+revoke all on rls.case_confirmation_secrets from public, anon, authenticated;
+insert into rls.case_confirmation_secrets(case_id) select id from public.cases;
+create function rls.create_confirmation_secret() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  insert into rls.case_confirmation_secrets(case_id) values (new.id);
+  return new;
+end $$;
+revoke all on function rls.create_confirmation_secret() from public, anon, authenticated;
+create trigger trg_case_confirmation_secret after insert on public.cases
+for each row execute function rls.create_confirmation_secret();
+create function public.confirmation_secret_for_case(p_case_code text) returns text
+language sql stable security definer set search_path = '' as $$
+  select s.secret from rls.case_confirmation_secrets s join public.cases c on c.id=s.case_id
+  where c.case_code=upper(btrim(p_case_code))
+$$;
+revoke all on function public.confirmation_secret_for_case(text) from public, anon, authenticated;
+grant execute on function public.confirmation_secret_for_case(text) to service_role;
+
 alter table public.cases add column close_confirmation text
   check (close_confirmation in ('REPORTER_CONFIRMED', 'LEAD_UNCONFIRMED'));
 create table public.case_lead_alerts (
@@ -35,7 +59,7 @@ begin
   if p_decision is null or p_decision not in ('CONFIRM','NOT_RECEIVED') or p_token is null then
     raise exception 'invalid request' using errcode = '22023';
   end if;
-  select * into item from public.cases where case_code = upper(btrim(p_case_code)) and tracking_token = p_token for update;
+  select * into item from public.cases where case_code = upper(btrim(p_case_code)) and exists (select 1 from rls.case_confirmation_secrets secret where secret.case_id = cases.id and secret.secret = p_token) for update;
   if not found then raise exception 'not found' using errcode = '42501'; end if;
   if item.status <> 'AWAITING_CONFIRMATION' then return jsonb_build_object('status','STALE'); end if;
   if p_decision = 'CONFIRM' then

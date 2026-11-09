@@ -105,6 +105,19 @@ export async function POST(request: Request): Promise<Response> {
     ),
   });
 
+  // The separate confirmation capability is returned only on a newly created case or its
+  // authenticated idempotent replay; updating somebody else's duplicate must never disclose it.
+  let confirmationToken: string | undefined;
+  if (
+    (result.status === 201 || (result.status === 200 && result.body.replayed)) &&
+    !result.body.updatedExisting
+  ) {
+    const secret = await admin.rpc("confirmation_secret_for_case", {
+      p_case_code: result.body.caseCode,
+    });
+    if (!secret.error && typeof secret.data === "string") confirmationToken = secret.data;
+  }
+
   // Schedule as soon as the case is created, including when a photo upload later needs retrying.
   // A replay returns 200, so retries do not wake the worker again.
   if (result.status === 201 && process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN) {
@@ -122,7 +135,11 @@ export async function POST(request: Request): Promise<Response> {
       const outcome = await saveCasePhotos(admin, result.body.caseId, photos);
       if (outcome === "limit")
         return Response.json(
-          { ...result.body, photoWarning: "ส่งรูปบางส่วนไม่ได้ เพราะเคสมีรูปครบ 3 รูปแล้ว" },
+          {
+            ...result.body,
+            confirmationToken,
+            photoWarning: "ส่งรูปบางส่วนไม่ได้ เพราะเคสมีรูปครบ 3 รูปแล้ว",
+          },
           { status: result.status },
         );
     } catch {
@@ -131,6 +148,7 @@ export async function POST(request: Request): Promise<Response> {
           error: `คำขอ ${result.body.caseCode} ถึงระบบแล้ว แต่รูปยังส่งไม่สำเร็จ กรุณากดส่งอีกครั้งเพื่อส่งรูป`,
           caseCode: result.body.caseCode,
           trackingToken: result.body.trackingToken,
+          confirmationToken,
           photosPending: true,
         },
         { status: 503 },
@@ -138,7 +156,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  return Response.json(result.body, {
+  return Response.json(confirmationToken ? { ...result.body, confirmationToken } : result.body, {
     status: result.status,
     headers: result.headers,
   });

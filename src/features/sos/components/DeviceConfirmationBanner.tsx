@@ -1,10 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { forgetDeviceCase, readDeviceCases, type DeviceCaseRef } from "../device-cases";
 import { ConfirmationActions } from "./ConfirmationActions";
 export function DeviceConfirmationBanner() {
-  const pathname = usePathname();
   const [pending, setPending] = useState<DeviceCaseRef | null>(null);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -47,16 +45,17 @@ export function DeviceConfirmationBanner() {
       window.removeEventListener("storage", refresh);
     };
   }, [revision]);
-  if (!pending || pathname?.startsWith("/track/")) return null;
+  if (!pending) return null;
   return (
     <div className="relative z-[60] mx-auto w-full max-w-2xl px-4 py-3">
       <p className="mb-2 font-semibold">เคส {pending.caseCode}</p>
       <ConfirmationActions
         caseCode={pending.caseCode}
-        token={pending.trackingToken}
+        token={pending.confirmationToken}
         onChanged={() => {
           setPending(null);
           setRevision((v) => v + 1);
+          window.dispatchEvent(new Event("namjaithai:confirmation-changed"));
         }}
       />
     </div>

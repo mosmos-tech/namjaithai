@@ -17,6 +17,7 @@ export type SentCase = {
   caseCode: string;
   incidentType?: IncidentType;
   trackingToken: string;
+  confirmationToken?: string;
   phoneLast4: string;
 };
 
@@ -24,10 +25,12 @@ const STORAGE_KEY = "namjaithai:sent-case";
 
 export function rememberSentCase(sent: SentCase): void {
   try {
-    rememberDeviceCase(window.localStorage, {
-      caseCode: sent.caseCode,
-      trackingToken: sent.trackingToken,
-    });
+    if (sent.confirmationToken)
+      rememberDeviceCase(window.localStorage, {
+        caseCode: sent.caseCode,
+        trackingToken: sent.trackingToken,
+        confirmationToken: sent.confirmationToken,
+      });
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sent));
   } catch {
     // โหมดส่วนตัวบางเบราว์เซอร์เขียน storage ไม่ได้ หน้า /sos/sent จะพาไปกรอกที่ /track แทน
