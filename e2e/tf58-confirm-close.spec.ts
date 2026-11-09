@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminDb } from "./helpers/db";
+import { adminDb, closeTestCases } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
 test.describe.configure({ mode: "serial" });
 let lead: TestAccount;
@@ -11,7 +11,7 @@ test.beforeAll(async () => {
   lead = await createAccount({ displayName: `TF58 ${tag}`, role: "UNIT_LEAD" });
   const unit = await db
     .from("units")
-    .insert({ name: `TF58 ${tag}`, province: "ตราด" })
+    .insert({ name: `TF58 ${tag}`, province: "ภูเก็ต" })
     .select("id")
     .single()
     .throwOnError();
@@ -28,10 +28,10 @@ test.beforeAll(async () => {
         case_code: `FL-2611-${base + i}`,
         urgency: "YELLOW",
         status: "AWAITING_CONFIRMATION",
-        lat: 12.24 + i / 10000,
-        lng: 102.51,
+        lat: 7.9 + i / 10000,
+        lng: 98.4,
         landmark: "TF58 test",
-        province: "ตราด",
+        province: "ภูเก็ต",
         incident_type: "FLOOD",
         assigned_unit_id: unitId,
         last_status_updated_at:
@@ -41,6 +41,11 @@ test.beforeAll(async () => {
     .select("id,case_code,tracking_token")
     .throwOnError();
   cases = result.data!;
+});
+test.afterAll(async () => {
+  if (cases?.length) await closeTestCases(cases.map((item) => item.id));
+  if (unitId) await adminDb().from("units").update({ is_active: false }).eq("id", unitId);
+  if (lead) await adminDb().from("users").update({ status: "SUSPENDED" }).eq("id", lead.id);
 });
 test("เปิดเว็บจากเครื่องเดิมแล้วปฏิเสธ เคสกลับ NEW และหัวหน้าเห็นแจ้งเตือน", async ({
   page,
