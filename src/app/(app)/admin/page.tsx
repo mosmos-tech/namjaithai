@@ -1,10 +1,10 @@
-import { LeadConfirmationQueue } from "@/features/notifications/components/LeadConfirmationQueue";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
 import { AdminManagement } from "@/features/admin/AdminManagement";
 import { UnitInvitePanel } from "@/features/auth/components/UnitInvitePanel";
 import { LineDeliveryNotice } from "@/features/notifications/components/LineDeliveryNotice";
+import { LeadConfirmationQueue } from "@/features/notifications/components/LeadConfirmationQueue";
 
 export const metadata: Metadata = { title: "ห้องสั่งการ — น้ำใจไทย SOS", robots: { index: false } };
 
