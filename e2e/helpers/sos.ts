@@ -5,6 +5,12 @@ const DRAFT_KEY = "namjaithai-sos-draft-v2";
 
 // เปิดฟอร์ม SOS แบบเริ่มใหม่ (ล้างร่างที่ค้างจาก test อื่นในเบราว์เซอร์นี้)
 export async function openFreshSosForm(page: Page, path = "/request") {
+  // ทุก test ส่งจาก 127.0.0.1 เหมือนกัน ใช้เพดาน 20 เคส/ชม./IP (TF-12) ร่วมกันแล้วชนใน CI
+  // ใส่ IP ทดสอบแยกเฉพาะคำขอสร้างเคสจากฟอร์ม (test ที่ mock /api/cases เองตั้ง route ทีหลังจึงทำงานก่อน)
+  const ip = `10.66.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+  await page.route("**/api/cases", (route) =>
+    route.fallback({ headers: { ...route.request().headers(), "x-forwarded-for": ip } }),
+  );
   await page.goto(path);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
