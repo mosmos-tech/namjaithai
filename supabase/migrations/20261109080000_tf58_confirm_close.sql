@@ -75,11 +75,11 @@ begin
       insert into public.case_lead_alerts(case_id,unit_id) values(item.id,item.assigned_unit_id);
     end if;
   end if;
-  insert into public.case_events(case_id,event_type,from_status,to_status,actor_role,actor_unit_id,note)
+  insert into public.case_events(case_id,event_type,from_status,to_status,actor_user_id,actor_role,actor_unit_id,note)
     values(item.id,'STATUS_CHANGED',item.status,case when p_decision='CONFIRM' then 'RESOLVED'::public.case_status else 'NEW'::public.case_status end,
-      'REPORTER',item.assigned_unit_id,case when p_decision='CONFIRM' then 'ผู้แจ้งยืนยันว่าได้รับความช่วยเหลือ' else 'ผู้แจ้งระบุว่ายังไม่ได้รับความช่วยเหลือ' end);
-  insert into public.audit_logs(action,target_type,target_id,case_id,metadata)
-    values('REPORTER_CONFIRMATION','case',item.id,item.id,jsonb_build_object('decision',p_decision));
+      rls.current_user_id(),'REPORTER',item.assigned_unit_id,case when p_decision='CONFIRM' then 'ผู้แจ้งยืนยันว่าได้รับความช่วยเหลือ' else 'ผู้แจ้งระบุว่ายังไม่ได้รับความช่วยเหลือ' end);
+  insert into public.audit_logs(actor_user_id,action,target_type,target_id,case_id,metadata)
+    values(rls.current_user_id(),'REPORTER_CONFIRMATION','case',item.id,item.id,jsonb_build_object('decision',p_decision));
   return jsonb_build_object('status',case when p_decision='CONFIRM' then 'RESOLVED' else 'NEW' end);
 end $$;
 revoke all on function public.reporter_confirm_case(text,text,text) from public, anon, authenticated;

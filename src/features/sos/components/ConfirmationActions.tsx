@@ -7,7 +7,7 @@ export function ConfirmationActions({
   onChanged,
 }: {
   caseCode: string;
-  token: string;
+  token?: string;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -18,7 +18,10 @@ export function ConfirmationActions({
     try {
       const response = await fetch(`/api/track/${encodeURIComponent(caseCode)}/confirmation`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Confirmation-Token": token },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "X-Confirmation-Token": token } : {}),
+        },
         body: JSON.stringify({ decision }),
       });
       if (!response.ok)
@@ -27,7 +30,13 @@ export function ConfirmationActions({
             ? "สถานะเคสเปลี่ยนแล้ว กรุณาโหลดใหม่"
             : "ทำรายการไม่สำเร็จ กรุณาลองอีกครั้ง",
         );
-      if (decision === "CONFIRM") forgetDeviceCase(window.localStorage, caseCode);
+      if (decision === "CONFIRM") {
+        try {
+          forgetDeviceCase(window.localStorage, caseCode);
+        } catch {
+          /* storage can be unavailable */
+        }
+      }
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "ทำรายการไม่สำเร็จ");

@@ -105,19 +105,6 @@ export async function POST(request: Request): Promise<Response> {
     ),
   });
 
-  // The separate confirmation capability is returned only on a newly created case or its
-  // authenticated idempotent replay; updating somebody else's duplicate must never disclose it.
-  let confirmationToken: string | undefined;
-  if (
-    (result.status === 201 || (result.status === 200 && result.body.replayed)) &&
-    !result.body.updatedExisting
-  ) {
-    const secret = await admin.rpc("confirmation_secret_for_case", {
-      p_case_code: result.body.caseCode,
-    });
-    if (!secret.error && typeof secret.data === "string") confirmationToken = secret.data;
-  }
-
   // Schedule as soon as the case is created, including when a photo upload later needs retrying.
   // A replay returns 200, so retries do not wake the worker again.
   if (result.status === 201 && process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN) {
@@ -128,6 +115,29 @@ export async function POST(request: Request): Promise<Response> {
         // The notification stays queued for the scheduled worker.
       }
     });
+  }
+
+  // The separate confirmation capability is returned only on a newly created case or its
+  // authenticated idempotent replay; updating somebody else's duplicate must never disclose it.
+  let confirmationToken: string | undefined;
+  if (
+    (result.status === 201 || (result.status === 200 && result.body.replayed)) &&
+    !result.body.updatedExisting
+  ) {
+    const secret = await admin.rpc("confirmation_secret_for_case", {
+      p_case_code: result.body.caseCode,
+    });
+    if (secret.error || typeof secret.data !== "string") {
+      return Response.json(
+        {
+          error: `คำขอ ${result.body.caseCode} ถึงระบบแล้ว แต่ยังเตรียมสิทธิ์ยืนยันไม่สำเร็จ กรุณากดส่งอีกครั้ง`,
+          caseCode: result.body.caseCode,
+          trackingToken: result.body.trackingToken,
+        },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    confirmationToken = secret.data;
   }
 
   if ((result.status === 200 || result.status === 201) && photos.length) {
