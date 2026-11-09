@@ -21,6 +21,8 @@ export const FLOOD_DURING_TIPS = [
 export const flood: IncidentDefinition = {
   code: IncidentType.FLOOD,
   label: { th: "น้ำท่วม" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "Waves",
   capabilities: [UnitCapability.BOAT, UnitCapability.WATER_RESCUE, UnitCapability.EVACUATION],
   questions: [

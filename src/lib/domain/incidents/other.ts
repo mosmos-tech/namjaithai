@@ -11,6 +11,8 @@ const OTHER_OFFICIAL_SOURCE =
 export const other: IncidentDefinition = {
   code: IncidentType.OTHER,
   label: { th: "เหตุอื่นๆ" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนคนที่ต้องการความช่วยเหลือ", en: "People who need help" },
   icon: "CircleHelp",
   // ไม่ระบุความสามารถ = หน่วยไหนก็ช่วยได้
   capabilities: [],

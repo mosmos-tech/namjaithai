@@ -12,6 +12,8 @@ const COLLAPSE_OFFICIAL_SOURCE =
 export const collapse: IncidentDefinition = {
   code: IncidentType.COLLAPSE,
   label: { th: "อาคารถล่ม / ติดใต้ซาก" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "Building2",
   capabilities: [UnitCapability.EXTRICATION, UnitCapability.EMS],
   questions: [

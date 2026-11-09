@@ -16,20 +16,20 @@ import {
   type GpsErrorCode,
   type ManualLocationSource,
   type SosDraft,
-  type Step2ValidationErrors,
+  type Step3ValidationErrors,
 } from "../draft-storage";
 import { isIosDevice, startGpsRefine, type GpsFix } from "../gps-refine";
 import { SosStepActions } from "./SosStepActions";
 
 /**
- * โหลดแผนที่ MapLibre เฉพาะตอนที่ผู้ใช้เปิดขั้นที่ 2 เท่านั้น (เกณฑ์ผ่านข้อ 4 ของ TF-09)
+ * โหลดแผนที่ MapLibre เฉพาะตอนที่ผู้ใช้เปิดขั้นที่ 3 เท่านั้น (เกณฑ์ผ่านข้อ 4 ของ TF-09)
  * ไม่โหลดชุดโค้ดแผนที่ตั้งแต่ขั้นที่ 1 เพื่อให้หน้าแรกเปิดได้เร็วแม้เน็ตช้า
  */
-const LazyStep2LocationMap = dynamic(() => import("./Step2LocationMap"), {
+const LazyStep3LocationMap = dynamic(() => import("./Step3LocationMap"), {
   ssr: false,
   loading: () => (
     <div
-      data-testid="step2-map-loading"
+      data-testid="step3-map-loading"
       className="border-border-default bg-primary-50 lg:bg-bg-subtle text-text-secondary flex h-[200px] w-full items-center justify-center rounded-[14px] border text-base lg:h-[300px]"
     >
       กำลังโหลดแผนที่...
@@ -49,9 +49,9 @@ function subscribeConnection(onChange: () => void) {
   };
 }
 
-export interface Step2LocationProps {
+export interface Step3LocationProps {
   draft: SosDraft;
-  errors: Step2ValidationErrors;
+  errors: Step3ValidationErrors;
   onGpsPosition: (coords: {
     latitude: number;
     longitude: number;
@@ -65,7 +65,7 @@ export interface Step2LocationProps {
 }
 
 /**
- * ขั้นที่ 2 ของฟอร์ม SOS: พิกัดและที่อยู่ (TF-09) ตาม Figma (B2 จอคอม / MB2 มือถือ)
+ * ขั้นที่ 3 ของฟอร์ม SOS: พิกัดและที่อยู่ (TF-09) ตาม Figma (B2 จอคอม / MB2 มือถือ)
  * - ปุ่มดึงพิกัด GPS อัตโนมัติ ย้ายหมุดไปตำแหน่งปัจจุบัน
  * - แจ้งเตือนเมื่อความแม่นยำเกิน 100 ม. ให้ปักหมุดเพิ่มบนแผนที่
  * - แม้ไม่อนุญาต GPS ก็ยังแตะหรือลากหมุดปักเองบนแผนที่ได้
@@ -74,7 +74,7 @@ export interface Step2LocationProps {
  *   "ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน" แล้วกรอกที่อยู่ (ไม่บล็อกการขอความช่วยเหลือ)
  * - ช่องจุดสังเกต (บังคับ)
  */
-export function Step2Location({
+export function Step3Location({
   draft,
   errors,
   onGpsPosition,
@@ -83,7 +83,7 @@ export function Step2Location({
   onUpdateField,
   onPrev,
   onNext,
-}: Step2LocationProps) {
+}: Step3LocationProps) {
   const online = useSyncExternalStore(subscribeConnection, () => navigator.onLine, () => false);
   const [isLocating, setIsLocating] = useState(false);
   // TF-67: ค่าที่แม่นที่สุดระหว่างรอ GPS แม่นขึ้น (ยังไม่ปักหมุด)
@@ -100,7 +100,7 @@ export function Step2Location({
   const [districts, setDistricts] = useState<AdminArea[]>([]);
   const [subdistricts, setSubdistricts] = useState<AdminArea[]>([]);
 
-  // โหลดรายชื่อจังหวัดเมื่อเปิดขั้นที่ 2
+  // โหลดรายชื่อจังหวัดเมื่อเปิดขั้นที่ 3
   useEffect(() => {
     let cancelled = false;
     async function fetchProvinces() {
@@ -523,10 +523,10 @@ export function Step2Location({
           </p>
         )}
 
-        {/* แผนที่ MapLibre โหลดเฉพาะเมื่อเปิดขั้นที่ 2 */}
+        {/* แผนที่ MapLibre โหลดเฉพาะเมื่อเปิดขั้นที่ 3 */}
         <div className="order-1 w-full lg:order-3">
           {online ? (
-            <LazyStep2LocationMap
+            <LazyStep3LocationMap
               pin={mapPin}
               accuracyCircle={accuracyCircle}
               focusBounds={focusBounds}
@@ -817,7 +817,7 @@ export function Step2Location({
       {errors.missingSummary && errors.missingSummary.length > 0 && (
         <div
           role="alert"
-          data-testid="step2-missing-alert"
+          data-testid="step3-missing-alert"
           className="rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
         >
           <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>

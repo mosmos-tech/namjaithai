@@ -47,18 +47,27 @@ test("TF-46 สรุปตัวเลขตามจังหวัดแล�
   await expect(board).toContainText("ไม่มีข้อมูลล่าสุด");
 });
 
-test("TF-46 ปุ่ม SOS เปิดตัวเลือกประเภท และไม่เปิดเหตุที่ยังไม่รองรับ", async ({ page }) => {
+test("TF-46 / TF-66 ปุ่ม SOS เปิดฟอร์มที่ขั้นเลือกประเภท และไม่เปิดเหตุที่ยังไม่รองรับ", async ({
+  page,
+}) => {
   await page.addInitScript(() => localStorage.setItem("namjaithai-onboarding-seen-v1", "true"));
   await page.goto("/");
   await page
     .getByRole("link", { name: /แจ้งขอความช่วยเหลือ/ })
     .last()
     .click();
-  await expect(page).toHaveURL(/\/incidents$/);
-  await expect(page.getByRole("heading", { name: "เลือกประเภทเหตุ" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /^น้ำท่วม/ })).toBeVisible();
-  await page.getByRole("link", { name: /^น้ำท่วม/ }).click();
   await expect(page).toHaveURL(/\/request$/);
+  await expect(page.getByRole("heading", { name: "เกิดเหตุอะไรขึ้น?" })).toBeVisible();
+  const grid = page.getByTestId("incident-type-grid");
+  await expect(grid.getByRole("radio", { name: "น้ำท่วม" })).toBeVisible();
+  // อาคารถล่มยังปิดรับแจ้ง (TF-53) ไม่มีในกริด
+  await expect(grid.getByRole("radio", { name: "อาคารถล่ม / ติดใต้ซาก" })).toHaveCount(0);
+});
+
+test("TF-66 ลิงก์เก่า /incidents พาไปฟอร์มแจ้งเหตุ", async ({ page }) => {
+  await page.goto("/incidents");
+  await expect(page).toHaveURL(/\/request$/);
+  await expect(page.getByRole("heading", { name: "เกิดเหตุอะไรขึ้น?" })).toBeVisible();
 });
 
 test("TF-46 API ส่งเฉพาะข้อมูลสรุปและเก็บแคช 30 วินาที", async ({ request }) => {
@@ -87,21 +96,31 @@ test("TF-46 API ส่งเฉพาะข้อมูลสรุปและ�
   expect((await second.json()).generatedAt).toBe(data.generatedAt);
 });
 
-test("TF-46 เลือกน้ำท่วมได้เมื่อโหลดสถานะไม่สำเร็จ", async ({ page }) => {
-  await page.route("**/api/situation-summary", (route) => route.abort());
-  await page.goto("/incidents");
-  await expect(page.getByRole("link", { name: /^น้ำท่วม/ })).toBeVisible();
-  await page.getByRole("link", { name: /^น้ำท่วม/ }).click();
-  await expect(page).toHaveURL(/\/request$/);
+test("TF-46 / TF-66 เลือกน้ำท่วมได้เมื่อโหลดสถานะไม่สำเร็จ", async ({ page }) => {
+  await page.route(/\/rest\/v1\/incident_types/, (route) => route.abort());
+  await page.goto("/request");
+  const grid = page.getByTestId("incident-type-grid");
+  await expect(grid.getByRole("radio", { name: "น้ำท่วม" })).toBeVisible();
+  await expect(page.getByTestId("incident-fallback-hotlines")).toBeVisible({ timeout: 10_000 });
+  await grid.getByRole("radio", { name: "น้ำท่วม" }).click();
+  await page
+    .getByRole("button", { name: /^ถัดไป/ })
+    .filter({ visible: true })
+    .click();
+  await expect(page.getByText("ขั้นที่ 2 จาก 5")).toBeVisible();
 });
 
-test("TF-46 เคารพสถานะปิดรับจากเซิร์ฟเวอร์เมื่อออนไลน์", async ({ page }) => {
-  await page.route("**/api/situation-summary", (route) =>
-    route.fulfill({ json: { types: [{ code: "FLOOD", enabled: false }], provinces: [] } }),
-  );
-  const response = page.waitForResponse("**/api/situation-summary");
-  await page.goto("/incidents");
-  await response;
-  await expect(page.getByText("น้ำท่วม", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: /^น้ำท่วม/ })).toHaveCount(0);
+test("TF-46 / TF-66 เคารพสถานะปิดรับจากเซิร์ฟเวอร์เมื่อออนไลน์", async ({ page }) => {
+  // แอดมินปิดทุกประเภท (รวมน้ำท่วม): ไม่มีให้เลือก ไปต่อไม่ได้ และแนะนำโทรสายด่วน
+  await page.route(/\/rest\/v1\/incident_types/, (route) => route.fulfill({ json: [] }));
+  await page.goto("/request");
+  const grid = page.getByTestId("incident-type-grid");
+  await expect(page.getByTestId("incident-fallback-hotlines")).toBeVisible();
+  await expect(grid.getByRole("radio")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: /^ถัดไป/ })
+    .filter({ visible: true })
+    .click();
+  await expect(page.getByRole("alert").filter({ hasText: "กรุณาเลือกประเภทเหตุ" })).toBeVisible();
+  await expect(page.getByText("ขั้นที่ 1 จาก 5")).toBeVisible();
 });

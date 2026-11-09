@@ -12,6 +12,8 @@ const WATER_RESCUE_OFFICIAL_SOURCE =
 export const waterRescue: IncidentDefinition = {
   code: IncidentType.WATER_RESCUE,
   label: { th: "ตกน้ำ / จมน้ำ" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "LifeBuoy",
   capabilities: [UnitCapability.WATER_RESCUE, UnitCapability.BOAT, UnitCapability.EMS],
   questions: [

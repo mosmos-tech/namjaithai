@@ -12,7 +12,7 @@ import type { AreaBounds } from "../../../lib/domain";
 import { DEFAULT_THAILAND_CENTER } from "../draft-storage";
 import { circleBounds, circlePolygon } from "../map-geometry";
 
-export interface Step2LocationMapProps {
+export interface Step3LocationMapProps {
   // หมุดที่ปักแล้ว (GPS ที่แม่นพอ / ปักเอง / ลิงก์) — ไม่มี = ไม่แสดงหมุด
   pin?: { lat: number; lng: number };
   // วงความคลาดเคลื่อนของ GPS รัศมีเป็นเมตรจริง (TF-65)
@@ -33,7 +33,7 @@ const toLngLatBounds = (b: AreaBounds): LngLatBoundsTuple => [
   [b.east, b.north],
 ];
 
-function circleFeature(circle?: Step2LocationMapProps["accuracyCircle"]) {
+function circleFeature(circle?: Step3LocationMapProps["accuracyCircle"]) {
   return {
     type: "FeatureCollection" as const,
     features: circle
@@ -77,17 +77,17 @@ export const OSM_RASTER_STYLE = {
 
 /**
  * แผนที่ปักหมุดจุดเกิดเหตุด้วย MapLibre GL + OpenStreetMap (TF-09)
- * - โหลดเฉพาะตอนเปิดขั้นที่ 2 (ผ่าน next/dynamic ssr: false)
+ * - โหลดเฉพาะตอนเปิดขั้นที่ 3 (ผ่าน next/dynamic ssr: false)
  * - เมื่อกดดึง GPS หมุดจะเลื่อนไปยังตำแหน่งปัจจุบันทันที
  * - ผู้ใช้สามารถแตะบนแผนที่หรือลากหมุดเพื่อปักหมุดเองได้แม้ไม่อนุญาต GPS
  * - TF-65: วาดวงความคลาดเคลื่อนเป็นระยะจริงและซูมให้เห็นทั้งวง; ไม่มีหมุดที่ยืนยันแล้วจะไม่แสดงหมุด
  */
-export default function Step2LocationMap({
+export default function Step3LocationMap({
   pin,
   accuracyCircle,
   focusBounds,
   onPinChange,
-}: Step2LocationMapProps) {
+}: Step3LocationMapProps) {
   const lat = pin?.lat;
   const lng = pin?.lng;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -206,7 +206,7 @@ export default function Step2LocationMap({
       mapRef.current?.remove();
       mapRef.current = null;
     };
-    // โหลดแผนที่ครั้งแรกเมื่อเปิดขั้นที่ 2 เท่านั้น ส่วนการเปลี่ยนพิกัดใช้อีก useEffect ด้านล่าง
+    // โหลดแผนที่ครั้งแรกเมื่อเปิดขั้นที่ 3 เท่านั้น ส่วนการเปลี่ยนพิกัดใช้อีก useEffect ด้านล่าง
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -278,7 +278,7 @@ export default function Step2LocationMap({
 
   return (
     <div
-      data-testid="step2-map-container"
+      data-testid="step3-map-container"
       data-pin-lat={hasExplicitPin ? lat : undefined}
       data-pin-lng={hasExplicitPin ? lng : undefined}
       data-accuracy-radius-m={accuracyCircle?.radiusM}
@@ -339,7 +339,7 @@ export default function Step2LocationMap({
       {/* ป้ายพิกัดมุมล่างซ้ายช่วยให้ตรวจสอบได้ว่าหมุดอยู่ที่พิกัดใด */}
       {hasExplicitPin && (
         <div
-          data-testid="step2-pin-coordinates"
+          data-testid="step3-pin-coordinates"
           className="border-border-default bg-bg-surface/95 text-text-secondary pointer-events-none absolute bottom-2.5 left-2.5 z-10 rounded-full border px-3 py-1 font-mono text-xs font-medium shadow-xs"
         >
           {lat.toFixed(5)}, {lng.toFixed(5)}

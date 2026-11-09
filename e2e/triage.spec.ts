@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { adminDb, createCaseViaApi, randomPhone } from "./helpers/db";
 import {
-  answerStep1,
+  answerDangerQuestions,
+  goToStep2,
   expectStep,
   nextButton,
   openFreshSosForm,
@@ -30,12 +31,13 @@ test("ส่งจากฟอร์มพร้อมสัญญาณอั�
   page,
 }) => {
   await openFreshSosForm(page);
-  await answerStep1(page, { dangerSigns: ["มีคนหมดสติ"], canSelfEvacuate: true });
+  await goToStep2(page);
+  await answerDangerQuestions(page, { dangerSigns: ["มีคนหมดสติ"], canSelfEvacuate: true });
   await page.getByRole("radio", { name: "ระดับข้อเท้า–เข่า" }).click();
   await nextButton(page).click();
-  await expectStep(page, 2);
+  await expectStep(page, 3);
   await seedLocationIntoDraft(page);
-  for (const step of [3, 4, 5]) {
+  for (const step of [4, 5]) {
     await nextButton(page).click();
     await expectStep(page, step);
   }

@@ -1,12 +1,18 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { uniqueTestPoint } from "./helpers/db";
-import { answerStep1, backButton, expectStep, nextButton, openFreshSosForm } from "./helpers/sos";
+import {
+  backButton,
+  expectStep,
+  goToLocationStep,
+  nextButton,
+  openFreshSosForm,
+} from "./helpers/sos";
 
 /**
  * TF-67: ค่าแรกของ GPS มักหยาบ — ใช้ watchPosition เก็บค่าที่แม่นที่สุด
  * ได้ ≤ 100 ม. ปักหมุดทันที / ไม่งั้นรอ 15 วินาที (ใช้ page.clock แทนการรอจริง)
  */
-const map = (page: Page) => page.getByTestId("step2-map-container");
+const map = (page: Page) => page.getByTestId("step3-map-container");
 const refineStatus = (page: Page) => page.getByTestId("gps-refine-status");
 
 async function openStep2(page: Page, context: BrowserContext, accuracy: number) {
@@ -31,9 +37,7 @@ async function openStep2(page: Page, context: BrowserContext, accuracy: number) 
   await context.grantPermissions(["geolocation"]);
   await context.setGeolocation({ latitude: point.lat, longitude: point.lng, accuracy });
   await openFreshSosForm(page);
-  await answerStep1(page);
-  await nextButton(page).click();
-  await expectStep(page, 2);
+  await goToLocationStep(page);
   await page.getByTestId("gps-locate-button").click();
   return point;
 }
@@ -68,7 +72,7 @@ test.describe("TF-67 รอ GPS ให้แม่นขึ้น", () => {
     await expect(map(page)).toHaveAttribute("data-pin-lat", /\d/);
     await page.locator("#sos-landmark").fill("บ้านสีฟ้า");
     await nextButton(page).click();
-    await expectStep(page, 3);
+    await expectStep(page, 4);
   });
 
   test("ครบ 15 วินาทียังไม่แม่น → ใช้ค่าดีที่สุด แล้วตัดสินด้วยเกณฑ์ 1000 ม. เดิม", async ({
@@ -101,7 +105,7 @@ test.describe("TF-67 รอ GPS ให้แม่นขึ้น", () => {
     await openStep2(page, context, 3000);
     await expect(refineStatus(page)).toBeVisible();
     await backButton(page).click();
-    await expectStep(page, 1);
+    await expectStep(page, 2);
     expect(await watchCounts(page)).toEqual({ watch: 1, clear: 1 });
   });
 });

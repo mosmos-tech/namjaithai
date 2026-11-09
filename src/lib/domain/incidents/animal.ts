@@ -11,6 +11,8 @@ const ANIMAL_OFFICIAL_SOURCE = "https://ddc.moph.go.th/odpc3/news.php?deptcode=o
 export const animal: IncidentDefinition = {
   code: IncidentType.ANIMAL,
   label: { th: "สัตว์อันตราย" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนคนที่ต้องการความช่วยเหลือ", en: "People who need help" },
   icon: "PawPrint",
   capabilities: [UnitCapability.ANIMAL_CAPTURE],
   questions: [

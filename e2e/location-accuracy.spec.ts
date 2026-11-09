@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { adminDb, randomPhone, uniqueTestPoint } from "./helpers/db";
-import { answerStep1, expectStep, nextButton, openFreshSosForm } from "./helpers/sos";
+import { expectStep, goToLocationStep, nextButton, openFreshSosForm } from "./helpers/sos";
 
 /**
  * TF-65: GPS จากอุปกรณ์ที่ไม่มี GPS จริง (เช่น MacBook ได้ ±16 กม.) ต้องไม่ถูกปักหมุดให้เหมือนถูก
@@ -18,9 +18,7 @@ async function openStep2WithGps(page: Page, context: BrowserContext, accuracy: n
   await context.grantPermissions(["geolocation"]);
   await context.setGeolocation({ latitude: point.lat, longitude: point.lng, accuracy });
   await openFreshSosForm(page);
-  await answerStep1(page);
-  await nextButton(page).click();
-  await expectStep(page, 2);
+  await goToLocationStep(page);
   await page.getByTestId("gps-locate-button").click();
   if (accuracy > 100) {
     await expect(page.getByTestId("gps-refine-status")).toContainText("กำลังหาตำแหน่งที่แม่นขึ้น");
@@ -30,9 +28,9 @@ async function openStep2WithGps(page: Page, context: BrowserContext, accuracy: n
   return point;
 }
 
-const map = (page: Page) => page.getByTestId("step2-map-container");
+const map = (page: Page) => page.getByTestId("step3-map-container");
 
-test.describe("TF-65 ความแม่นยำของตำแหน่ง (ขั้นที่ 2)", () => {
+test.describe("TF-65 ความแม่นยำของตำแหน่ง (ขั้นที่ 3)", () => {
   test("GPS ±16 กม.: ไม่ปักหมุดให้ วงกว้างเท่าค่าจริง และไปต่อไม่ได้จนกว่าจะปักเอง", async ({
     page,
     context,
@@ -48,15 +46,15 @@ test.describe("TF-65 ความแม่นยำของตำแหน่�
 
     await page.locator("#sos-landmark").fill("บ้านสีฟ้า ตรงข้ามวัด");
     await nextButton(page).click();
-    await expectStep(page, 2);
-    await expect(page.getByTestId("step2-missing-alert")).toContainText("พิกัดตำแหน่ง");
+    await expectStep(page, 3);
+    await expect(page.getByTestId("step3-missing-alert")).toContainText("พิกัดตำแหน่ง");
 
     // แตะกลางแผนที่ = ปักหมุดเอง แล้วไปต่อได้
     await map(page).click();
     await expect(map(page)).toHaveAttribute("data-pin-lat", /\d/);
     await expect(map(page)).not.toHaveAttribute("data-accuracy-radius-m", /.+/);
     await nextButton(page).click();
-    await expectStep(page, 3);
+    await expectStep(page, 4);
   });
 
   test("GPS แม่น (±30 ม.): ปักหมุดให้และวงมีรัศมีเท่าค่าจริง", async ({ page, context }) => {
@@ -75,12 +73,10 @@ test.describe("TF-65 ความแม่นยำของตำแหน่�
 
     await page.locator("#sos-landmark").fill("บ้านสีฟ้า ตรงข้ามวัด");
     await nextButton(page).click();
-    await expectStep(page, 2);
-    await expect(page.getByTestId("step2-missing-alert")).toContainText("ที่อยู่");
+    await expectStep(page, 3);
+    await expect(page.getByTestId("step3-missing-alert")).toContainText("ที่อยู่");
 
     await page.locator("#sos-address-line").fill("99/1 หมู่ 3 ซอยวัดไร่ขิง");
-    await nextButton(page).click();
-    await expectStep(page, 3);
     await nextButton(page).click();
     await expectStep(page, 4);
     await nextButton(page).click();

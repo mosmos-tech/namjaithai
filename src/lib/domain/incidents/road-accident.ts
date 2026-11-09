@@ -12,6 +12,8 @@ const ROAD_ACCIDENT_OFFICIAL_SOURCE =
 export const roadAccident: IncidentDefinition = {
   code: IncidentType.ROAD_ACCIDENT,
   label: { th: "อุบัติเหตุทางถนน" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนผู้บาดเจ็บหรือผู้ป่วย", en: "Injured or sick people" },
   icon: "CarFront",
   capabilities: [UnitCapability.EMS, UnitCapability.EXTRICATION],
   questions: [

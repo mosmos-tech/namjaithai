@@ -142,6 +142,8 @@ export interface WaitingAdvice {
 export interface IncidentDefinition {
   code: IncidentType;
   label: LocalizedText;
+  /** หัวข้อตัวนับคนในฟอร์ม SOS (TF-66) — มีทั้งไทยและอังกฤษให้ TF-63 ใช้ต่อ */
+  peopleLabel: Required<LocalizedText>;
   /** ชื่อไอคอนใน lucide-react (เช่น "Waves") — เก็บเป็นชื่อเพื่อให้โค้ดกลางไม่ต้อง import React */
   icon: string;
   /** ความสามารถทีมที่เหมาะกับเหตุนี้ (TF-52 canUnitHandle) — ว่าง = หน่วยไหนก็ช่วยได้ */
