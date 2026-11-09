@@ -24,7 +24,14 @@ import {
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
 
-export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v1";
+export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v2";
+
+/**
+ * ร่างก่อน TF-66 (ขั้น 2 = ตำแหน่ง, ขั้น 3 = ผู้ติดค้าง) — ชื่อฟิลด์เหมือนเดิม ต่างแค่เลขขั้น
+ * เปิดหน้าครั้งแรกหลังอัปเดต migrateLegacySosDraft() ย้ายมาเป็น v2 แล้วลบทิ้ง
+ */
+export const LEGACY_SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v1";
+const LEGACY_STEP_TO_STEP: Record<SosStepNumber, SosStepNumber> = { 1: 1, 2: 3, 3: 2, 4: 4, 5: 5 };
 
 /**
  * เกณฑ์ความคลาดเคลื่อนของ GPS (เมตร): ถ้าเกิน 100 เมตร ต้องแจ้งให้ผู้ใช้ปักหมุดเพิ่มบนแผนที่ (TF-09)
@@ -71,28 +78,28 @@ export interface SosDraftPhoto {
 export const SOS_STEPS: readonly SosStepDefinition[] = [
   {
     step: 1,
-    title: "สถานการณ์ตอนนี้",
-    shortLabel: "สถานการณ์",
-    // TF-55: ผู้แจ้งตอบคำถามสั้นๆ ระบบจัดลำดับความเร่งด่วนเอง (ผู้แจ้งไม่เห็นระดับ)
-    description: "ตอบคำถามสั้นๆ เรื่องอันตรายและระดับน้ำ เพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
+    title: "เกิดเหตุอะไร",
+    shortLabel: "ประเภทเหตุ",
+    description: "เลือกประเภทเหตุ และยืนยันว่าคุณอยู่ที่จุดเกิดเหตุ",
   },
   {
     step: 2,
+    title: "รายละเอียดเหตุ",
+    shortLabel: "รายละเอียด",
+    // TF-55: ผู้แจ้งตอบคำถามสั้นๆ ระบบจัดลำดับความเร่งด่วนเอง (ผู้แจ้งไม่เห็นระดับ)
+    description: "ตอบคำถามเรื่องอันตรายและจำนวนคน เพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
+  },
+  {
+    step: 3,
     title: "ตำแหน่งที่เกิดเหตุ",
     shortLabel: "ตำแหน่ง",
     description: "ระบุพิกัด GPS หรือปักหมุดบนแผนที่ พร้อมจุดสังเกตที่มองเห็นได้ชัดเจน",
   },
   {
-    step: 3,
-    title: "จำนวนผู้ติดค้าง",
-    shortLabel: "ผู้ติดค้าง",
-    description: "ระบุจำนวนผู้ใหญ่ ผู้สูงอายุ ผู้ป่วยติดเตียง เด็กเล็ก และสัตว์เลี้ยง",
-  },
-  {
     step: 4,
     title: "สิ่งที่ต้องการความช่วยเหลือ",
     shortLabel: "สิ่งที่ต้องการ",
-    description: "เลือกสิ่งที่ต้องการเร่งด่วน เช่น เรืออพยพ น้ำดื่ม อาหาร หรือยารักษาโรค",
+    description: "เลือกสิ่งที่ต้องการเร่งด่วน เช่น อพยพ น้ำดื่ม อาหาร หรือยารักษาโรค",
   },
   {
     step: 5,
@@ -108,13 +115,14 @@ export const SOS_STEPS: readonly SosStepDefinition[] = [
  */
 export interface SosDraft {
   currentStep: SosStepNumber;
-  // ขั้นที่ 1: สถานการณ์ (TF-50, TF-55) — undefined = ยังไม่ได้ตอบ
+  // ขั้นที่ 1: เกิดเหตุอะไร (TF-50) — undefined = ยังไม่ได้ตอบ
   incidentType?: IncidentType;
   atScene?: boolean;
+  // ขั้นที่ 2: รายละเอียดเหตุ — สัญญาณอันตราย ออกเองได้ไหม (TF-55) ระดับน้ำ (คำถามน้ำท่วม)
   dangerSigns?: string[];
   canSelfEvacuate?: boolean;
   waterLevel?: WaterLevel;
-  // ขั้นที่ 2: ตำแหน่ง (TF-09)
+  // ขั้นที่ 3: ตำแหน่ง (TF-09)
   lat?: number;
   lng?: number;
   accuracyM?: number;
@@ -130,7 +138,7 @@ export interface SosDraft {
   addressLine?: string;
   gmapsUrl?: string;
   landmark: string;
-  // ขั้นที่ 3: คำถามเฉพาะประเภทเหตุ (TF-51) และผู้ติดค้าง (TF-11)
+  // ขั้นที่ 2 (ต่อ): คำถามเฉพาะประเภทเหตุ (TF-51) และผู้ติดค้าง (TF-11)
   details?: Record<string, string | number | boolean | string[] | undefined>;
   adults: number;
   elderly: number;
@@ -207,66 +215,101 @@ export function parseIncidentTypeParam(
   return undefined;
 }
 
+/**
+ * เปลี่ยนประเภทเหตุในร่าง (TF-66: ย้อนกลับไปเปลี่ยนได้)
+ * คำตอบเฉพาะประเภทเดิมต้องหายทั้งหมด ไม่ให้หลุดไปกับเคสใหม่:
+ * - details (คำถามจากทะเบียน), hasInjured, ระดับน้ำ (ถามเฉพาะน้ำท่วม)
+ * - สัญญาณอันตรายที่ประเภทใหม่ไม่มี และสิ่งที่ต้องการที่ประเภทใหม่ไม่มี
+ * คำตอบกลาง (อยู่ที่จุดเกิดเหตุ ออกเองได้ไหม จำนวนคน ตำแหน่ง ติดต่อ) เก็บไว้
+ */
+export function applyIncidentTypeToDraft(draft: SosDraft, incidentType: IncidentType): SosDraft {
+  if (draft.incidentType === incidentType) return draft;
+  const registry = INCIDENT_REGISTRY[incidentType];
+  const signKeys = (
+    registry.dangerSigns.length > 0 ? registry.dangerSigns : UNIVERSAL_DANGER_SIGNS
+  ).map((sign) => sign.key);
+  const allowedNeeds = new Set<Need>([
+    ...(registry.needs.length > 0 ? registry.needs : Object.values(Need)),
+    Need.OTHER,
+  ]);
+  const needs = draft.needs.filter((need) => allowedNeeds.has(need));
+  return {
+    ...draft,
+    incidentType,
+    details: {},
+    hasInjured: false,
+    waterLevel: incidentType === IncidentType.FLOOD ? draft.waterLevel : undefined,
+    dangerSigns: draft.dangerSigns?.filter((key) => signKeys.includes(key)),
+    needs,
+    otherDetail: needs.includes(Need.OTHER) ? draft.otherDetail : "",
+  };
+}
+
 export interface Step1ValidationErrors {
   incidentType?: string;
   atScene?: string;
-  dangerSigns?: string;
-  canSelfEvacuate?: string;
-  waterLevel?: string;
-  missingSummary: string[];
-}
-
-export interface Step2ValidationErrors {
-  location?: string;
-  landmark?: string;
   missingSummary: string[];
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 1 ด้วย step1Schema จาก src/lib/domain
- * - ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene === false) จะไม่ผ่านและไม่สร้างเคส (TF-50)
- * - ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
+ * ตรวจสอบข้อมูลขั้นที่ 1 "เกิดเหตุอะไร" (TF-50, TF-66)
+ * - ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene === false) จะไม่ผ่านและไม่สร้างเคส
+ * - ยังไม่เลือกประเภท = น้ำท่วม (เหมือนเดิม) แต่ประเภทนั้นต้องเปิดรับแจ้งอยู่
+ *   enabledTypes = รายการที่แอดมินเปิดไว้ (TF-30) ไม่ส่งมา = ไม่ตรวจ (เซิร์ฟเวอร์ตรวจซ้ำอยู่แล้ว)
  */
 export function validateStep1Draft(
-  draft: Pick<
-    SosDraft,
-    "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate" | "waterLevel"
-  >,
+  draft: Pick<SosDraft, "incidentType" | "atScene">,
+  enabledTypes?: readonly IncidentType[],
 ): {
   valid: boolean;
   errors: Step1ValidationErrors;
 } {
-  const result = step1Schema.safeParse({
-    incidentType: draft.incidentType,
-    atScene: draft.atScene,
-    dangerSigns: draft.dangerSigns,
-    canSelfEvacuate: draft.canSelfEvacuate,
-    waterLevel: draft.waterLevel,
-  });
-
-  if (result.success) {
-    return {
-      valid: true,
-      errors: { missingSummary: [] },
-    };
-  }
-
   const errors: Step1ValidationErrors = {
     missingSummary: [],
   };
+  const result = step1Schema
+    .pick({ incidentType: true, atScene: true })
+    .safeParse({ incidentType: draft.incidentType, atScene: draft.atScene });
 
-  const validIncidentTypes = Object.values(IncidentType) as string[];
-  const validWaterLevels = Object.values(WaterLevel) as string[];
-
-  if (draft.atScene === false) {
-    errors.atScene = "แจ้งแทนคนอื่นไม่ได้ กรุณาโทรสายด่วนฉุกเฉินแทน";
-    errors.missingSummary.push("อยู่ที่จุดเกิดเหตุ");
-  }
-
-  if (draft.incidentType !== undefined && !validIncidentTypes.includes(draft.incidentType)) {
-    errors.incidentType = "ไม่มีประเภทเหตุนี้";
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      if (issue.path[0] === "atScene" && !errors.atScene) {
+        errors.atScene = issue.message;
+        errors.missingSummary.push("อยู่ที่จุดเกิดเหตุ");
+      } else if (issue.path[0] === "incidentType" && !errors.incidentType) {
+        errors.incidentType = issue.message;
+        errors.missingSummary.push("ประเภทเหตุ");
+      }
+    }
+  } else if (enabledTypes && !enabledTypes.includes(draft.incidentType ?? IncidentType.FLOOD)) {
+    errors.incidentType = "กรุณาเลือกประเภทเหตุ";
     errors.missingSummary.push("ประเภทเหตุ");
   }
+
+  return {
+    valid: errors.missingSummary.length === 0,
+    errors,
+  };
+}
+
+export interface Step2ValidationErrors {
+  dangerSigns?: string;
+  canSelfEvacuate?: string;
+  waterLevel?: string;
+  totalPeople?: string;
+  questionErrors?: Record<string, string>;
+  missingSummary: string[];
+}
+
+/**
+ * ตรวจคำตอบเรื่องอันตรายในขั้นที่ 2 ด้วย step1Schema จาก src/lib/domain
+ * - ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
+ */
+function validateDangerAnswers(
+  draft: Pick<SosDraft, "dangerSigns" | "canSelfEvacuate" | "waterLevel">,
+  errors: Step2ValidationErrors,
+): void {
+  const validWaterLevels = Object.values(WaterLevel) as string[];
 
   if (!Array.isArray(draft.dangerSigns)) {
     errors.dangerSigns = 'กรุณาเลือกข้อที่ตรง หรือกด "ไม่มีข้อใดเลย"';
@@ -284,13 +327,22 @@ export function validateStep1Draft(
     errors.missingSummary.push("ระดับน้ำ");
   }
 
-  return {
-    valid: false,
-    errors,
-  };
+  if (errors.missingSummary.length === 0) {
+    const result = step1Schema
+      .pick({ dangerSigns: true, canSelfEvacuate: true, waterLevel: true })
+      .safeParse({
+        dangerSigns: draft.dangerSigns,
+        canSelfEvacuate: draft.canSelfEvacuate,
+        waterLevel: draft.waterLevel,
+      });
+    if (!result.success) {
+      errors.dangerSigns = result.error.issues[0]?.message ?? "ไม่มีตัวเลือกนี้";
+      errors.missingSummary.push("สัญญาณอันตราย");
+    }
+  }
 }
 
-export interface Step2ValidationErrors {
+export interface Step3ValidationErrors {
   location?: string;
   addressLine?: string;
   landmark?: string;
@@ -298,11 +350,11 @@ export interface Step2ValidationErrors {
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 2 (พิกัดและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
+ * ตรวจสอบข้อมูลขั้นที่ 3 (พิกัดและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
  * - พิกัด (lat, lng) ต้องอยู่ในขอบเขตประเทศไทย
  * - จุดสังเกต (landmark) บังคับต้องระบุเพื่อให้ทีมกู้ภัยสังเกตเห็นได้เมื่อป้ายบ้านจมน้ำ
  */
-export function validateStep2Draft(
+export function validateStep3Draft(
   draft: Pick<
     SosDraft,
     | "lat"
@@ -318,7 +370,7 @@ export function validateStep2Draft(
   >,
 ): {
   valid: boolean;
-  errors: Step2ValidationErrors;
+  errors: Step3ValidationErrors;
 } {
   const result = step2Schema.safeParse({
     lat: draft.lat,
@@ -346,7 +398,7 @@ export function validateStep2Draft(
     };
   }
 
-  const errors: Step2ValidationErrors = {
+  const errors: Step3ValidationErrors = {
     missingSummary: [],
   };
 
@@ -525,12 +577,6 @@ export function getGpsStatusMessage(params: {
   return null;
 }
 
-export interface Step3ValidationErrors {
-  totalPeople?: string;
-  questionErrors?: Record<string, string>;
-  missingSummary: string[];
-}
-
 /**
  * คำนวณจำนวนคนรวม (ไม่นับสัตว์เลี้ยง)
  */
@@ -546,12 +592,45 @@ export function getTotalPeopleCount(
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 3 (คำถามเฉพาะประเภทจากทะเบียน + จำนวนผู้ติดค้าง)
+ * ตรวจสอบข้อมูลขั้นที่ 2 "รายละเอียดเหตุ" (TF-66 รวมคำถามเดิมของขั้น 1 และ 3)
  * เกณฑ์ผ่าน:
+ * - ตอบสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม (TF-55)
  * - คำถามที่บังคับ (required: true) ของประเภทเหตุนั้นต้องตอบครบและถูกต้องตามชนิดข้อมูล (TF-51)
  * - จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน (TF-11)
  */
-export function validateStep3Draft(
+export function validateStep2Draft(
+  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets"> &
+    Partial<
+      Pick<
+        SosDraft,
+        "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured" | "dangerSigns"
+      >
+    >,
+): {
+  valid: boolean;
+  totalPeople: number;
+  errors: Step2ValidationErrors;
+} {
+  const errors: Step2ValidationErrors = {
+    missingSummary: [],
+  };
+  validateDangerAnswers(draft, errors);
+  const people = validatePeopleAndQuestions(draft);
+  errors.missingSummary.push(...people.errors.missingSummary);
+  if (people.errors.totalPeople) errors.totalPeople = people.errors.totalPeople;
+  if (people.errors.questionErrors) errors.questionErrors = people.errors.questionErrors;
+
+  return {
+    valid: errors.missingSummary.length === 0,
+    totalPeople: people.totalPeople,
+    errors: errors.missingSummary.length === 0 ? { missingSummary: [] } : errors,
+  };
+}
+
+/**
+ * คำถามเฉพาะประเภทจากทะเบียน + จำนวนผู้ติดค้าง (ส่วนหนึ่งของขั้นที่ 2)
+ */
+function validatePeopleAndQuestions(
   draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets"> &
     Partial<
       Pick<SosDraft, "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured">
@@ -559,7 +638,7 @@ export function validateStep3Draft(
 ): {
   valid: boolean;
   totalPeople: number;
-  errors: Step3ValidationErrors;
+  errors: Step2ValidationErrors;
 } {
   const totalPeople = getTotalPeopleCount(draft);
   const result = step3Schema.safeParse({
@@ -570,7 +649,7 @@ export function validateStep3Draft(
     pets: draft.pets,
   });
 
-  const errors: Step3ValidationErrors = {
+  const errors: Step2ValidationErrors = {
     missingSummary: [],
   };
   const questionErrors: Record<string, string> = {};
@@ -608,21 +687,12 @@ export function validateStep3Draft(
       }
     }
 
-    // สำหรับ FLOOD คำถาม canSelfEvacuate ถูกบังคับตั้งแต่ขั้นที่ 1 แล้ว
-    // ถ้าเรียก validateStep3Draft เฉพาะตัวนับคน (ไม่ได้ส่ง canSelfEvacuate หรือ incidentType มา) ไม่ต้องบังคับซ้ำ
-    if (
-      activeType === IncidentType.FLOOD &&
-      q.key === "canSelfEvacuate" &&
-      val === undefined &&
-      draft.incidentType === undefined
-    ) {
+    // ออกเองได้ไหม (FLOOD) ตรวจในส่วนสัญญาณอันตรายของขั้นเดียวกันแล้ว (validateDangerAnswers)
+    if (q.key === "canSelfEvacuate") {
       continue;
     }
 
-    const isEmpty =
-      val === undefined ||
-      val === "" ||
-      (Array.isArray(val) && val.length === 0);
+    const isEmpty = val === undefined || val === "" || (Array.isArray(val) && val.length === 0);
 
     if (q.required && isEmpty) {
       questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
@@ -876,12 +946,13 @@ export function loadSosDraft(
   storage: Pick<Storage, "getItem"> | undefined = typeof window !== "undefined"
     ? window.localStorage
     : undefined,
+  { legacy = false }: { legacy?: boolean } = {},
 ): SosDraft {
   const initial = createInitialSosDraft();
   if (!storage) return initial;
 
   try {
-    const raw = storage.getItem(SOS_DRAFT_STORAGE_KEY);
+    const raw = storage.getItem(legacy ? LEGACY_SOS_DRAFT_STORAGE_KEY : SOS_DRAFT_STORAGE_KEY);
     if (!raw) return initial;
 
     const parsed = JSON.parse(raw) as Partial<SosDraft>;
@@ -956,11 +1027,8 @@ export function loadSosDraft(
         ? parsed.idempotencyKey.trim()
         : undefined;
 
-    // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ หรือตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ ให้กลับมาเริ่มที่ขั้นที่ 1
-    const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
-    const step1Answered =
-      atScene !== false && dangerSigns !== undefined && canSelfEvacuate !== undefined;
-    const currentStep: SosStepNumber = rawStep > 1 && !step1Answered ? 1 : rawStep;
+    const savedStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
+    const rawStep = legacy ? LEGACY_STEP_TO_STEP[savedStep] : savedStep;
 
     // ตัด urgency ของร่างรุ่นเก่าทิ้ง ไม่ให้หลุดไปกับคำขอ
     const { urgency: _legacyUrgency, ...rest } = parsed as Partial<SosDraft> & {
@@ -968,10 +1036,10 @@ export function loadSosDraft(
     };
     void _legacyUrgency;
 
-    return {
+    const draft: SosDraft = {
       ...initial,
       ...rest,
-      currentStep,
+      currentStep: rawStep,
       incidentType,
       atScene,
       dangerSigns,
@@ -988,8 +1056,52 @@ export function loadSosDraft(
       photos,
       idempotencyKey,
     };
+    // ร่างเก่า (ก่อน TF-66): คำถามย้ายขั้น จึงพากลับไปขั้นแรกที่ยังไม่ครบ
+    // ร่างปัจจุบัน: ขั้น 1 ไม่ครบหรือตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ ให้กลับมาเริ่มที่ขั้นที่ 1 (เหมือนเดิม)
+    const limit = legacy ? firstIncompleteStep(draft) : validateStep1Draft(draft).valid ? 5 : 1;
+    return {
+      ...draft,
+      currentStep: Math.min(rawStep, limit) as SosStepNumber,
+    };
   } catch {
     return initial;
+  }
+}
+
+/** ขั้นแรกที่ยังกรอกไม่ครบ (นับแค่ขั้น 1–3 ที่ต้องผ่านก่อนไปต่อ) — ครบหมด = 5 */
+function firstIncompleteStep(draft: SosDraft): SosStepNumber {
+  if (!validateStep1Draft(draft).valid) return 1;
+  if (!validateStep2Draft(draft).valid) return 2;
+  if (!validateStep3Draft(draft).valid) return 3;
+  return 5;
+}
+
+/**
+ * ย้ายร่างก่อน TF-66 (คีย์ v1) มาเป็นคีย์ v2 พร้อมแปลงเลขขั้น แล้วลบคีย์เก่าเสมอ
+ * - มีร่าง v2 อยู่แล้ว: ใช้ v2 ทิ้ง v1
+ * - JSON เสีย: ทิ้ง v1 เริ่มฟอร์มใหม่ (ไม่ทำให้หน้าพัง)
+ */
+export function migrateLegacySosDraft(
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+): void {
+  try {
+    const legacy = storage.getItem(LEGACY_SOS_DRAFT_STORAGE_KEY);
+    if (legacy === null) return;
+    if (storage.getItem(SOS_DRAFT_STORAGE_KEY) === null) {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(legacy);
+      } catch {
+        // JSON เสีย ทิ้งไป
+      }
+      if (typeof parsed === "object" && parsed !== null) {
+        const draft = loadSosDraft(storage, { legacy: true });
+        storage.setItem(SOS_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      }
+    }
+    storage.removeItem(LEGACY_SOS_DRAFT_STORAGE_KEY);
+  } catch {
+    // พื้นที่เก็บข้อมูลใช้ไม่ได้ (โหมดส่วนตัว) — ฟอร์มยังเริ่มใหม่ได้ตามปกติ
   }
 }
 
@@ -1050,6 +1162,7 @@ export function clearSosDraft(
  */
 export function getSosDraftSnapshot(): SosDraft {
   try {
+    migrateLegacySosDraft(window.localStorage);
     const raw = window.localStorage.getItem(SOS_DRAFT_STORAGE_KEY);
     const search = window.location.search;
     const cacheKey = `${raw ?? ""}::${search}`;
@@ -1154,7 +1267,7 @@ const _defaultInFlightRef = { current: false };
 /**
  * ส่งคำขอความช่วยเหลือ SOS ไปยัง POST /api/cases:
  * 1. ป้องกันการกดส่งซ้ำขณะกำลังส่ง (inFlightRef lock) และผูก Idempotency-Key ประจำร่าง
- * 2. ตรวจความครบถ้วนทุกขั้น (รวมถึงพิกัดและจุดสังเกตในขั้นที่ 2 — ถ้าไม่มีตำแหน่งจะตอบ error ไม่ขึ้นกล่องสีเขียว)
+ * 2. ตรวจความครบถ้วนทุกขั้น (รวมถึงพิกัดและจุดสังเกตในขั้นที่ 3 — ถ้าไม่มีตำแหน่งจะตอบ error ไม่ขึ้นกล่องสีเขียว)
  * 3. เมื่อส่งสำเร็จ (response.ok) จะล้างร่างออกจาก localStorage ทันทีด้วย clearSosDraft()
  */
 export async function submitSosDraft(
@@ -1194,13 +1307,13 @@ export async function submitSosDraft(
       };
     }
 
-    const check3 = validateStep3Draft(draft);
-    if (!check3.valid) {
+    const check2 = validateStep2Draft(draft);
+    if (!check2.valid) {
       return {
         status: "invalid_step",
-        step: 3,
-        step3Errors: check3.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาตรวจสอบข้อมูลในขั้นที่ 3: ${check3.errors.missingSummary.join(", ")}`,
+        step: 2,
+        step2Errors: check2.errors,
+        error: `ยังส่งคำขอไม่ได้ กรุณาตรวจสอบข้อมูลในขั้นที่ 2: ${check2.errors.missingSummary.join(", ")}`,
       };
     }
 
@@ -1214,13 +1327,13 @@ export async function submitSosDraft(
       };
     }
 
-    const check2 = validateStep2Draft(draft);
-    if (!check2.valid || typeof draft.lat !== "number" || typeof draft.lng !== "number") {
+    const check3 = validateStep3Draft(draft);
+    if (!check3.valid || typeof draft.lat !== "number" || typeof draft.lng !== "number") {
       return {
         status: "invalid_step",
-        step: 2,
-        step2Errors: check2.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check2.errors.missingSummary.join("และ")} ในขั้นที่ 2 ก่อนส่งคำขอ`,
+        step: 3,
+        step3Errors: check3.errors,
+        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check3.errors.missingSummary.join("และ")} ในขั้นที่ 3 ก่อนส่งคำขอ`,
       };
     }
 

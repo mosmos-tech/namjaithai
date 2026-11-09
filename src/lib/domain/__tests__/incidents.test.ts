@@ -35,6 +35,7 @@ function allTexts(): LocalizedText[] {
     const def = INCIDENT_REGISTRY[type];
     return [
       def.label,
+      def.peopleLabel,
       ...def.questions.flatMap((q) => [
         q.label,
         ...(q.kind === "choice" ? q.options.map((o) => o.label) : []),
@@ -65,6 +66,14 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
       for (const c of def.capabilities) expect(capabilities).toContain(c);
       // OTHER = หน่วยไหนก็ช่วยได้ ประเภทอื่นต้องระบุความสามารถที่ต้องใช้
       if (type !== IncidentType.OTHER) expect(def.capabilities.length, type).toBeGreaterThan(0);
+    }
+  });
+
+  it("TF-66: ทุกประเภทมีหัวข้อตัวนับคน (peopleLabel) ทั้งไทยและอังกฤษ", () => {
+    for (const type of ALL_TYPES) {
+      const { peopleLabel } = INCIDENT_REGISTRY[type];
+      expect(peopleLabel.th.trim(), type).not.toBe("");
+      expect(peopleLabel.en.trim(), type).not.toBe("");
     }
   });
 

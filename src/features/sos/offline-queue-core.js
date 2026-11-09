@@ -79,6 +79,13 @@ export async function clearSentOfflineSos(id) {
   }));
 }
 
+// TF-66: เซิร์ฟเวอร์ปฏิเสธถาวร (4xx เช่น ประเภทเหตุถูกปิดระหว่างรอ) ผู้แจ้งเลือกทิ้งคำขอเพื่อกรอกใหม่ได้
+export async function discardBlockedOfflineSos(id) {
+  return updateSosQueue((current) => ({
+    remove: !!current && current.id === id && current.status === "blocked",
+  }));
+}
+
 export async function processOfflineSos(manual = false) {
   const now = Date.now();
   const lease = now + 20000;

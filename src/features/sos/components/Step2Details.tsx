@@ -1,15 +1,28 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- ไอคอน SVG เล็กจาก Figma */
 import type { ReactNode } from "react";
 import { User, HeartHandshake, Bed, Baby, PawPrint, Minus, Plus, Check } from "lucide-react";
 import {
   INCIDENT_REGISTRY,
   IncidentType,
+  UNIVERSAL_DANGER_SIGNS,
   isQuestionVisible,
   type IncidentQuestion,
   type WaterLevel,
 } from "../../../lib/domain";
-import { getTotalPeopleCount, type Step3ValidationErrors } from "../draft-storage";
+import { getTotalPeopleCount, type Step2ValidationErrors } from "../draft-storage";
+
+const headingClass =
+  "font-heading text-text-primary text-[22px] leading-[1.3] font-semibold tracking-[-0.11px]";
+
+function optionClass(selected: boolean) {
+  return `flex min-h-14 w-full items-center gap-4 rounded-[12px] px-5 py-4 text-left text-lg font-semibold transition-colors ${
+    selected
+      ? "border-primary-600 bg-primary-50 border-2"
+      : "border-border-default bg-bg-surface hover:border-border-strong border-[1.5px]"
+  }`;
+}
 
 export type PeopleGroupKey = "adults" | "elderly" | "bedridden" | "children" | "pets";
 
@@ -28,7 +41,7 @@ export const PEOPLE_GROUPS: readonly PeopleGroupConfig[] = [
     label: "ผู้ใหญ่",
     subtitle: "อายุ 15–59 ปี สุขภาพทั่วไป",
     unit: "คน",
-    icon: <User className="h-6 w-6 text-primary-700" aria-hidden="true" />,
+    icon: <User className="text-primary-700 h-6 w-6" aria-hidden="true" />,
   },
   {
     key: "elderly",
@@ -52,7 +65,7 @@ export const PEOPLE_GROUPS: readonly PeopleGroupConfig[] = [
     subtitle: "อายุต่ำกว่า 15 ปี หรือทารก",
     unit: "คน",
     badgeText: "กลุ่มเปราะบาง",
-    icon: <Baby className="h-6 w-6 text-primary-600" aria-hidden="true" />,
+    icon: <Baby className="text-primary-600 h-6 w-6" aria-hidden="true" />,
   },
   {
     key: "pets",
@@ -63,9 +76,10 @@ export const PEOPLE_GROUPS: readonly PeopleGroupConfig[] = [
   },
 ];
 
-interface Step3PeopleProps {
+interface Step2DetailsProps {
   incidentType?: IncidentType;
   details?: Record<string, string | number | boolean | string[] | undefined>;
+  dangerSigns?: string[];
   waterLevel?: WaterLevel;
   canSelfEvacuate?: boolean;
   adults: number;
@@ -74,11 +88,10 @@ interface Step3PeopleProps {
   childrenCount: number;
   pets: number;
   hasInjured: boolean;
-  errors: Step3ValidationErrors;
-  onChangeDetail?: (
-    key: string,
-    value: string | number | boolean | string[] | undefined,
-  ) => void;
+  errors: Step2ValidationErrors;
+  onChangeDangerSigns: (dangerSigns: string[]) => void;
+  onSelectCanSelfEvacuate: (canSelfEvacuate: boolean) => void;
+  onChangeDetail?: (key: string, value: string | number | boolean | string[] | undefined) => void;
   onChangeCount: (group: PeopleGroupKey, nextValue: number) => void;
   onToggleInjured: (next: boolean) => void;
   onPrev: () => void;
@@ -86,17 +99,20 @@ interface Step3PeopleProps {
 }
 
 /**
- * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 3 (TF-11, TF-51, TF-54):
+ * ฟอร์มขอความช่วยเหลือ SOS ขั้นที่ 2 "รายละเอียดเหตุ" (TF-11, TF-51, TF-54, TF-55, TF-66):
+ * - สัญญาณอันตรายอยู่บนสุด: ติ๊กได้หลายข้อ หรือกด "ไม่มีข้อใดเลย" (ติ๊กแล้วขึ้นแถบโทร 1669 ค้างบนสุดทุกขั้น)
+ * - ออกจากที่นั่นเองได้ไหม: ได้ / ไม่ได้ (ต้องตอบ)
  * - วาดคำถามเฉพาะประเภทจากทะเบียน INCIDENT_REGISTRY (เลือก/ตัวเลข/ใช่-ไม่ใช่/ข้อความสั้น) ไม่เกิน 4 คำถามหลัก
  * - ซ่อน/แสดงคำถามย่อยตามเงื่อนไข dependsOn
- * - ตัวเลือกแบบหลายข้อ (multi-select) และปุ่มกดอย่างน้อย 48px
- * - ต่อด้วยตัวนับจำนวนผู้ติดค้างและสัตว์เลี้ยง 5 กลุ่ม
- * - ปุ่ม + และ − ขนาด 48x48px (min-h-[48px] min-w-[48px]) กดง่ายสำหรับผู้สูงอายุ
+ * - ตัวเลือกแบบหลายข้อ (multi-select) และปุ่มกดอย่างน้อย 56px (TF-66)
+ * - ต่อด้วยตัวนับคนและสัตว์เลี้ยง 5 กลุ่ม หัวข้อเปลี่ยนตามประเภท (peopleLabel ในทะเบียน)
+ * - ปุ่ม + และ − ขนาด 56x56px (size-14) กดง่ายสำหรับผู้สูงอายุ
  * - จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน
  */
-export function Step3People({
+export function Step2Details({
   incidentType = IncidentType.FLOOD,
   details = {},
+  dangerSigns,
   waterLevel,
   canSelfEvacuate,
   adults,
@@ -106,14 +122,28 @@ export function Step3People({
   pets,
   hasInjured,
   errors,
+  onChangeDangerSigns,
+  onSelectCanSelfEvacuate,
   onChangeDetail,
   onChangeCount,
   onToggleInjured,
   onPrev,
   onNext,
-}: Step3PeopleProps) {
+}: Step2DetailsProps) {
   const incident = INCIDENT_REGISTRY[incidentType];
-  const questions = incident.questions;
+  // ออกเองได้ไหมถามในส่วนอันตรายด้านบนแล้ว ไม่ถามซ้ำ (เดิมน้ำท่วมถาม 2 รอบ)
+  const questions = incident.questions.filter((q) => q.key !== "canSelfEvacuate");
+  const dangerSignList =
+    incident.dangerSigns.length > 0 ? incident.dangerSigns : UNIVERSAL_DANGER_SIGNS;
+
+  function toggleSign(key: string) {
+    const current = dangerSigns ?? [];
+    onChangeDangerSigns(
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key],
+    );
+  }
+
+  const noneSelected = Array.isArray(dangerSigns) && dangerSigns.length === 0;
 
   const allAnswers: Record<string, unknown> = {
     ...details,
@@ -129,9 +159,7 @@ export function Step3People({
 
   const visibleQuestions = questions.filter((q) => isQuestionVisible(q, allAnswers));
 
-  function getQuestionValue(
-    q: IncidentQuestion,
-  ): string | number | boolean | string[] | undefined {
+  function getQuestionValue(q: IncidentQuestion): string | number | boolean | string[] | undefined {
     const fromDetails = details[q.key];
     if (fromDetails !== undefined) return fromDetails;
     if (q.key === "vehicleTypes" && details.vehicleType !== undefined) {
@@ -177,21 +205,123 @@ export function Step3People({
 
   return (
     <div className="space-y-6">
+      {/* TF-66: สัญญาณอันตรายอยู่บนสุด (ย้ายมาจากขั้นที่ 1) — ติ๊กแล้วแถบโทรขึ้นทันทีและค้างทุกขั้น */}
+      <section aria-labelledby="danger-heading" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <h2
+            id="danger-heading"
+            className="font-heading text-text-primary text-[30px] leading-[1.25] font-bold tracking-[-0.3px] lg:text-[22px] lg:leading-[1.3] lg:font-semibold lg:tracking-[-0.11px]"
+          >
+            ตอนนี้มีข้อใดต่อไปนี้ไหม?
+          </h2>
+          <p className="text-text-secondary text-lg leading-[1.65]">
+            เลือกได้หลายข้อ ถ้าไม่มีให้กด &quot;ไม่มีข้อใดเลย&quot;
+          </p>
+          {errors.dangerSigns && (
+            <p role="alert" className="text-base font-medium text-red-600">
+              {errors.dangerSigns}
+            </p>
+          )}
+        </div>
+
+        <div role="group" aria-labelledby="danger-heading" className="flex flex-col gap-3">
+          {dangerSignList.map((sign) => {
+            const selected = dangerSigns?.includes(sign.key) ?? false;
+            return (
+              <button
+                key={sign.key}
+                type="button"
+                role="checkbox"
+                aria-checked={selected}
+                onClick={() => toggleSign(sign.key)}
+                className={optionClass(selected)}
+              >
+                <span className="text-text-primary min-w-0 flex-1">{sign.label.th}</span>
+                <span
+                  aria-hidden="true"
+                  className={`flex size-7 shrink-0 items-center justify-center rounded-md border-2 ${
+                    selected
+                      ? "border-primary-600 bg-primary-600 text-white"
+                      : "border-border-strong"
+                  }`}
+                >
+                  {selected && <Check className="size-5" />}
+                </span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={noneSelected}
+            onClick={() => onChangeDangerSigns([])}
+            className={optionClass(noneSelected)}
+          >
+            <span className="text-text-primary min-w-0 flex-1">ไม่มีข้อใดเลย</span>
+            <img
+              src={noneSelected ? "/brand/radio-on.svg" : "/brand/radio-off.svg"}
+              alt=""
+              className="size-[26px] shrink-0"
+            />
+          </button>
+        </div>
+      </section>
+
+      <section aria-labelledby="evacuate-heading" className="flex flex-col gap-4">
+        <h2 id="evacuate-heading" className={headingClass}>
+          ออกจากที่นั่นเองได้ไหม?
+        </h2>
+        {errors.canSelfEvacuate && (
+          <p role="alert" className="text-base font-medium text-red-600">
+            {errors.canSelfEvacuate}
+          </p>
+        )}
+        <div
+          role="radiogroup"
+          aria-labelledby="evacuate-heading"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        >
+          {[
+            { value: true, label: "ได้ ออกเองได้" },
+            { value: false, label: "ไม่ได้ ติดอยู่" },
+          ].map((option) => {
+            const selected = canSelfEvacuate === option.value;
+            return (
+              <button
+                key={option.label}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onSelectCanSelfEvacuate(option.value)}
+                className={optionClass(selected)}
+              >
+                <span className="text-text-primary min-w-0 flex-1">{option.label}</span>
+                <img
+                  src={selected ? "/brand/radio-on.svg" : "/brand/radio-off.svg"}
+                  alt=""
+                  className="size-[26px] shrink-0"
+                />
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* คำถามเฉพาะประเภทเหตุจากทะเบียน INCIDENT_REGISTRY (TF-51 / TF-54) */}
       {visibleQuestions.length > 0 && (
         <section
-          aria-labelledby="step3-questions-heading"
-          data-testid="step3-incident-questions"
-          className="rounded-[14px] border border-border-default bg-bg-surface p-5 sm:p-6"
+          aria-labelledby="step2-questions-heading"
+          data-testid="step2-incident-questions"
+          className="border-border-default bg-bg-surface rounded-[14px] border p-5 sm:p-6"
         >
           <div className="mb-4">
             <h2
-              id="step3-questions-heading"
-              className="font-heading text-xl font-bold text-text-primary sm:text-[22px]"
+              id="step2-questions-heading"
+              className="font-heading text-text-primary text-xl font-bold sm:text-[22px]"
             >
               รายละเอียดเหตุ{incident.label.th}
             </h2>
-            <p className="mt-1 text-base text-text-secondary">
+            <p className="text-text-secondary mt-1 text-base">
               ตอบคำถามสั้นๆ เพื่อให้ทีมกู้ภัยเตรียมอุปกรณ์ช่วยเหลือได้ตรงกับสถานการณ์
             </p>
           </div>
@@ -205,14 +335,14 @@ export function Step3People({
                 <div
                   key={q.key}
                   data-testid={`incident-question-${q.key}`}
-                  className="rounded-[12px] border border-border-default bg-bg-subtle/30 p-4"
+                  className="border-border-default bg-bg-subtle/30 rounded-[12px] border p-4"
                 >
-                  <p className="font-heading text-base font-bold text-text-primary sm:text-lg">
+                  <p className="font-heading text-text-primary text-base font-bold sm:text-lg">
                     {q.label.th}{" "}
                     {q.required ? (
                       <span className="text-red-600">*</span>
                     ) : (
-                      <span className="text-sm font-normal text-text-secondary">(ไม่บังคับ)</span>
+                      <span className="text-text-secondary text-sm font-normal">(ไม่บังคับ)</span>
                     )}
                   </p>
 
@@ -234,10 +364,10 @@ export function Step3People({
                             onClick={() =>
                               handleAnswer(q, !q.required && selected ? undefined : opt.value)
                             }
-                            className={`flex min-h-[48px] items-center justify-between gap-3 rounded-[10px] px-4 py-3 text-left font-heading text-base font-semibold transition-colors ${
+                            className={`font-heading flex min-h-14 items-center justify-between gap-3 rounded-[10px] px-4 py-3 text-left text-base font-semibold transition-colors ${
                               selected
-                                ? "border-2 border-primary-600 bg-primary-50 text-primary-700"
-                                : "border border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
+                                ? "border-primary-600 bg-primary-50 text-primary-700 border-2"
+                                : "border-border-default bg-bg-surface text-text-primary hover:border-border-strong border"
                             }`}
                           >
                             <span>{opt.label.th}</span>
@@ -280,10 +410,10 @@ export function Step3People({
                                 : [...currentArr, opt.value];
                               handleAnswer(q, next.length > 0 ? next : undefined);
                             }}
-                            className={`flex min-h-[48px] items-center justify-between gap-3 rounded-[10px] px-4 py-3 text-left font-heading text-base font-semibold transition-colors ${
+                            className={`font-heading flex min-h-14 items-center justify-between gap-3 rounded-[10px] px-4 py-3 text-left text-base font-semibold transition-colors ${
                               selected
-                                ? "border-2 border-primary-600 bg-primary-50 text-primary-700"
-                                : "border border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
+                                ? "border-primary-600 bg-primary-50 text-primary-700 border-2"
+                                : "border-border-default bg-bg-surface text-text-primary hover:border-border-strong border"
                             }`}
                           >
                             <span>{opt.label.th}</span>
@@ -318,9 +448,9 @@ export function Step3People({
                           const val = e.target.value;
                           handleAnswer(q, val.length > 0 ? val : undefined);
                         }}
-                        className="min-h-[48px] w-full rounded-[10px] border border-border-strong bg-bg-surface p-3 font-sans text-base text-text-primary focus:border-primary-600 focus:outline-none"
+                        className="border-border-strong bg-bg-surface text-text-primary focus:border-primary-600 min-h-14 w-full rounded-[10px] border p-3 font-sans text-base focus:outline-none"
                       />
-                      <div className="mt-1 flex justify-end text-xs text-text-secondary">
+                      <div className="text-text-secondary mt-1 flex justify-end text-xs">
                         <span data-testid={`question-${q.key}-counter`}>
                           {typeof currentValue === "string" ? currentValue.length : 0} /{" "}
                           {q.maxLength} ตัวอักษร
@@ -343,7 +473,7 @@ export function Step3People({
                               : q.min;
                           handleAnswer(q, next);
                         }}
-                        className="flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-border-strong bg-bg-surface text-text-primary transition-colors hover:bg-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
+                        className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle flex size-14 shrink-0 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Minus className="h-5 w-5" aria-hidden="true" />
                       </button>
@@ -368,7 +498,7 @@ export function Step3People({
                             handleAnswer(q, Math.max(q.min, Math.min(q.max, parsed)));
                           }
                         }}
-                        className="h-12 min-h-[48px] w-28 rounded-[10px] border border-border-strong bg-bg-surface px-3 text-center font-mono text-xl font-bold text-text-primary focus:border-primary-600 focus:outline-none"
+                        className="border-border-strong bg-bg-surface text-text-primary focus:border-primary-600 min-h-14 w-28 rounded-[10px] border px-3 text-center font-mono text-xl font-bold focus:outline-none"
                       />
 
                       <button
@@ -383,7 +513,7 @@ export function Step3People({
                               : Math.max(q.min, 1);
                           handleAnswer(q, next);
                         }}
-                        className="flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-primary-600 text-text-on-primary transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="bg-primary-600 text-text-on-primary hover:bg-primary-700 flex size-14 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Plus className="h-5 w-5" aria-hidden="true" />
                       </button>
@@ -409,10 +539,10 @@ export function Step3People({
                             aria-checked={selected}
                             data-testid={opt.testId}
                             onClick={() => handleAnswer(q, opt.value)}
-                            className={`flex min-h-[48px] items-center justify-center rounded-[10px] px-4 py-3 font-heading text-base font-semibold transition-colors ${
+                            className={`font-heading flex min-h-14 items-center justify-center rounded-[10px] px-4 py-3 text-base font-semibold transition-colors ${
                               selected
-                                ? "border-2 border-primary-600 bg-primary-50 text-primary-700"
-                                : "border border-border-default bg-bg-surface text-text-primary hover:border-border-strong"
+                                ? "border-primary-600 bg-primary-50 text-primary-700 border-2"
+                                : "border-border-default bg-bg-surface text-text-primary hover:border-border-strong border"
                             }`}
                           >
                             {opt.text}
@@ -426,7 +556,7 @@ export function Step3People({
                     <p
                       role="alert"
                       data-testid={`error-question-${q.key}`}
-                      className="mt-2 font-heading text-sm font-semibold text-red-600"
+                      className="font-heading mt-2 text-sm font-semibold text-red-600"
                     >
                       • {questionError}
                     </p>
@@ -439,32 +569,32 @@ export function Step3People({
       )}
 
       <section
-        aria-labelledby="step3-people-heading"
-        className="rounded-[14px] border border-border-default bg-bg-surface p-5 sm:p-6"
+        aria-labelledby="step2-people-heading"
+        className="border-border-default bg-bg-surface rounded-[14px] border p-5 sm:p-6"
       >
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2
-              id="step3-people-heading"
-              className="font-heading text-xl font-bold text-text-primary sm:text-[22px]"
+              id="step2-people-heading"
+              className="font-heading text-text-primary text-xl font-bold sm:text-[22px]"
             >
-              3. จำนวนผู้ติดค้างในจุดเกิดเหตุ <span className="text-red-600">*</span>
+              {incident.peopleLabel.th} <span className="text-red-600">*</span>
             </h2>
-            <p className="mt-1 text-base text-text-secondary">
-              กดปุ่ม + หรือ − เพื่อระบุจำนวนคนในแต่ละกลุ่ม (ต้องมีผู้ติดค้างอย่างน้อย 1 คน)
+            <p className="text-text-secondary mt-1 text-base">
+              กดปุ่ม + หรือ − เพื่อระบุจำนวนคนในแต่ละกลุ่ม (ต้องมีอย่างน้อย 1 คน)
             </p>
           </div>
 
           {/* แถบสรุปจำนวนคนรวม */}
           <div
-            data-testid="step3-total-summary"
+            data-testid="step2-total-summary"
             className={`rounded-[12px] border px-4 py-2.5 text-right ${
               totalPeople > 0
                 ? "border-primary-500/40 bg-bg-subtle text-text-primary"
                 : "border-red-600/40 bg-red-50 text-red-600"
             }`}
           >
-            <p className="text-sm font-medium text-text-secondary">ผู้ติดค้างรวม</p>
+            <p className="text-text-secondary text-sm font-medium">รวม</p>
             <p className="font-mono text-2xl font-bold">
               {totalPeople} <span className="font-heading text-base font-semibold">คน</span>
             </p>
@@ -497,18 +627,18 @@ export function Step3People({
                 <div className="flex min-w-[180px] flex-1 items-start gap-3.5">
                   <div
                     data-testid={`icon-${group.key}`}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-primary-50"
+                    className="bg-primary-50 flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px]"
                   >
                     {group.icon}
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-heading text-lg font-bold text-text-primary">
+                      <span className="font-heading text-text-primary text-lg font-bold">
                         {group.label}
                       </span>
                       {group.badgeText && (
                         <span
-                          className={`rounded-full px-2.5 py-0.5 font-heading text-xs font-semibold ${
+                          className={`font-heading rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                             group.key === "bedridden"
                               ? "bg-red-50 text-red-600"
                               : "bg-amber-50 text-amber-700"
@@ -518,13 +648,13 @@ export function Step3People({
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-sm leading-relaxed text-text-secondary sm:text-base">
+                    <p className="text-text-secondary mt-0.5 text-sm leading-relaxed sm:text-base">
                       {group.subtitle}
                     </p>
                   </div>
                 </div>
 
-                {/* ปุ่ม − ตัวเลข และปุ่ม + (ขนาดอย่างน้อย 48x48px ตามเกณฑ์ผ่าน) */}
+                {/* ปุ่ม − ตัวเลข และปุ่ม + (ขนาด 56x56px ตาม TF-66) */}
                 <div className="flex items-center gap-2.5 sm:gap-3">
                   <button
                     type="button"
@@ -532,7 +662,7 @@ export function Step3People({
                     aria-label={`ลดจำนวน${group.label}`}
                     disabled={isMinusDisabled}
                     onClick={() => handleStep(group.key, -1)}
-                    className="flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-border-strong bg-bg-surface text-text-primary transition-colors hover:bg-bg-subtle active:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle active:bg-primary-100 flex size-14 shrink-0 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Minus className="h-5 w-5" aria-hidden="true" />
                   </button>
@@ -540,11 +670,11 @@ export function Step3People({
                   <div className="min-w-[64px] text-center">
                     <span
                       data-testid={`count-${group.key}`}
-                      className="font-mono text-2xl font-bold text-text-primary"
+                      className="text-text-primary font-mono text-2xl font-bold"
                     >
                       {value}
                     </span>
-                    <span className="ml-1 text-sm text-text-secondary">{group.unit}</span>
+                    <span className="text-text-secondary ml-1 text-sm">{group.unit}</span>
                   </div>
 
                   <button
@@ -553,7 +683,7 @@ export function Step3People({
                     aria-label={`เพิ่มจำนวน${group.label}`}
                     disabled={isPlusDisabled}
                     onClick={() => handleStep(group.key, 1)}
-                    className="flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-primary-600 text-text-on-primary transition-colors hover:bg-primary-700 active:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="bg-primary-600 text-text-on-primary hover:bg-primary-700 active:bg-primary-700 flex size-14 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Plus className="h-5 w-5" aria-hidden="true" />
                   </button>
@@ -567,10 +697,14 @@ export function Step3People({
         {(errors.totalPeople || errors.missingSummary.length > 0) && (
           <div
             role="alert"
-            data-testid="step3-missing-alert"
+            data-testid="step2-missing-alert"
             className="mt-5 rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
           >
             <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
+            {errors.dangerSigns && <p className="mt-1 font-medium">• {errors.dangerSigns}</p>}
+            {errors.canSelfEvacuate && (
+              <p className="mt-1 font-medium">• {errors.canSelfEvacuate}</p>
+            )}
             {errors.totalPeople && <p className="mt-1 font-medium">• {errors.totalPeople}</p>}
             {errors.questionErrors &&
               Object.entries(errors.questionErrors).map(([key, msg]) => (
@@ -586,20 +720,20 @@ export function Step3People({
       <div className="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-between">
         <button
           type="button"
-          data-testid="step3-prev-button"
+          data-testid="step2-prev-button"
           onClick={onPrev}
-          className="flex h-14 min-h-[48px] w-full items-center justify-center rounded-full border border-border-strong bg-bg-surface px-6 font-heading text-[19px] font-semibold text-text-primary transition-colors hover:bg-bg-subtle sm:w-auto sm:min-w-[160px]"
+          className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle flex min-h-14 w-full items-center justify-center rounded-full border px-6 text-[19px] font-semibold transition-colors sm:w-auto sm:min-w-[160px]"
         >
           ← ย้อนกลับ
         </button>
 
         <button
           type="button"
-          data-testid="step3-next-button"
+          data-testid="step2-next-button"
           onClick={onNext}
-          className="flex h-14 min-h-[48px] w-full items-center justify-center rounded-full bg-primary-600 px-8 font-heading text-[19px] font-semibold text-text-on-primary transition-colors hover:bg-primary-700 active:bg-primary-700 sm:w-auto sm:min-w-[220px]"
+          className="bg-primary-600 font-heading text-text-on-primary hover:bg-primary-700 active:bg-primary-700 flex min-h-14 w-full items-center justify-center rounded-full px-8 text-[19px] font-semibold transition-colors sm:w-auto sm:min-w-[220px]"
         >
-          ถัดไป: สิ่งที่ต้องการ →
+          ถัดไป: ตำแหน่ง →
         </button>
       </div>
     </div>

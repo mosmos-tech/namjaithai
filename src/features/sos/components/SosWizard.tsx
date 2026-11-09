@@ -6,16 +6,10 @@ import Link from "next/link";
 import { rememberSentCase } from "../sent-case";
 import { saveOfflineSos } from "../offline-queue-core";
 import { WaitingAdvice } from "./WaitingAdvice";
-import {
-  INCIDENT_REGISTRY,
-  IncidentType,
-  Need,
-  UNIVERSAL_DANGER_SIGNS,
-  type LocatedArea,
-  type WaterLevel,
-} from "../../../lib/domain";
+import { IncidentType, Need, type LocatedArea, type WaterLevel } from "../../../lib/domain";
 import {
   applyGpsPositionToDraft,
+  applyIncidentTypeToDraft,
   applyLocatedAreaToDraft,
   applyManualPinToDraft,
   saveSosDraft,
@@ -44,17 +38,18 @@ import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
 import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
 import { DangerCallBar } from "./DangerCallBar";
-import { Step1Situation } from "./Step1Situation";
-import { Step2Location } from "./Step2Location";
-import { Step3People, type PeopleGroupKey } from "./Step3People";
-import { Step4Needs, getNeedOptionsForIncident } from "./Step4Needs";
+import { useEnabledIncidentTypes } from "../enabled-incidents";
+import { Step1Incident } from "./Step1Incident";
+import { Step2Details, type PeopleGroupKey } from "./Step2Details";
+import { Step3Location } from "./Step3Location";
+import { Step4Needs } from "./Step4Needs";
 import { Step5Contact } from "./Step5Contact";
 
 /**
- * โครงฟอร์มขอความช่วยเหลือ SOS 5 ขั้น:
- * ขั้นที่ 1: สถานการณ์ — สัญญาณอันตราย ออกเองได้ไหม ระดับน้ำ (TF-08, TF-55)
- * ขั้นที่ 2: ตำแหน่งที่เกิดเหตุ (TF-09)
- * ขั้นที่ 3: จำนวนผู้ติดค้าง (TF-11)
+ * โครงฟอร์มขอความช่วยเหลือ SOS 5 ขั้น (เรียงใหม่ใน TF-66):
+ * ขั้นที่ 1: เกิดเหตุอะไร — ประเภทเหตุ (เฉพาะที่เปิดรับแจ้ง) + อยู่ที่จุดเกิดเหตุไหม (TF-50)
+ * ขั้นที่ 2: รายละเอียดเหตุ — สัญญาณอันตราย ออกเองได้ไหม (TF-55) คำถามเฉพาะประเภท (TF-51) จำนวนคน (TF-11)
+ * ขั้นที่ 3: ตำแหน่งที่เกิดเหตุ (TF-09)
  * ขั้นที่ 4: สิ่งที่ต้องการ (TF-11)
  * ขั้นที่ 5: ข้อมูลติดต่อและแนบรูป (TF-11)
  *
@@ -69,12 +64,27 @@ export function SosWizard() {
     getSosDraftSnapshot,
     getSosDraftServerSnapshot,
   );
+  const enabledIncidents = useEnabledIncidentTypes();
+  // ตรวจว่าประเภทที่เลือกยังเปิดรับแจ้งอยู่ เฉพาะเมื่อรู้รายการจริงแล้ว (ตอนออฟไลน์ให้เซิร์ฟเวอร์ตรวจตอนส่ง)
+  const knownEnabledTypes =
+    enabledIncidents.source === "network" || enabledIncidents.source === "cache"
+      ? enabledIncidents.types
+      : undefined;
+  // ร่างที่เลือกประเภทไว้แล้ว (เช่น ?type= หรือร่างเก่า) แต่รายการสำรองไม่มี ให้ยังเห็นตัวที่เลือก
+  const gridIncidents =
+    knownEnabledTypes === undefined &&
+    draft.incidentType &&
+    !enabledIncidents.types.includes(draft.incidentType)
+      ? { ...enabledIncidents, types: [...enabledIncidents.types, draft.incidentType] }
+      : enabledIncidents;
 
   // สถานะตรวจข้อมูลขั้นที่ 1
   const [step1Attempted, setStep1Attempted] = useState(false);
   const [step1Errors, setStep1Errors] = useState<Step1ValidationErrors>({
     missingSummary: [],
   });
+
+  // สถานะตรวจข้อมูลขั้นที่ 2
   const [step2Attempted, setStep2Attempted] = useState(false);
   const [step2Errors, setStep2Errors] = useState<Step2ValidationErrors>({
     missingSummary: [],
@@ -111,68 +121,25 @@ export function SosWizard() {
     return next;
   }
 
-  // ── ขั้นที่ 1 ───────────────────────────────────────────────────────────────
-  // TF-50 / TF-55: เลือกประเภทเหตุ + อยู่ที่จุดเกิดเหตุไหม + ตอบคำถามสัญญาณอันตราย
-  function handleChangeStep1(
-    patch: Partial<Pick<SosDraft, "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate">>,
-  ) {
+  // ── ขั้นที่ 1: เกิดเหตุอะไร ────────────────────────────────────────────────
+  // TF-66: ย้อนกลับมาเปลี่ยนประเภทได้ — applyIncidentTypeToDraft ล้างคำตอบเฉพาะประเภทเดิม
+  function handleChangeStep1(patch: { incidentType?: IncidentType; atScene?: boolean }) {
     setSubmitSuccessMessage(null);
     setSubmitError(null);
     const next = updateDraft((prev) => {
-      const merged: SosDraft = { ...prev, ...patch };
-      if (patch.incidentType && patch.incidentType !== prev.incidentType) {
-        if (Array.isArray(merged.dangerSigns)) {
-          const registrySigns = INCIDENT_REGISTRY[patch.incidentType].dangerSigns;
-          const validKeys = (registrySigns.length > 0 ? registrySigns : UNIVERSAL_DANGER_SIGNS).map(
-            (s) => s.key,
-          );
-          merged.dangerSigns = merged.dangerSigns.filter((k) => validKeys.includes(k));
-        }
-        const allowedNeeds = new Set(
-          getNeedOptionsForIncident(patch.incidentType).map((opt) => opt.value),
-        );
-        merged.needs = merged.needs.filter((need) => allowedNeeds.has(need));
-        merged.details = {};
-        if (patch.incidentType !== IncidentType.FLOOD) {
-          merged.waterLevel = undefined;
-        }
-      }
-      if (typeof patch.canSelfEvacuate === "boolean") {
-        merged.details = {
-          ...merged.details,
-          ...((merged.incidentType ?? IncidentType.FLOOD) === IncidentType.FLOOD
-            ? { canSelfEvacuate: patch.canSelfEvacuate }
-            : {}),
-        };
-      }
-      return merged;
+      const withType = patch.incidentType
+        ? applyIncidentTypeToDraft(prev, patch.incidentType)
+        : prev;
+      return patch.atScene === undefined ? withType : { ...withType, atScene: patch.atScene };
     });
     if (step1Attempted) {
-      setStep1Errors(validateStep1Draft(next).errors);
-    }
-  }
-
-  // ระดับน้ำไม่บังคับ: undefined = ผู้ใช้กดยกเลิกตัวที่เลือกไว้
-  function handleSelectWaterLevel(waterLevel: WaterLevel | undefined) {
-    setSubmitSuccessMessage(null);
-    setSubmitError(null);
-    const next = updateDraft((prev) => {
-      const nextDetails = { ...(prev.details ?? {}) };
-      if (waterLevel === undefined) {
-        delete nextDetails.waterLevel;
-      } else {
-        nextDetails.waterLevel = waterLevel;
-      }
-      return { ...prev, waterLevel, details: nextDetails };
-    });
-    if (step1Attempted) {
-      setStep1Errors(validateStep1Draft(next).errors);
+      setStep1Errors(validateStep1Draft(next, knownEnabledTypes).errors);
     }
   }
 
   function handleStep1Next() {
     setStep1Attempted(true);
-    const check = validateStep1Draft(draft);
+    const check = validateStep1Draft(draft, knownEnabledTypes);
     setStep1Errors(check.errors);
 
     if (!check.valid) {
@@ -187,52 +154,30 @@ export function SosWizard() {
     }));
   }
 
-  // ── ขั้นที่ 2: พิกัดและที่อยู่ ──────────────────────────────────────────────
-  function handleGpsPosition(coords: { latitude: number; longitude: number; accuracy?: number }) {
-    const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
+  // ── ขั้นที่ 2: รายละเอียดเหตุ ───────────────────────────────────────────────
+  function handleChangeDanger(patch: Partial<Pick<SosDraft, "dangerSigns" | "canSelfEvacuate">>) {
+    setSubmitSuccessMessage(null);
+    setSubmitError(null);
+    const next = updateDraft((prev) => {
+      const merged: SosDraft = { ...prev, ...patch };
+      if (
+        typeof patch.canSelfEvacuate === "boolean" &&
+        (merged.incidentType ?? IncidentType.FLOOD) === IncidentType.FLOOD
+      ) {
+        merged.details = { ...merged.details, canSelfEvacuate: patch.canSelfEvacuate };
+      }
+      return merged;
+    });
     if (step2Attempted) {
       setStep2Errors(validateStep2Draft(next).errors);
     }
   }
 
-  function handleManualPin(coords: { lat: number; lng: number }, source?: ManualLocationSource) {
-    const next = updateDraft((prev) => applyManualPinToDraft(prev, coords, source));
-    if (step2Attempted) {
-      setStep2Errors(validateStep2Draft(next).errors);
-    }
-  }
-
-  function handleAutoFillArea(area: LocatedArea) {
-    const next = updateDraft((prev) => applyLocatedAreaToDraft(prev, area));
-    if (step2Attempted) {
-      setStep2Errors(validateStep2Draft(next).errors);
-    }
-  }
-
-  function handleUpdateStep2Field(patch: Partial<SosDraft>) {
-    const next = updateDraft((prev) => ({ ...prev, ...patch }));
-    if (step2Attempted) {
-      setStep2Errors(validateStep2Draft(next).errors);
-    }
-  }
-
-  function handleStep2Next() {
-    setStep2Attempted(true);
-    const check = validateStep2Draft(draft);
-    setStep2Errors(check.errors);
-
-    if (!check.valid) {
-      return;
-    }
-
-    updateDraft((prev) => ({
-      ...prev,
-      currentStep: 3,
-    }));
-  }
-
-  // ── ขั้นที่ 3: คำถามเฉพาะประเภทเหตุ + ผู้ติดค้าง ──────────────────────────────
-  function handleChangeDetail(key: string, value: string | number | boolean | string[] | undefined) {
+  // ── ขั้นที่ 2 (ต่อ): คำถามเฉพาะประเภทเหตุ + ผู้ติดค้าง ─────────────────────
+  function handleChangeDetail(
+    key: string,
+    value: string | number | boolean | string[] | undefined,
+  ) {
     const next = updateDraft((prev) => {
       const nextDetails = { ...(prev.details ?? {}) };
       if (value === undefined) {
@@ -256,8 +201,8 @@ export function SosWizard() {
       };
     });
 
-    if (step3Attempted) {
-      setStep3Errors(validateStep3Draft(next).errors);
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
     }
   }
 
@@ -266,6 +211,50 @@ export function SosWizard() {
       ...prev,
       [group]: nextValue,
     }));
+    if (step2Attempted) {
+      setStep2Errors(validateStep2Draft(next).errors);
+    }
+  }
+
+  function handleStep2Next() {
+    setStep2Attempted(true);
+    const check = validateStep2Draft(draft);
+    setStep2Errors(check.errors);
+
+    if (!check.valid) {
+      return;
+    }
+
+    updateDraft((prev) => ({
+      ...prev,
+      currentStep: 3,
+    }));
+  }
+
+  // ── ขั้นที่ 3: พิกัดและที่อยู่ ──────────────────────────────────────────────
+  function handleGpsPosition(coords: { latitude: number; longitude: number; accuracy?: number }) {
+    const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
+    if (step3Attempted) {
+      setStep3Errors(validateStep3Draft(next).errors);
+    }
+  }
+
+  function handleManualPin(coords: { lat: number; lng: number }, source?: ManualLocationSource) {
+    const next = updateDraft((prev) => applyManualPinToDraft(prev, coords, source));
+    if (step3Attempted) {
+      setStep3Errors(validateStep3Draft(next).errors);
+    }
+  }
+
+  function handleAutoFillArea(area: LocatedArea) {
+    const next = updateDraft((prev) => applyLocatedAreaToDraft(prev, area));
+    if (step3Attempted) {
+      setStep3Errors(validateStep3Draft(next).errors);
+    }
+  }
+
+  function handleUpdateStep3Field(patch: Partial<SosDraft>) {
+    const next = updateDraft((prev) => ({ ...prev, ...patch }));
     if (step3Attempted) {
       setStep3Errors(validateStep3Draft(next).errors);
     }
@@ -401,10 +390,10 @@ export function SosWizard() {
           updateDraft((prev) => ({ ...prev, currentStep: 1 }));
           return;
         }
-        if (result.step === 3) {
-          setStep3Attempted(true);
-          setStep3Errors(result.step3Errors);
-          updateDraft((prev) => ({ ...prev, currentStep: 3 }));
+        if (result.step === 2) {
+          setStep2Attempted(true);
+          setStep2Errors(result.step2Errors);
+          updateDraft((prev) => ({ ...prev, currentStep: 2 }));
           return;
         }
         if (result.step === 4) {
@@ -413,7 +402,7 @@ export function SosWizard() {
           updateDraft((prev) => ({ ...prev, currentStep: 4 }));
           return;
         }
-        if (result.step === 2) {
+        if (result.step === 3) {
           setSubmitError(result.error);
           return;
         }
@@ -469,6 +458,8 @@ export function SosWizard() {
         } else setHasSentDetails(false);
         setStep1Attempted(false);
         setStep1Errors({ missingSummary: [] });
+        setStep2Attempted(false);
+        setStep2Errors({ missingSummary: [] });
         setStep3Attempted(false);
         setStep3Errors({ missingSummary: [] });
         setStep4Attempted(false);
@@ -485,15 +476,18 @@ export function SosWizard() {
   function handleGoToStep(targetStep: SosStepNumber) {
     // ตรวจความครบถ้วนของขั้นก่อนหน้าเมื่อผู้ใช้กดข้ามไปขั้นถัดไป
     if (targetStep > 1) {
-      const check1 = validateStep1Draft(draft);
+      const check1 = validateStep1Draft(draft, knownEnabledTypes);
       if (!check1.valid) {
         setStep1Attempted(true);
         setStep1Errors(check1.errors);
+        if (draft.currentStep !== 1) {
+          updateDraft((prev) => ({ ...prev, currentStep: 1 }));
+        }
         return;
       }
     }
 
-    // ถ้าจะข้ามไปขั้นที่ 3–5 ต้องผ่านการตรวจขั้นที่ 2 ก่อน
+    // ถ้าจะข้ามไปขั้นที่ 3–5 ต้องตอบรายละเอียดเหตุในขั้นที่ 2 ก่อน
     if (targetStep > 2) {
       const check2 = validateStep2Draft(draft);
       if (!check2.valid) {
@@ -506,11 +500,15 @@ export function SosWizard() {
       }
     }
 
-    if (targetStep > 3 && draft.currentStep === 3) {
+    // ถ้าจะข้ามไปขั้นที่ 4–5 ต้องมีตำแหน่งในขั้นที่ 3 ก่อน
+    if (targetStep > 3) {
       const check3 = validateStep3Draft(draft);
       if (!check3.valid) {
         setStep3Attempted(true);
         setStep3Errors(check3.errors);
+        if (draft.currentStep !== 3) {
+          updateDraft((prev) => ({ ...prev, currentStep: 3 }));
+        }
         return;
       }
     }
@@ -574,39 +572,22 @@ export function SosWizard() {
           {submitSuccessMessage && submittedType && <WaitingAdvice incidentType={submittedType} />}
 
           {draft.currentStep === 1 && (
-            <Step1Situation
+            <Step1Incident
               incidentType={draft.incidentType}
               atScene={draft.atScene}
-              dangerSigns={draft.dangerSigns}
-              canSelfEvacuate={draft.canSelfEvacuate}
-              waterLevel={draft.waterLevel}
+              enabledIncidents={gridIncidents}
               errors={step1Errors}
               onSelectIncidentType={(incidentType) => handleChangeStep1({ incidentType })}
               onSelectAtScene={(atScene) => handleChangeStep1({ atScene })}
-              onChangeDangerSigns={(dangerSigns) => handleChangeStep1({ dangerSigns })}
-              onSelectCanSelfEvacuate={(canSelfEvacuate) => handleChangeStep1({ canSelfEvacuate })}
-              onSelectWaterLevel={handleSelectWaterLevel}
               onNext={handleStep1Next}
             />
           )}
 
           {draft.currentStep === 2 && (
-            <Step2Location
-              draft={draft}
-              errors={step2Errors}
-              onGpsPosition={handleGpsPosition}
-              onManualPin={handleManualPin}
-              onAutoFillArea={handleAutoFillArea}
-              onUpdateField={handleUpdateStep2Field}
-              onPrev={() => handleGoToStep(1)}
-              onNext={handleStep2Next}
-            />
-          )}
-
-          {draft.currentStep === 3 && (
-            <Step3People
+            <Step2Details
               incidentType={draft.incidentType ?? IncidentType.FLOOD}
               details={draft.details}
+              dangerSigns={draft.dangerSigns}
               waterLevel={draft.waterLevel}
               canSelfEvacuate={draft.canSelfEvacuate}
               adults={draft.adults}
@@ -615,10 +596,25 @@ export function SosWizard() {
               childrenCount={draft.children}
               pets={draft.pets}
               hasInjured={draft.hasInjured}
-              errors={step3Errors}
+              errors={step2Errors}
+              onChangeDangerSigns={(dangerSigns) => handleChangeDanger({ dangerSigns })}
+              onSelectCanSelfEvacuate={(canSelfEvacuate) => handleChangeDanger({ canSelfEvacuate })}
               onChangeDetail={handleChangeDetail}
               onChangeCount={handleChangePeopleCount}
               onToggleInjured={(hasInjured) => updateDraft((prev) => ({ ...prev, hasInjured }))}
+              onPrev={() => handleGoToStep(1)}
+              onNext={handleStep2Next}
+            />
+          )}
+
+          {draft.currentStep === 3 && (
+            <Step3Location
+              draft={draft}
+              errors={step3Errors}
+              onGpsPosition={handleGpsPosition}
+              onManualPin={handleManualPin}
+              onAutoFillArea={handleAutoFillArea}
+              onUpdateField={handleUpdateStep3Field}
               onPrev={() => handleGoToStep(2)}
               onNext={handleStep3Next}
             />

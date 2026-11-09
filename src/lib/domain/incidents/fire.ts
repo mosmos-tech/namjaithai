@@ -11,6 +11,8 @@ const FIRE_OFFICIAL_SOURCE = "https://www.disaster.go.th/apiv1/clickdownload/dow
 export const fire: IncidentDefinition = {
   code: IncidentType.FIRE,
   label: { th: "ไฟไหม้" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "Flame",
   capabilities: [UnitCapability.FIRE_SUPPRESSION, UnitCapability.EMS],
   questions: [

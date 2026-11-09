@@ -5,7 +5,9 @@ import { useEffect, useState, type ComponentType } from "react";
 // The lightweight Pages Router home must also show pending SOS while offline.
 // Load the full queue interface only when a queue exists and a network is available.
 export function OfflineSosHomeSupport() {
-  const [status, setStatus] = useState<"pending" | "photo_pending" | "sent" | null>(null);
+  const [status, setStatus] = useState<"pending" | "photo_pending" | "blocked" | "sent" | null>(
+    null,
+  );
   const [Support, setSupport] = useState<ComponentType | null>(null);
 
   useEffect(() => {
@@ -27,9 +29,11 @@ export function OfflineSosHomeSupport() {
               ? null
               : item.status === "sent"
                 ? "sent"
-                : item.caseReceived
-                  ? "photo_pending"
-                  : "pending",
+                : item.status === "blocked"
+                  ? "blocked"
+                  : item.caseReceived
+                    ? "photo_pending"
+                    : "pending",
           );
           if (item && navigator.onLine && !loading) {
             loading = true;
@@ -65,13 +69,15 @@ export function OfflineSosHomeSupport() {
   return (
     <a
       href="/request"
-      className="block w-full bg-orange-600 px-4 py-3 text-center text-lg font-bold text-white"
+      className={`block w-full px-4 py-3 text-center text-lg font-bold text-white ${status === "blocked" ? "bg-red-700" : "bg-orange-600"}`}
     >
       {status === "sent"
         ? "ส่งถึงระบบแล้ว — กดดูรหัสเคส"
-        : status === "photo_pending"
-          ? "ส่งคำขอแล้ว กำลังส่งรูป — กดดูรายละเอียด"
-          : "มี 1 คำขอรอส่ง — กดดูรายละเอียด"}
+        : status === "blocked"
+          ? "ส่งคำขอไม่สำเร็จ — กดดูวิธีขอความช่วยเหลือ"
+          : status === "photo_pending"
+            ? "ส่งคำขอแล้ว กำลังส่งรูป — กดดูรายละเอียด"
+            : "มี 1 คำขอรอส่ง — กดดูรายละเอียด"}
     </a>
   );
 }

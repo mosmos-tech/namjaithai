@@ -176,7 +176,7 @@ export function trackPath(caseCode: string, trackingToken: string): string {
 // ข้อความที่ส่งเข้า LINE: รหัสเคสอยู่บรรทัดแรก ญาติจะได้เห็นทันทีในแชต
 export function lineShareText(caseCode: string, trackUrl: string): string {
   return [
-    `ฉันแจ้งขอความช่วยเหลือน้ำท่วมแล้ว รหัสเคส ${caseCode}`,
+    `ฉันแจ้งขอความช่วยเหลือแล้ว รหัสเคส ${caseCode}`,
     `ติดตามสถานะได้ที่ ${trackUrl}`,
     "(น้ำใจไทย SOS)",
   ].join("\n");

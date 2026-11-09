@@ -15,7 +15,7 @@ import {
   applyManualPinToDraft,
   createInitialSosDraft,
   getGpsStatusMessage,
-  validateStep2Draft,
+  validateStep3Draft,
 } from "../draft-storage";
 import { circleBounds, circlePolygon, distanceM } from "../map-geometry";
 import { handleCreateSosCase, type SosCaseRpcClient } from "../server/create-case";
@@ -101,7 +101,7 @@ describe("TF-65 กติกากลาง", () => {
   });
 });
 
-describe("TF-65 ร่างฟอร์มขั้นที่ 2", () => {
+describe("TF-65 ร่างฟอร์มขั้นตำแหน่ง", () => {
   it("GPS เกิน 1000 ม. เก็บพิกัดไว้ แต่ไปขั้นถัดไปไม่ได้จนกว่าจะปักเองหรือเลือกส่งพร้อมที่อยู่", () => {
     const draft = {
       ...applyGpsPositionToDraft(createInitialSosDraft(), MACBOOK_GPS),
@@ -109,7 +109,7 @@ describe("TF-65 ร่างฟอร์มขั้นที่ 2", () => {
     };
     expect(draft).toMatchObject({ accuracyM: 16238, locationSource: LocationSource.GPS });
 
-    const check = validateStep2Draft(draft);
+    const check = validateStep3Draft(draft);
     expect(check.valid).toBe(false);
     expect(check.errors.location).toBe(INACCURATE_LOCATION_MESSAGE);
   });
@@ -120,12 +120,12 @@ describe("TF-65 ร่างฟอร์มขั้นที่ 2", () => {
       landmark: "หน้าวัด",
       addressFallback: true,
     };
-    const noAddress = validateStep2Draft(draft);
+    const noAddress = validateStep3Draft(draft);
     expect(noAddress.valid).toBe(false);
     expect(noAddress.errors.location).toBeUndefined();
     expect(noAddress.errors.addressLine).toBe(ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE);
 
-    expect(validateStep2Draft({ ...draft, addressLine: "99/1 หมู่ 3" }).valid).toBe(true);
+    expect(validateStep3Draft({ ...draft, addressLine: "99/1 หมู่ 3" }).valid).toBe(true);
   });
 
   it("ข้อ 2: ปักเองหรือวางลิงก์หลัง GPS ไม่แม่น ล้าง accuracy และผ่านได้ทันที", () => {
@@ -136,14 +136,14 @@ describe("TF-65 ร่างฟอร์มขั้นที่ 2", () => {
       accuracyM: undefined,
       locationSource: LocationSource.MANUAL_PIN,
     });
-    expect(validateStep2Draft(pinned).valid).toBe(true);
+    expect(validateStep3Draft(pinned).valid).toBe(true);
 
     const linked = applyManualPinToDraft(gps, PIN, LocationSource.GMAPS_LINK);
     expect(linked).toMatchObject({
       accuracyM: undefined,
       locationSource: LocationSource.GMAPS_LINK,
     });
-    expect(validateStep2Draft(linked).valid).toBe(true);
+    expect(validateStep3Draft(linked).valid).toBe(true);
   });
 
   it("แถบสถานะเป็นสีแดงพร้อมข้อความตามการ์ด เมื่อ GPS เกิน 1000 ม.", () => {

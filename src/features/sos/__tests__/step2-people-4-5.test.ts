@@ -6,8 +6,8 @@ import {
   loadSosDraft,
   saveSosDraft,
   submitSosDraft,
-  validateStep2Draft,
   validateStep3Draft,
+  validateStep2Draft,
   validateStep4Draft,
   validateStep5Draft,
   getTotalPeopleCount,
@@ -18,13 +18,15 @@ import {
   MAX_PHOTO_BYTES,
   MAX_SOS_PHOTOS,
 } from "../image-compression";
-import { PEOPLE_GROUPS } from "../components/Step3People";
+import { PEOPLE_GROUPS } from "../components/Step2Details";
 import { NEED_OPTIONS, getNeedOptionsForIncident } from "../components/Step4Needs";
 
-describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค้าง สิ่งที่ต้องการ ข้อมูลติดต่อ)", () => {
+describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้น 2 ตั้งแต่ TF-66) สิ่งที่ต้องการ ข้อมูลติดต่อ", () => {
   it("เกณฑ์ข้อ 1: จำนวนคนรวมต้องมีอย่างน้อย 1 คน (สัตว์เลี้ยงไม่นับรวมเป็นจำนวนคน)", () => {
     // ไม่มีคนเลย มีแต่สัตว์เลี้ยง -> ไม่ผ่าน
-    const zeroHumans = validateStep3Draft({
+    const zeroHumans = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       adults: 0,
       elderly: 0,
       bedridden: 0,
@@ -36,7 +38,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(zeroHumans.errors.totalPeople).toContain("อย่างน้อย 1 คน");
 
     // มีผู้สูงอายุ 1 คน แม้ผู้ใหญ่เป็น 0 -> ผ่าน
-    const oneElderly = validateStep3Draft({
+    const oneElderly = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       adults: 0,
       elderly: 1,
       bedridden: 0,
@@ -185,14 +189,14 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(compressed.dataUrl.startsWith("data:image/jpeg;base64,")).toBe(true);
   });
 
-  it("การส่งฟอร์มข้อ 1: ถ้ายังไม่มีตำแหน่งหรือจุดสังเกตในขั้นที่ 2 ต้องตอบ error ไม่ขึ้นข้อความสำเร็จสีเขียว", async () => {
+  it("การส่งฟอร์มข้อ 1: ถ้ายังไม่มีตำแหน่งหรือจุดสังเกตในขั้นที่ 3 (TF-66) ต้องตอบ error ไม่ขึ้นข้อความสำเร็จสีเขียว", async () => {
     const fetchMock = vi.fn<typeof fetch>();
-    const check2 = validateStep2Draft({
+    const check3 = validateStep3Draft({
       lat: undefined,
       lng: undefined,
       landmark: "",
     });
-    expect(check2.valid).toBe(false);
+    expect(check3.valid).toBe(false);
 
     const draftWithoutLocation = {
       ...createInitialSosDraft(),
@@ -216,11 +220,11 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     });
 
     expect(result.status).toBe("invalid_step");
-    if (result.status !== "invalid_step" || result.step !== 2) {
-      throw new Error("Expected invalid_step for step 2");
+    if (result.status !== "invalid_step" || result.step !== 3) {
+      throw new Error("Expected invalid_step for step 3");
     }
     expect(result.error).toContain("ยังส่งคำขอไม่ได้");
-    expect(result.error).toContain("ขั้นที่ 2");
+    expect(result.error).toContain("ขั้นที่ 3");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -478,9 +482,11 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(reloaded.phone).toBe("");
   });
 
-  it("TF-51: validateStep3Draft ตรวจคำถามบังคับของประเภทเหตุ และ getNeedOptionsForIncident เปลี่ยนตามประเภทเหตุพร้อม OTHER เสมอ", () => {
+  it("TF-51: validateStep2Draft ตรวจคำถามบังคับของประเภทเหตุ และ getNeedOptionsForIncident เปลี่ยนตามประเภทเหตุพร้อม OTHER เสมอ", () => {
     // ROAD_ACCIDENT ยังไม่ตอบคำถามบังคับ 3 ข้อ -> ไม่ผ่าน
-    const missingRoadQuestions = validateStep3Draft({
+    const missingRoadQuestions = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.ROAD_ACCIDENT,
       details: {},
       adults: 1,
@@ -495,7 +501,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(missingRoadQuestions.errors.questionErrors).toHaveProperty("isTrapped");
 
     // ตอบครบทั้ง 3 ข้อ (ตัวเลข + ตัวเลือก + ใช่/ไม่ใช่) -> ผ่าน
-    const validRoadQuestions = validateStep3Draft({
+    const validRoadQuestions = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.ROAD_ACCIDENT,
       details: {
         injuredCount: 1,
@@ -523,9 +531,11 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(animalNeeds).toContain(Need.OTHER);
   });
 
-  it("TF-54: validateStep3Draft รองรับ multi-select, text kind ไม่เกิน 200 ตัวอักษร และ conditional questions", () => {
+  it("TF-54: validateStep2Draft รองรับ multi-select, text kind ไม่เกิน 200 ตัวอักษร และ conditional questions", () => {
     // 1. multi-select vehicleTypes ใน ROAD_ACCIDENT
-    const roadMulti = validateStep3Draft({
+    const roadMulti = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.ROAD_ACCIDENT,
       details: {
         injuredCount: 0,
@@ -541,7 +551,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(roadMulti.valid).toBe(true);
 
     // 2. kind: text ใน OTHER (ไม่เกิน 200 ตัวอักษร)
-    const otherValidText = validateStep3Draft({
+    const otherValidText = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.OTHER,
       details: {
         otherCategory: "GENERAL",
@@ -555,7 +567,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     });
     expect(otherValidText.valid).toBe(true);
 
-    const otherTooLong = validateStep3Draft({
+    const otherTooLong = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.OTHER,
       details: {
         otherCategory: "GENERAL",
@@ -572,7 +586,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
 
     // 3. Conditional sub-questions
     // FIRE: fireLocation === HOUSE -> ไม่ต้องตอบ buildingFloor
-    const fireHouse = validateStep3Draft({
+    const fireHouse = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.FIRE,
       details: {
         fireLocation: "HOUSE",
@@ -587,7 +603,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(fireHouse.valid).toBe(true);
 
     // FIRE: fireLocation === HIGH_RISE แต่ยังไม่ตอบ buildingFloor -> ไม่ผ่าน
-    const fireHighRiseMissing = validateStep3Draft({
+    const fireHighRiseMissing = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.FIRE,
       details: {
         fireLocation: "HIGH_RISE",
@@ -603,7 +621,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(fireHighRiseMissing.errors.questionErrors).toHaveProperty("buildingFloor");
 
     // FIRE: fireLocation === HIGH_RISE และตอบ buildingFloor -> ผ่าน
-    const fireHighRiseOk = validateStep3Draft({
+    const fireHighRiseOk = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.FIRE,
       details: {
         fireLocation: "HIGH_RISE",
@@ -619,7 +639,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(fireHighRiseOk.valid).toBe(true);
 
     // WATER_RESCUE: isFloatingVisible === false -> บังคับ submersionDuration
-    const waterRescueSubmergedMissing = validateStep3Draft({
+    const waterRescueSubmergedMissing = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.WATER_RESCUE,
       details: {
         victimsInWater: 1,
@@ -635,7 +657,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(waterRescueSubmergedMissing.valid).toBe(false);
     expect(waterRescueSubmergedMissing.errors.questionErrors).toHaveProperty("submersionDuration");
 
-    const waterRescueSubmergedOk = validateStep3Draft({
+    const waterRescueSubmergedOk = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.WATER_RESCUE,
       details: {
         victimsInWater: 1,
@@ -652,7 +676,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(waterRescueSubmergedOk.valid).toBe(true);
 
     // COLLAPSE: isTrappedUnderDebris === true -> บังคับ trappedCount
-    const collapseMissing = validateStep3Draft({
+    const collapseMissing = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.COLLAPSE,
       details: {
         collapseType: "BUILDING_ROOF",
@@ -667,7 +693,9 @@ describe("TF-11: ฟอร์ม SOS ขั้น 3–5 (ผู้ติดค�
     expect(collapseMissing.valid).toBe(false);
     expect(collapseMissing.errors.questionErrors).toHaveProperty("trappedCount");
 
-    const collapseOk = validateStep3Draft({
+    const collapseOk = validateStep2Draft({
+      dangerSigns: [],
+      canSelfEvacuate: true,
       incidentType: IncidentType.COLLAPSE,
       details: {
         collapseType: "BUILDING_ROOF",

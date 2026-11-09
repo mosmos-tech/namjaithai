@@ -22,7 +22,7 @@ export function HomeContent() {
               บอกตำแหน่งของคุณ ทีมกู้ภัยในพื้นที่จะเห็นบนแผนที่ทันที แล้วโทรกลับหาคุณ
             </p>
             <Link
-              href="/incidents"
+              href="/request"
               className="mt-6 flex min-h-24 items-center justify-between gap-5 rounded-xl bg-red-700 px-6 py-5 text-white shadow-[0_5px_0_#edc3c3] hover:bg-red-800"
             >
               <span>

@@ -18,4 +18,5 @@ export function saveOfflineSos(
   received?: { caseCode: string; trackingToken: string },
 ): Promise<OfflineSos>;
 export function clearSentOfflineSos(id: string): Promise<void>;
+export function discardBlockedOfflineSos(id: string): Promise<void>;
 export function processOfflineSos(manual?: boolean): Promise<void>;

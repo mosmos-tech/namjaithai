@@ -12,7 +12,7 @@ import {
   isLowGpsAccuracy,
   loadSosDraft,
   saveSosDraft,
-  validateStep2Draft,
+  validateStep3Draft,
 } from "../draft-storage";
 
 function createMemoryStorage() {
@@ -28,7 +28,7 @@ function createMemoryStorage() {
   };
 }
 
-describe("TF-09: ฟอร์ม SOS ขั้น 2 พิกัดและที่อยู่", () => {
+describe("TF-09: ฟอร์ม SOS ขั้นพิกัดและที่อยู่ (ขั้นที่ 3 ตั้งแต่ TF-66)", () => {
   it("เกณฑ์ข้อ 1: กดดึง GPS แล้วหมุดไปอยู่ตำแหน่งปัจจุบัน และเติมจังหวัด/อำเภอ/ตำบลอัตโนมัติได้", () => {
     const initial = {
       ...createInitialSosDraft(),
@@ -141,19 +141,19 @@ describe("TF-09: ฟอร์ม SOS ขั้น 2 พิกัดและท�
     expect(pinnedBanner?.tone).toBe("success");
     expect(pinnedBanner?.desktopText).toContain("ปักหมุดตำแหน่งแล้ว");
 
-    // ถ้ายังไม่กรอกจุดสังเกต (บังคับ) จะยังไม่ผ่านการตรวจสอบขั้นที่ 2
-    const missingLandmarkCheck = validateStep2Draft(pinnedDraft);
+    // ถ้ายังไม่กรอกจุดสังเกต (บังคับ) จะยังไม่ผ่านการตรวจสอบขั้นตำแหน่ง
+    const missingLandmarkCheck = validateStep3Draft(pinnedDraft);
     expect(missingLandmarkCheck.valid).toBe(false);
     expect(missingLandmarkCheck.errors.location).toBeUndefined();
     expect(missingLandmarkCheck.errors.landmark).toBeDefined();
     expect(missingLandmarkCheck.errors.missingSummary).toEqual(["จุดสังเกต"]);
 
-    // เมื่อกรอกจุดสังเกตแล้ว ผ่านการตรวจสอบขั้นที่ 2 ทันทีแม้ไม่ได้เปิด GPS
+    // เมื่อกรอกจุดสังเกตแล้ว ผ่านการตรวจสอบขั้นตำแหน่งทันทีแม้ไม่ได้เปิด GPS
     const completedStep2 = {
       ...pinnedDraft,
       landmark: "บ้านหลังคาสีแดง 2 ชั้น ตรงข้ามวัดใหม่",
     };
-    const validCheck = validateStep2Draft(completedStep2);
+    const validCheck = validateStep3Draft(completedStep2);
     expect(validCheck.valid).toBe(true);
     expect(validCheck.errors.missingSummary).toEqual([]);
 
@@ -166,40 +166,40 @@ describe("TF-09: ฟอร์ม SOS ขั้น 2 พิกัดและท�
     expect(restored.landmark).toBe("บ้านหลังคาสีแดง 2 ชั้น ตรงข้ามวัดใหม่");
   });
 
-  it("เกณฑ์ข้อ 4: แผนที่ MapLibre โหลดเฉพาะตอนเปิดขั้นที่ 2 เท่านั้น (lazy load ด้วย next/dynamic ssr: false)", () => {
+  it("เกณฑ์ข้อ 4: แผนที่ MapLibre โหลดเฉพาะตอนเปิดขั้นตำแหน่ง (ขั้นที่ 3 ตั้งแต่ TF-66) เท่านั้น (lazy load ด้วย next/dynamic ssr: false)", () => {
     const componentsDir = resolve(__dirname, "../components");
     const step1Source = readFileSync(
-      resolve(componentsDir, "Step1Situation.tsx"),
+      resolve(componentsDir, "Step1Incident.tsx"),
       "utf8",
     );
     const wizardSource = readFileSync(
       resolve(componentsDir, "SosWizard.tsx"),
       "utf8",
     );
-    const step2Source = readFileSync(
-      resolve(componentsDir, "Step2Location.tsx"),
+    const step3Source = readFileSync(
+      resolve(componentsDir, "Step3Location.tsx"),
       "utf8",
     );
     const mapSource = readFileSync(
-      resolve(componentsDir, "Step2LocationMap.tsx"),
+      resolve(componentsDir, "Step3LocationMap.tsx"),
       "utf8",
     );
 
-    // ขั้นที่ 1 และ SosWizard ต้องไม่ import maplibre-gl หรือ Step2LocationMap โดยตรง
+    // ขั้นที่ 1 และ SosWizard ต้องไม่ import maplibre-gl หรือ Step3LocationMap โดยตรง
     expect(step1Source).not.toContain("maplibre-gl");
-    expect(step1Source).not.toContain("Step2LocationMap");
+    expect(step1Source).not.toContain("Step3LocationMap");
     expect(wizardSource).not.toContain("maplibre-gl");
-    expect(wizardSource).not.toContain("Step2LocationMap");
+    expect(wizardSource).not.toContain("Step3LocationMap");
 
-    // SosWizard แสดง Step2Location เฉพาะเมื่อ draft.currentStep === 2
-    expect(wizardSource).toContain("draft.currentStep === 2");
-    expect(wizardSource).toContain("<Step2Location");
+    // SosWizard แสดง Step3Location เฉพาะเมื่อ draft.currentStep === 3
+    expect(wizardSource).toContain("draft.currentStep === 3");
+    expect(wizardSource).toContain("<Step3Location");
 
-    // Step2Location โหลด Step2LocationMap แบบ dynamic import พร้อม ssr: false
-    expect(step2Source).toContain('dynamic(() => import("./Step2LocationMap")');
-    expect(step2Source).toContain("ssr: false");
+    // Step3Location โหลด Step3LocationMap แบบ dynamic import พร้อม ssr: false
+    expect(step3Source).toContain('dynamic(() => import("./Step3LocationMap")');
+    expect(step3Source).toContain("ssr: false");
 
-    // Step2LocationMap โหลดไลบรารี maplibre-gl แบบ dynamic import ในฝั่งเบราว์เซอร์
+    // Step3LocationMap โหลดไลบรารี maplibre-gl แบบ dynamic import ในฝั่งเบราว์เซอร์
     expect(mapSource).toContain('await import("maplibre-gl")');
   });
 });

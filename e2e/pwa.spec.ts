@@ -25,7 +25,8 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
   await context.setOffline(true);
   const reopened = await context.newPage();
   await reopened.goto("/request");
-  await expect(reopened.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" })).toBeVisible();
+  // TF-66: ขั้น 1 เลือกประเภทเหตุ (ใช้รายการที่จำไว้ในเครื่องตอนออนไลน์)
+  await expect(reopened.getByRole("radio", { name: "น้ำท่วม" })).toBeVisible();
   await expect
     .poll(() =>
       reopened
@@ -39,11 +40,14 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
     )
     .toBe(true);
   await reopened.screenshot({ path: test.info().outputPath("offline-sos.png"), fullPage: true });
+  const next = reopened.getByRole("button", { name: /^ถัดไป/ }).filter({ visible: true });
+  await next.click();
+  await expect(reopened.getByText("ขั้นที่ 2 จาก 5")).toBeVisible();
   await reopened.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" }).click();
   await reopened.getByRole("radio", { name: "ได้ ออกเองได้" }).click();
-  await reopened.getByRole("button", { name: /^ถัดไป/ }).click();
+  await next.click();
   await expect
-    .poll(() => reopened.evaluate(() => localStorage.getItem("namjaithai-sos-draft-v1")))
+    .poll(() => reopened.evaluate(() => localStorage.getItem("namjaithai-sos-draft-v2")))
     .not.toBeNull();
   await reopened.reload();
   await expect(reopened.getByRole("heading", { name: "คุณอยู่ที่ไหน?" })).toBeVisible();
@@ -78,9 +82,9 @@ test("TF-46 เปิดหน้าแรกและเลือก SOS ขณ
     .getByRole("link", { name: /แจ้งขอความช่วยเหลือ/ })
     .last()
     .click();
-  await expect(reopened.getByRole("heading", { name: "เลือกประเภทเหตุ" })).toBeVisible();
-  await reopened.getByRole("link", { name: /^น้ำท่วม/ }).click();
+  // TF-66: ปุ่ม SOS เปิดฟอร์มตรงๆ เลือกประเภทเหตุในขั้นที่ 1
   await expect(reopened.getByText("ขั้นที่ 1 จาก 5")).toBeVisible();
+  await expect(reopened.getByRole("radio", { name: "น้ำท่วม" })).toBeVisible();
 });
 
 test("ไม่แคชข้อมูลบัญชี เคส หรือ API", async ({ page }) => {
@@ -343,13 +347,85 @@ test("TF-15 ไม่ลบคำขอเมื่อเซิร์ฟเว�
     window.dispatchEvent(new Event("sos-queued"));
   });
   await expect(page.getByRole("alert").filter({ hasText: "พบเคสที่อาจซ้ำ" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /ส่งคำขอไม่สำเร็จ/ })).toBeVisible();
   expect(attempts).toBe(1);
   await page.getByRole("button", { name: "ลองส่งอีกครั้ง" }).click();
   await expect(
     page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
   ).toBeVisible();
   expect(attempts).toBe(2);
+});
+
+test("TF-66 ส่งคิวซ้ำแล้วเซิร์ฟเวอร์ตอบ 4xx ไม่หายเงียบ: ขึ้นหน้าส่งไม่สำเร็จพร้อมปุ่มโทรและ SMS", async ({
+  page,
+}) => {
+  await page.goto("/request");
+  // ประเภทเหตุถูกแอดมินปิดระหว่างที่คำขอรออยู่ในเครื่อง
+  await page.route("**/api/cases", (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "ประเภทเหตุนี้ปิดรับแจ้งชั่วคราว" }),
+    }),
+  );
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("queue");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("queue", "readwrite");
+      tx.objectStore("queue").put(
+        {
+          id: "blocked-key",
+          body: JSON.stringify({
+            phone: "0812345678",
+            incidentType: "FIRE",
+            lat: 13.75,
+            lng: 100.5,
+            landmark: "หน้าวัด",
+          }),
+          status: "pending",
+          lastAttempt: new Date().toISOString(),
+          lease: 0,
+        },
+        "current",
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  });
+  // ส่งจากเบื้องหลังตามรอบปกติ (ไม่ได้กดเอง) — หน้าส่งไม่สำเร็จต้องเปิดขึ้นเอง
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "ส่งคำขอไม่สำเร็จ — ยังไม่ถึงทีมกู้ภัย" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "ประเภทเหตุนี้ปิดรับแจ้งชั่วคราว" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "โทร 1669" })).toHaveAttribute("href", "tel:1669");
+  await expect(page.getByRole("link", { name: "โทร 1784" })).toHaveAttribute("href", "tel:1784");
+  await expect(page.getByRole("link", { name: "ส่งทาง SMS" })).toHaveAttribute("href", /^sms:/);
+  // ไม่บอกว่า "ระบบจะลองส่งเอง" เพราะเซิร์ฟเวอร์ปฏิเสธถาวร
+  await expect(page.getByText("ระบบจะลองส่งเมื่อกลับมาออนไลน์")).toHaveCount(0);
+
+  // ลบคำขอเพื่อกรอกใหม่ได้ คิวในเครื่องว่าง
+  await page.getByRole("button", { name: "ลบคำขอนี้แล้วกรอกใหม่" }).click();
+  await expect(page.getByRole("button", { name: /ส่งคำขอไม่สำเร็จ/ })).toHaveCount(0);
+  const remaining = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("namjaithai-offline-sos");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return new Promise((resolve) => {
+      const read = db.transaction("queue").objectStore("queue").get("current");
+      read.onsuccess = () => resolve(read.result ?? null);
+    });
+  });
+  expect(remaining).toBeNull();
 });
 
 test("TF-15 service worker ส่งคิวเมื่อแท็บปิดแล้วและเครือข่ายกลับมา", async ({

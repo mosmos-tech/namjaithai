@@ -12,6 +12,8 @@ const MEDICAL_OFFICIAL_SOURCE =
 export const medical: IncidentDefinition = {
   code: IncidentType.MEDICAL,
   label: { th: "เจ็บป่วยฉุกเฉิน" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนผู้บาดเจ็บหรือผู้ป่วย", en: "Injured or sick people" },
   icon: "HeartPulse",
   capabilities: [UnitCapability.EMS],
   questions: [

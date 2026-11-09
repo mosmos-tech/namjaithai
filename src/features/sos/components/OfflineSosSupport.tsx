@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   clearSentOfflineSos,
+  discardBlockedOfflineSos,
   getOfflineSos,
   processOfflineSos,
   type OfflineSos,
@@ -71,6 +72,7 @@ export function OfflineSosSupport() {
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
   const running = useRef(false);
   const announced = useRef<string | null>(null);
+  const announcedBlocked = useRef<string | null>(null);
   const remembered = useRef<string | null>(null);
   const loaded = useRef(false);
 
@@ -109,6 +111,15 @@ export function OfflineSosSupport() {
       if (!loaded.current) {
         loaded.current = true;
         if (next) setOpen(true);
+      }
+      // TF-66: เซิร์ฟเวอร์ปฏิเสธ (4xx) ห้ามหายเงียบ — เปิดหน้าส่งไม่สำเร็จเต็มจอทันที แม้ส่งจากเบื้องหลัง
+      if (
+        next?.status === "blocked" &&
+        announcedBlocked.current !== `${next.id}:${next.lastAttempt}`
+      ) {
+        announcedBlocked.current = `${next.id}:${next.lastAttempt}`;
+        navigator.vibrate?.([300, 100, 300]);
+        setOpen(true);
       }
       if (next?.status === "sent" && announced.current !== next.id) {
         announced.current = next.id;
@@ -189,6 +200,7 @@ export function OfflineSosSupport() {
 
   if (!item) return null;
   const pending = item.status !== "sent";
+  const blocked = item.status === "blocked";
   const sms = smsLink(item.body);
   const button =
     "flex min-h-14 w-full items-center justify-center rounded-xl px-5 py-3 text-center text-lg font-semibold";
@@ -199,19 +211,73 @@ export function OfflineSosSupport() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="w-full bg-orange-600 px-4 py-3 text-center text-lg font-bold text-white"
+          className={`w-full px-4 py-3 text-center text-lg font-bold text-white ${blocked ? "bg-red-700" : "bg-orange-600"}`}
         >
-          {item.caseReceived
-            ? "ส่งคำขอแล้ว กำลังส่งรูป — กดดูรายละเอียด"
-            : "มี 1 คำขอรอส่ง — กดดูรายละเอียด"}
+          {blocked
+            ? "ส่งคำขอไม่สำเร็จ — กดดูวิธีขอความช่วยเหลือ"
+            : item.caseReceived
+              ? "ส่งคำขอแล้ว กำลังส่งรูป — กดดูรายละเอียด"
+              : "มี 1 คำขอรอส่ง — กดดูรายละเอียด"}
         </button>
       )}
       {open && (
         <main
-          className={`fixed inset-0 z-[100] overflow-y-auto ${pending ? "bg-orange-100" : "bg-green-100"}`}
+          className={`fixed inset-0 z-[100] overflow-y-auto ${blocked ? "bg-red-50" : pending ? "bg-orange-100" : "bg-green-100"}`}
         >
           <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center gap-5 px-5 py-8 text-center">
-            {pending ? (
+            {blocked ? (
+              <>
+                <h1 className="text-3xl font-bold text-red-800">
+                  ส่งคำขอไม่สำเร็จ — ยังไม่ถึงทีมกู้ภัย
+                </h1>
+                <p role="alert" className="text-lg font-bold text-red-900">
+                  {item.error ?? "ระบบรับคำขอนี้ไม่ได้"}
+                </p>
+                <p className="text-lg text-red-950">
+                  กรุณาโทรสายด่วนหรือส่ง SMS ขอความช่วยเหลือทันที
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <a className={`${button} bg-red-700 text-white`} href="tel:1669">
+                    โทร 1669
+                  </a>
+                  <a className={`${button} bg-red-700 text-white`} href="tel:1784">
+                    โทร 1784
+                  </a>
+                </div>
+                <a
+                  className={`${button} border-2 border-red-700 bg-white text-red-900`}
+                  href={sms.href}
+                >
+                  ส่งทาง SMS
+                </a>
+                <p className="-mt-3 text-sm text-red-950">
+                  {sms.toSystem
+                    ? "ใช้ได้แม้ไม่มีเน็ต กดส่งข้อความโดยไม่ต้องแก้ ระบบจะตอบรหัสเคสกลับ"
+                    : "เปิดแอปข้อความพร้อมพิกัด เลือกส่งให้ญาติหรือคนที่ช่วยได้"}
+                </p>
+                <button
+                  className={`${button} border-2 border-red-700 bg-white text-red-900 disabled:opacity-60`}
+                  disabled={busy}
+                  onClick={() => void send(true)}
+                >
+                  {busy ? "กำลังลองส่ง…" : "ลองส่งอีกครั้ง"}
+                </button>
+                <button
+                  className="min-h-14 underline"
+                  onClick={() => {
+                    void discardBlockedOfflineSos(item.id).then(() => {
+                      setOpen(false);
+                      void refresh();
+                    });
+                  }}
+                >
+                  ลบคำขอนี้แล้วกรอกใหม่
+                </button>
+                <button className="min-h-14 underline" onClick={() => setOpen(false)}>
+                  กลับไปหน้าเว็บ
+                </button>
+              </>
+            ) : pending ? (
               <>
                 <h1 className="text-3xl font-bold text-orange-900">
                   {item.caseReceived

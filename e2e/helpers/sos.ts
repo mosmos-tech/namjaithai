@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { uniqueTestPoint } from "./db";
 
-const DRAFT_KEY = "namjaithai-sos-draft-v1";
+const DRAFT_KEY = "namjaithai-sos-draft-v2";
 
 // เปิดฟอร์ม SOS แบบเริ่มใหม่ (ล้างร่างที่ค้างจาก test อื่นในเบราว์เซอร์นี้)
 export async function openFreshSosForm(page: Page, path = "/request") {
@@ -28,12 +28,15 @@ export async function expectStep(page: Page, step: number) {
 }
 
 /**
- * ขั้นที่ 1 (TF-55): ตอบสัญญาณอันตราย + ออกเองได้ไหม (ผู้แจ้งไม่เลือกสีแล้ว)
+ * ขั้นที่ 2 "รายละเอียดเหตุ" (TF-55 ย้ายมาใน TF-66): ตอบสัญญาณอันตราย + ออกเองได้ไหม
  * dangerSigns = ชื่อข้อที่จะติ๊ก เช่น "มีคนหมดสติ" (ไม่ส่ง = กด "ไม่มีข้อใดเลย")
  */
-export async function answerStep1(
+export async function answerDangerQuestions(
   page: Page,
-  { dangerSigns = [], canSelfEvacuate = true }: { dangerSigns?: string[]; canSelfEvacuate?: boolean } = {},
+  {
+    dangerSigns = [],
+    canSelfEvacuate = true,
+  }: { dangerSigns?: string[]; canSelfEvacuate?: boolean } = {},
 ) {
   if (dangerSigns.length === 0) {
     await page.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" }).click();
@@ -41,7 +44,26 @@ export async function answerStep1(
   for (const label of dangerSigns) {
     await page.getByRole("checkbox", { name: label, exact: true }).click();
   }
-  await page.getByRole("radio", { name: canSelfEvacuate ? "ได้ ออกเองได้" : "ไม่ได้ ติดอยู่" }).click();
+  await page
+    .getByRole("radio", { name: canSelfEvacuate ? "ได้ ออกเองได้" : "ไม่ได้ ติดอยู่" })
+    .click();
+}
+
+// ขั้นที่ 1 → 2 (ไม่เลือกประเภท = น้ำท่วม)
+export async function goToStep2(page: Page) {
+  await nextButton(page).click();
+  await expectStep(page, 2);
+}
+
+// ขั้นที่ 1 → 3 (ตำแหน่ง): ตอบรายละเอียดเหตุขั้นที่ 2 ด้วยค่าที่ถูกต้อง
+export async function goToLocationStep(
+  page: Page,
+  answers?: Parameters<typeof answerDangerQuestions>[1],
+) {
+  await goToStep2(page);
+  await answerDangerQuestions(page, answers);
+  await nextButton(page).click();
+  await expectStep(page, 3);
 }
 
 /**
@@ -65,7 +87,7 @@ export async function seedLocationIntoDraft(page: Page) {
     },
     { key: DRAFT_KEY, point },
   );
-  if (currentStep === 2) {
+  if (currentStep === 3) {
     await expect(page.locator("#sos-landmark")).toHaveValue("หน้าร้านสะดวกซื้อ (E2E)");
   }
   return point;
@@ -77,12 +99,8 @@ export async function readDraft(page: Page): Promise<Record<string, unknown> | n
 
 // พาจากขั้น 1 ไปถึงขั้น 5 แบบกรอกค่าที่ถูกต้อง
 export async function goToStep5(page: Page) {
-  await answerStep1(page);
-  await nextButton(page).click();
-  await expectStep(page, 2);
+  await goToLocationStep(page);
   await seedLocationIntoDraft(page);
-  await nextButton(page).click();
-  await expectStep(page, 3);
   await nextButton(page).click();
   await expectStep(page, 4);
   await nextButton(page).click();
