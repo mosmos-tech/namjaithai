@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { adminDb, countCasesByPhone, createCaseViaApi, randomPhone } from "./helpers/db";
+import {
+  adminDb,
+  closeTestCases,
+  countCasesByPhone,
+  createCaseViaApi,
+  randomPhone,
+} from "./helpers/db";
 import { applySession, createAccount } from "./helpers/accounts";
 import {
   backButton,
@@ -586,7 +592,7 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await expect
       .poll(() => casePhoto.evaluate((image) => (image as HTMLImageElement).naturalWidth))
       .toBeGreaterThan(0);
-    await db.from("cases").update({ status: "RESOLVED" }).eq("id", contacts![0].case_id);
+    await closeTestCases([contacts![0].case_id]);
     await db.from("units").update({ is_active: false }).eq("id", unit!.id);
     await db.from("users").update({ status: "SUSPENDED" }).eq("id", rescuer.id);
   });

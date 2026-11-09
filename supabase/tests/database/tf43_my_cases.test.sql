@@ -60,6 +60,9 @@ truncate tf43_claims;
 insert into tf43_claims select * from public.claim_case_line_notifications() where case_code='TF43-A';
 select public.finish_case_line_notification(id, lease_id, 'RETRY', 'network_error') from tf43_claims;
 select is((select state from public.case_line_notifications where id=(select id from tf43_claims)),'FAILED','fifth failed attempt does not retry forever');
+-- TF-26: ON_SITE → AWAITING_CONFIRMATION → RESOLVED (ปิดผ่านช่องทางหัวหน้า/ระบบเท่านั้น)
+update public.cases set status='AWAITING_CONFIRMATION' where case_code='TF43-A';
+set local app.case_close_by_lead = 'on';
 update public.cases set status='RESOLVED' where case_code='TF43-A';
 update public.case_line_notifications set created_at=now()-interval '24 hours' where case_id='f4310000-0000-0000-0000-000000000001' and to_status='RESOLVED';
 select is((select count(*)::int from public.claim_case_line_notifications() where case_code='TF43-A'),0,'expired retry keys are never reused for a new send');

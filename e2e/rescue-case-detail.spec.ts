@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminDb } from "./helpers/db";
+import { adminDb, closeTestCases } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
 
 test.describe.configure({ mode: "serial" });
@@ -88,8 +88,7 @@ test.beforeAll(async ({}, testInfo) => {
 test.afterAll(async () => {
   // case_events and audit_logs are append-only, so leave these synthetic records in the disposable E2E database.
   const db = adminDb();
-  if (caseId && newCaseId)
-    await db.from("cases").update({ status: "RESOLVED" }).in("id", [caseId, newCaseId]);
+  if (caseId && newCaseId) await closeTestCases([caseId, newCaseId]);
   if (unitId) await db.from("units").update({ is_active: false }).eq("id", unitId);
   if (owner && colleague)
     await db.from("users").update({ status: "SUSPENDED" }).in("id", [owner.id, colleague.id]);

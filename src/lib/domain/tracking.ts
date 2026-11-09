@@ -100,6 +100,14 @@ const STATUS_VIEW: Record<CaseStatus, ReporterStatusView> = {
     tone: "progress",
     progress: { done: 4, active: false },
   },
+  // TF-26: กู้ภัยกดช่วยเสร็จแล้ว รอผู้แจ้งยืนยัน (ปุ่มยืนยันอยู่ใน LINE / TF-58)
+  AWAITING_CONFIRMATION: {
+    badge: "รอคุณยืนยัน",
+    title: "ทีมแจ้งว่าช่วยเหลือเสร็จแล้ว",
+    description: "ถ้าได้รับความช่วยเหลือแล้ว กรุณายืนยันปิดเคส ถ้ายังไม่ได้รับ โทร 1669 / 1784",
+    tone: "progress",
+    progress: { done: 4, active: true },
+  },
   RESOLVED: {
     badge: "ช่วยเหลือสำเร็จ",
     title: "ช่วยเหลือสำเร็จแล้ว",
@@ -142,6 +150,7 @@ export function isClosedStatus(status: CaseStatus): boolean {
 const STATUS_CHANGED_LABEL: Partial<Record<CaseStatus, string>> = {
   [CaseStatus.EN_ROUTE]: "ทีมออกเดินทาง",
   [CaseStatus.ON_SITE]: "ทีมถึงจุดของคุณ",
+  [CaseStatus.AWAITING_CONFIRMATION]: "ทีมแจ้งว่าช่วยเหลือเสร็จแล้ว",
   [CaseStatus.RESOLVED]: "ช่วยเหลือสำเร็จ",
 };
 

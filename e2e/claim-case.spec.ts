@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
-import { adminDb } from "./helpers/db";
+import { adminDb, closeTestCases } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
 
 /**
@@ -82,7 +82,7 @@ test.beforeAll(async ({}, testInfo) => {
 test.afterAll(async () => {
   // case_events / audit_logs แก้ลบไม่ได้ จึงปิดเคสและหน่วยทิ้งไว้ในฐานข้อมูลทดสอบ
   const db = adminDb();
-  if (caseIds.length) await db.from("cases").update({ status: "RESOLVED" }).in("id", caseIds);
+  await closeTestCases(caseIds);
   if (unitIds.length) await db.from("units").update({ is_active: false }).in("id", unitIds);
   const users = [first, second, admin].filter(Boolean).map((user) => user.id);
   if (users.length) await db.from("users").update({ status: "SUSPENDED" }).in("id", users);
@@ -112,8 +112,8 @@ test("2 คนกดรับพร้อมกัน ได้คนเดี�
       .eq("id", item.id)
       .single();
     expect(row?.assigned_rescuer_id).toBe([first, second][winner].id);
-    // ปิดเคสของรอบนี้ ไม่ให้ใครชนเพดาน 2 เคสในรอบถัดไป
-    await adminDb().from("cases").update({ status: "RESOLVED" }).eq("id", item.id);
+    // ปิดเคสของรอบนี้ ไม่ให้ใครชนเพดาน 2 เคสในรอบถัดไป (TF-26: ปิดผ่าน RPC ของระบบ)
+    await closeTestCases([item.id]);
   }
 });
 

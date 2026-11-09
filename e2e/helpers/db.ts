@@ -93,3 +93,32 @@ export async function countCasesByPhone(phone: string): Promise<number> {
   if (error) throw error;
   return count ?? 0;
 }
+
+/**
+ * TF-26: ปิดเคสทดสอบ — trigger ในฐานข้อมูลห้าม UPDATE สถานะปิดตรงๆ ใช้ RPC ของระบบ (service_role เท่านั้น) แทน
+ * case_events เป็น append-only จึงปิดแทนการลบ
+ */
+export async function closeTestCases(caseIds: string[], reason = "ล้างเคสทดสอบ E2E") {
+  if (caseIds.length === 0) return;
+  const { error } = await adminDb().rpc("system_close_cases", {
+    p_case_ids: caseIds,
+    p_status: "CANCELLED",
+    p_reason: reason,
+  });
+  if (error) throw error;
+}
+
+/** TF-26: จำลองทีมเลื่อนสถานะทีละขั้น (ข้ามขั้นไม่ได้ trigger จะปฏิเสธ) */
+export async function stepTestCase(
+  caseCode: string,
+  statuses: string[],
+  extra: Record<string, unknown> = {},
+) {
+  for (const status of statuses) {
+    const { error } = await adminDb()
+      .from("cases")
+      .update({ status, ...extra })
+      .eq("case_code", caseCode);
+    if (error) throw error;
+  }
+}
