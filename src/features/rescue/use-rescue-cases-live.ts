@@ -29,6 +29,7 @@ export type UseRescueCasesLiveOptions = {
   supabase?: SupabaseClient;
   onRefresh: () => Promise<boolean | void> | boolean | void;
   realtimeEnabled?: boolean;
+  catchUpOnFirstSubscribe?: boolean;
 };
 
 /**
@@ -43,6 +44,7 @@ export function useRescueCasesLive({
   supabase: providedClient,
   onRefresh,
   realtimeEnabled = isRealtimeEnabled(),
+  catchUpOnFirstSubscribe = false,
 }: UseRescueCasesLiveOptions): RescueLiveStatus & { notifyManualSync: () => void } {
   const allowed = canUseRealtime(role);
   const active = enabled && allowed;
@@ -70,6 +72,7 @@ export function useRescueCasesLive({
     const controller = createRescueLiveSyncController({
       role,
       realtimeEnabled,
+      catchUpOnFirstSubscribe,
       isHidden: () => (typeof document !== "undefined" ? document.hidden : false),
       onRefresh: () => onRefreshRef.current(),
       onStatusChange: (next) => setStatus(next),
@@ -117,7 +120,7 @@ export function useRescueCasesLive({
         controllerRef.current = null;
       }
     };
-  }, [active, instanceId, providedClient, realtimeEnabled, role]);
+  }, [active, catchUpOnFirstSubscribe, instanceId, providedClient, realtimeEnabled, role]);
 
   const notifyManualSync = useCallback(() => {
     controllerRef.current?.notifyManualSync();

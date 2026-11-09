@@ -25,6 +25,38 @@ export async function revealCaseContact(caseId: string) {
   };
 }
 
+export async function assignCase(
+  caseId: string,
+  unitId: string,
+  rescuerId: string,
+  version: number,
+) {
+  if (
+    ![caseId, unitId, rescuerId].every((id) => z.uuid().safeParse(id).success) ||
+    !Number.isInteger(version)
+  ) {
+    return { error: "ข้อมูลมอบหมายไม่ถูกต้อง" };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("assign_case", {
+    p_case_id: caseId,
+    p_unit_id: unitId,
+    p_rescuer_id: rescuerId,
+    p_expected_version: version,
+  });
+  if (error || !data) return { error: "มอบหมายไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และลองใหม่" };
+  switch (data.status) {
+    case "ASSIGNED":
+      return { success: true };
+    case "UNCHANGED":
+      return { error: "สมาชิกคนนี้รับเคสอยู่แล้ว" };
+    case "LIMIT":
+      return { error: "สมาชิกคนนี้ถือเคสครบ 2 เคสแล้ว" };
+    default:
+      return { error: "ข้อมูลเคสเปลี่ยนแล้ว กรุณาลองใหม่", stale: true };
+  }
+}
+
 // ── TF-25 รับ/ปล่อยเคส: เช็กสิทธิ์ เพดาน และกดพร้อมกันอยู่ใน RPC ทั้งหมด ที่นี่แค่ส่งต่อ ──
 
 export async function acceptCase(caseId: string, version: number) {
