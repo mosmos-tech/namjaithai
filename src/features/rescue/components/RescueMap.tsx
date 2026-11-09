@@ -563,6 +563,12 @@ export function RescueMap({
             >
               ดูรายการเคส
             </Link>
+            <Link
+              href="/rescue/my-tasks"
+              className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle inline-flex min-h-12 items-center rounded-full border px-5 text-base font-semibold transition-colors"
+            >
+              งานของฉัน
+            </Link>
             {query && (
               <button
                 type="button"
