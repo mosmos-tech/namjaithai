@@ -107,6 +107,45 @@ export async function fetchRescueCasePage(
 }
 
 /**
+ * ดึงเคสตามจำนวนหน้าที่เปิดค้างไว้ใน RescueCaseList (ค่าเริ่มต้น 1 หน้า)
+ * ใช้เวลาอัปเดตสด/ดึงซ้ำ เพื่อไม่ให้เคสที่กด "โหลดเพิ่ม" ไว้หายไปตอนรีเฟรช
+ */
+export async function fetchRescueCasePages(
+  supabase: Pick<SupabaseClient, "rpc">,
+  query: Omit<RescueCaseQuery, "after">,
+  pageCount = 1,
+): Promise<RescueCasePage> {
+  const targetPages = Math.max(1, pageCount);
+  let allCases: RescueCase[] = [];
+  let cursor: RescueCaseCursor | null = null;
+  let total = 0;
+  let next: RescueCaseCursor | null = null;
+  const seenCursors = new Set<string>();
+
+  for (let p = 0; p < targetPages; p++) {
+    if (cursor) {
+      const cursorKey = `${cursor.k1}#${cursor.k2}#${cursor.k3}#${cursor.id}`;
+      if (seenCursors.has(cursorKey)) break;
+      seenCursors.add(cursorKey);
+    }
+
+    const res = await fetchRescueCasePage(supabase, {
+      ...query,
+      after: cursor,
+    });
+
+    allCases = p === 0 ? res.cases : [...allCases, ...res.cases];
+    total = res.total;
+    next = res.next;
+
+    if (!res.next || res.cases.length === 0) break;
+    cursor = res.next;
+  }
+
+  return { cases: allCases, total, next };
+}
+
+/**
  * โหลดเคสทั้งหมดทุกหน้าสำหรับแสดงบนแผนที่ (TF-22)
  * แผนที่ต้องการแสดงทุกเคสที่ตรงตัวกรอง ไม่ใช่แค่หน้าแรก
  * ดึงทีละหน้าตาม cursor keyset จนกว่า next จะเป็น null
@@ -132,17 +171,13 @@ export async function fetchAllRescueCases(
   while (true) {
     page++;
     if (page > maxPages) {
-      throw new Error(
-        `ดึงข้อมูลเคสไม่ครบถ้วน (เกินขีดจำกัดความปลอดภัย ${maxPages} หน้า)`,
-      );
+      throw new Error(`ดึงข้อมูลเคสไม่ครบถ้วน (เกินขีดจำกัดความปลอดภัย ${maxPages} หน้า)`);
     }
 
     if (currentCursor) {
       const cursorKey = `${currentCursor.k1}#${currentCursor.k2}#${currentCursor.k3}#${currentCursor.id}`;
       if (seenCursors.has(cursorKey)) {
-        throw new Error(
-          `พบ cursor วนซ้ำในการดึงข้อมูลเคส (id: ${currentCursor.id})`,
-        );
+        throw new Error(`พบ cursor วนซ้ำในการดึงข้อมูลเคส (id: ${currentCursor.id})`);
       }
       seenCursors.add(cursorKey);
     }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { LocationAccuracyBadge } from "./LocationAccuracyBadge";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CaseStatus,
   INCIDENT_REGISTRY,
@@ -15,13 +15,17 @@ import {
   rescueCaseSortLabel,
   type RescueRadiusM,
   type UnitCapability,
+  type UserRole,
 } from "@/lib/domain";
 import { createClient } from "@/lib/supabase/client";
 import { CapabilityFilter } from "@/features/cases/components/CapabilityFilter";
 import { TriageTag } from "@/features/cases/components/TriageTag";
 import { useCapabilityFilter } from "@/features/cases/use-capability-filter";
+import { RescueLiveStatus } from "./RescueLiveStatus";
+import { useRescueCasesLive } from "../use-rescue-cases-live";
 import {
   fetchRescueCasePage,
+  fetchRescueCasePages,
   type RescueCase,
   type RescueCaseCursor,
   type RescueCaseQuery,
@@ -40,7 +44,13 @@ const activeControlClass = "border-primary-600 bg-primary-600 text-white";
  * - เรียง 3 แบบ, กรองรัศมีจากตำแหน่งตัวเอง (ไม่อนุญาต GPS → จังหวัดของหน่วย), โหลดเพิ่มทีละ 100 แบบ keyset
  * - ตัวกรองความสามารถหน่วย (TF-52) กรองแค่บนหน้าจอ ไม่ได้ซ่อนเคสในฐานข้อมูล
  */
-export function RescueCaseList({ capabilities }: { capabilities: UnitCapability[] }) {
+export function RescueCaseList({
+  capabilities,
+  userRole,
+}: {
+  capabilities: UnitCapability[];
+  userRole: UserRole;
+}) {
   const [location, setLocation] = useState<LocationState>(() =>
     // เช็ก window ไม่ใช่ navigator: Node.js มี navigator ฝั่งเซิร์ฟเวอร์แต่ไม่มี geolocation (hydration ไม่ตรง)
     typeof window !== "undefined" && !("geolocation" in navigator)
@@ -54,6 +64,10 @@ export function RescueCaseList({ capabilities }: { capabilities: UnitCapability[
   const [next, setNext] = useState<RescueCaseCursor | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadedPagesRef = useRef(1);
+  const queryRef = useRef<RescueCaseQuery | null>(null);
+  const requestSeqRef = useRef(0);
+  const activeForegroundLoadsRef = useRef(0);
   const now = useNow();
 
   // ตำแหน่งของกู้ภัย ใช้คิดระยะทางและรัศมี
@@ -81,25 +95,83 @@ export function RescueCaseList({ capabilities }: { capabilities: UnitCapability[
     };
   }, [location, hasLocation, sort, radiusM]);
 
-  const load = useCallback(async (q: RescueCaseQuery, append: boolean) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const page = await fetchRescueCasePage(createClient(), q);
-      setCases((prev) => (append ? [...prev, ...page.cases] : page.cases));
-      setTotal(page.total);
-      setNext(page.next);
-    } catch {
-      setError("โหลดรายการเคสไม่สำเร็จ กรุณาลองใหม่");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (
+      q: RescueCaseQuery,
+      append: boolean,
+      options?: { silent?: boolean },
+    ): Promise<boolean> => {
+      const seq = ++requestSeqRef.current;
+      const foreground = !options?.silent;
+      if (foreground) {
+        activeForegroundLoadsRef.current += 1;
+        setLoading(true);
+        setError(null);
+      }
+      try {
+        const page = append
+          ? await fetchRescueCasePage(createClient(), q)
+          : loadedPagesRef.current > 1
+            ? await fetchRescueCasePages(createClient(), q, loadedPagesRef.current)
+            : await fetchRescueCasePage(createClient(), q);
+
+        if (seq !== requestSeqRef.current) return false;
+
+        if (append) {
+          loadedPagesRef.current += 1;
+          setCases((prev) => {
+            const seen = new Set(prev.map((item) => item.id));
+            return [...prev, ...page.cases.filter((item) => !seen.has(item.id))];
+          });
+        } else {
+          setCases(page.cases);
+        }
+        setTotal(page.total);
+        setNext(page.next);
+        setError(null);
+        return true;
+      } catch {
+        if (seq === requestSeqRef.current && foreground) {
+          setError("โหลดรายการเคสไม่สำเร็จ กรุณาลองใหม่");
+        }
+        return false;
+      } finally {
+        if (foreground) {
+          activeForegroundLoadsRef.current = Math.max(0, activeForegroundLoadsRef.current - 1);
+          if (activeForegroundLoadsRef.current === 0) {
+            setLoading(false);
+          }
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
+    queryRef.current = query;
+    loadedPagesRef.current = 1;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- โหลดใหม่เมื่อเปลี่ยนการเรียง/รัศมี/ตำแหน่ง
     if (query) void load(query, false);
   }, [query, load]);
+
+  const refreshCases = useCallback(async () => {
+    const currentQuery = queryRef.current;
+    if (!currentQuery) return false;
+    return load(currentQuery, false, { silent: true });
+  }, [load]);
+
+  const live = useRescueCasesLive({
+    role: userRole,
+    enabled: query !== null,
+    onRefresh: refreshCases,
+  });
+  const { notifyManualSync } = live;
+
+  const handleManualRefresh = useCallback(async () => {
+    if (!query) return;
+    const ok = await load(query, false);
+    if (ok) notifyManualSync();
+  }, [load, notifyManualSync, query]);
 
   // หน่วยที่ยังไม่ได้ตั้งความสามารถ: ตัวกรองจะซ่อนเกือบทุกเคส จึงไม่เปิดใช้
   const filterAvailable = capabilities.length > 0;
@@ -115,12 +187,15 @@ export function RescueCaseList({ capabilities }: { capabilities: UnitCapability[
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href="/rescue/map"
-            className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle inline-flex min-h-12 items-center rounded-full border px-5 text-base font-semibold transition-colors"
-          >
-            ดูบนแผนที่
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/rescue/map"
+              className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle inline-flex min-h-12 items-center rounded-full border px-5 text-base font-semibold transition-colors"
+            >
+              ดูบนแผนที่
+            </Link>
+            <RescueLiveStatus mode={live.mode} reason={live.reason} />
+          </div>
         </div>
 
         <div role="group" aria-label="เรียงเคส" className="flex flex-wrap gap-2">
@@ -229,7 +304,7 @@ export function RescueCaseList({ capabilities }: { capabilities: UnitCapability[
           <button
             type="button"
             disabled={loading}
-            onClick={() => void load(query, false)}
+            onClick={() => void handleManualRefresh()}
             className={`${controlClass} disabled:opacity-50`}
           >
             รีเฟรช

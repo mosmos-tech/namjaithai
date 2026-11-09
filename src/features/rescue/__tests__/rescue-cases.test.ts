@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { RescueCaseSort, RESCUE_CASE_PAGE_SIZE } from "../../../lib/domain";
-import { fetchAllRescueCases, fetchRescueCasePage } from "../rescue-cases";
+import { fetchAllRescueCases, fetchRescueCasePage, fetchRescueCasePages } from "../rescue-cases";
 
 function makeMockRpcRow(index: number, totalCount = 150) {
   return {
@@ -63,9 +63,7 @@ describe("TF-22 / TF-23 rescue-cases: การดึงข้อมูลแล
   });
 
   it("fetchRescueCasePage คำนวณ cursor next เมื่อข้อมูลครบขนาดหน้า (100 แถว)", async () => {
-    const rows = Array.from({ length: RESCUE_CASE_PAGE_SIZE }, (_, i) =>
-      makeMockRpcRow(i, 250),
-    );
+    const rows = Array.from({ length: RESCUE_CASE_PAGE_SIZE }, (_, i) => makeMockRpcRow(i, 250));
     const mockRpc = vi.fn().mockResolvedValue({ data: rows, error: null });
     const mockSupabase = { rpc: mockRpc as never };
 
@@ -104,9 +102,7 @@ describe("TF-22 / TF-23 rescue-cases: การดึงข้อมูลแล
     const page1Rows = Array.from({ length: RESCUE_CASE_PAGE_SIZE }, (_, i) =>
       makeMockRpcRow(i, 140),
     );
-    const page2Rows = Array.from({ length: 40 }, (_, i) =>
-      makeMockRpcRow(100 + i, 140),
-    );
+    const page2Rows = Array.from({ length: 40 }, (_, i) => makeMockRpcRow(100 + i, 140));
 
     const mockRpc = vi
       .fn()
@@ -243,5 +239,28 @@ describe("TF-22 / TF-23 rescue-cases: การดึงข้อมูลแล
         3, // จำกัดที่ 3 หน้า
       ),
     ).rejects.toThrow("ดึงข้อมูลเคสไม่ครบถ้วน (เกินขีดจำกัดความปลอดภัย 3 หน้า)");
+  });
+
+  it("fetchRescueCasePages ดึงครบตามจำนวนหน้าที่เปิดค้างไว้และหยุดทันทีเมื่อข้อมูลเหลือน้อยกว่านั้น", async () => {
+    const page1Rows = Array.from({ length: RESCUE_CASE_PAGE_SIZE }, (_, i) =>
+      makeMockRpcRow(i, 125),
+    );
+    const page2Rows = Array.from({ length: 25 }, (_, i) => makeMockRpcRow(100 + i, 125));
+
+    const mockRpc = vi
+      .fn()
+      .mockResolvedValueOnce({ data: page1Rows, error: null })
+      .mockResolvedValueOnce({ data: page2Rows, error: null });
+
+    const result = await fetchRescueCasePages(
+      { rpc: mockRpc as never },
+      { sort: RescueCaseSort.PRIORITY, radiusM: null, location: null },
+      3, // ขอ 3 หน้า แต่มีข้อมูลจริง 2 หน้า
+    );
+
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    expect(result.cases).toHaveLength(125);
+    expect(result.total).toBe(125);
+    expect(result.next).toBeNull();
   });
 });

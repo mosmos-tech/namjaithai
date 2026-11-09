@@ -26,5 +26,7 @@ async function CaseListWithCapabilities() {
   // SignedInShell ตรวจสิทธิ์และ redirect ให้แล้ว — ที่นี่แค่อ่านผู้ใช้ ห้าม redirect ซ้ำกลางการวาดหน้า
   const user = await getCurrentAppUser();
   if (!user) return null;
-  return <RescueCaseList capabilities={await getMyUnitCapabilities(user.id)} />;
+  return (
+    <RescueCaseList capabilities={await getMyUnitCapabilities(user.id)} userRole={user.role} />
+  );
 }
