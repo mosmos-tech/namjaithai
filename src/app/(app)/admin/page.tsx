@@ -1,3 +1,4 @@
+import { LeadConfirmationQueue } from "@/features/notifications/components/LeadConfirmationQueue";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
@@ -17,6 +18,7 @@ export default function Page({ searchParams }: PageProps<"/admin">) {
         denied={searchParams.then((p) => p.denied === "1")}
       >
         <LineDeliveryNotice />
+        <LeadConfirmationQueue />
         <AdminManagement />
         <UnitInvitePanel />
       </SignedInShell>
