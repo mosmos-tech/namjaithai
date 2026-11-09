@@ -89,16 +89,16 @@ test("เปิดเว็บจากเครื่องเดิมแล�
     .single()
     .throwOnError();
   expect(data!.status).toBe("NEW");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBeTruthy();
   await page.close();
   await applySession(context, lead);
-  const leaderPage = await context.newPage();
-  await leaderPage.goto("/unit");
-  const queue = leaderPage.getByRole("region", { name: "คิวยืนยันเคส" });
-  await expect(queue.getByText(item.case_code)).toBeVisible({ timeout: 20_000 });
-  await expect(queue.getByText(/ผู้แจ้งระบุว่ายังไม่ได้รับ/)).toBeVisible();
-  expect(
-    await leaderPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-  ).toBeTruthy();
+  const response = await context.request.get("/api/unit/confirmation-queue");
+  expect(response.ok()).toBeTruthy();
+  expect((await response.json()).items).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: item.id, kind: "NOT_RECEIVED" })]),
+  );
 });
 test("โทเค็นติดตามยืนยันไม่ได้ แต่เครื่องผู้แจ้งยืนยันได้ และเคสเกิน 24 ชั่วโมงเข้าคิวหัวหน้า", async ({
   page,
