@@ -61,11 +61,20 @@ test.afterAll(async () => {
   if (users.length) await db.from("users").update({ status: "SUSPENDED" }).in("id", users);
 });
 
-// ข้อมูลที่หน้าเว็บได้จาก list_rescue_cases (ทั้งรายการและแผนที่ใช้ RPC เดียวกัน)
-function rescueListResponse(page: Page) {
-  return page.waitForResponse(
-    (response) => response.url().includes("/rpc/list_rescue_cases") && response.ok(),
-  );
+/**
+ * เก็บข้อมูลทุก response ของ list_rescue_cases ทันทีที่มาถึง (รายการและแผนที่ใช้ RPC เดียวกัน)
+ * อ่านตอนมาถึงเลย เพราะหน้าเว็บดึงซ้ำเป็นรอบ (polling/Realtime) และพอเปลี่ยนหน้า browser จะทิ้งข้อมูล response เก่า
+ */
+function collectRescueLists(page: Page) {
+  const bodies: string[] = [];
+  page.on("response", (response) => {
+    if (!response.url().includes("/rpc/list_rescue_cases") || !response.ok()) return;
+    response
+      .text()
+      .then((text) => bodies.push(text))
+      .catch(() => undefined);
+  });
+  return bodies;
 }
 
 test("กู้ภัยในจังหวัดเดียวกับหน่วยโชว์ไม่เห็นเคสตัวอย่างในหน้ารายการและแผนที่", async ({
@@ -81,25 +90,33 @@ test("กู้ภัยในจังหวัดเดียวกับห�
     .in("status", ["ACCEPTED", "EN_ROUTE", "ON_SITE"]);
   expect(count, "seed มีเคสตัวอย่างค้างในกรุงเทพฯ").toBe(DEMO_CODES.length);
 
+  const bodies = collectRescueLists(page);
+  const loadedWithRealCase = () => bodies.some((body) => body.includes(realCode));
+
   // หน้ารายการเคส
-  const listed = rescueListResponse(page);
   await page.goto("/rescue/cases");
-  const listBody = JSON.stringify(await (await listed).json());
-  expect(listBody).toContain(realCode);
-  for (const code of DEMO_CODES) expect(listBody).not.toContain(code);
+  await expect.poll(loadedWithRealCase, { timeout: 15_000 }).toBe(true);
   await expect(page.getByTestId("rescue-case-card").filter({ hasText: realCode })).toBeVisible();
   await expect(page.getByText(/DEMO-S\d-A\d/)).toHaveCount(0);
 
+  const noDemoIn = (label: string) => {
+    for (const body of bodies) {
+      for (const code of DEMO_CODES) expect(body, label).not.toContain(code);
+    }
+  };
+  noDemoIn("หน้ารายการเคส");
+
   // แผนที่กู้ภัย
-  const mapped = rescueListResponse(page);
+  bodies.length = 0;
   await page.goto("/rescue/map");
   await expect(page.getByTestId("rescue-map-container")).toBeVisible();
-  const mapBody = JSON.stringify(await (await mapped).json());
-  expect(mapBody).toContain(realCode);
+  await expect.poll(loadedWithRealCase, { timeout: 15_000 }).toBe(true);
   for (const code of DEMO_CODES) {
-    expect(mapBody).not.toContain(code);
     await expect(page.getByTestId(`map-pin-${code}`)).toHaveCount(0);
   }
+
+  // ทุก response ของหน้าแผนที่ (รวมรอบที่ดึงซ้ำ) ไม่มีเคสตัวอย่าง
+  noDemoIn("แผนที่กู้ภัย");
 
   // หน้ารายละเอียดเคสตัวอย่างเปิดไม่ได้
   const { data: demo } = await db
