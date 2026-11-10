@@ -24,6 +24,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # migration ที่ PR เพิ่มต้องใหม่กว่าตัวล่าสุดใน base branch ไม่งั้นตอน merge แล้ว Deploy DB จะลงไม่ได้
+      # (เคยเกิดกับ TF-27: migration ทุกไฟล์ที่ตามมาไม่ได้ลง dev จนกว่าจะแก้)
+      - name: เช็กลำดับ migration
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          npm run check:migrations -- "origin/${{ github.base_ref }}"
+
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
