@@ -65,6 +65,7 @@ export async function saveOfflineSos(id, body, received) {
             caseReceived: true,
             caseCode: received.caseCode,
             trackingToken: received.trackingToken,
+            confirmationToken: received.confirmationToken,
             error: "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
           }
         : {}),
@@ -118,6 +119,7 @@ export async function processOfflineSos(manual = false) {
         lastAttempt: item.lastAttempt,
         caseCode: data.caseCode,
         trackingToken: data.trackingToken,
+        confirmationToken: data.confirmationToken,
         phoneLast4: String(body.phone || "")
           .replace(/\D/g, "")
           .slice(-4),
@@ -132,6 +134,7 @@ export async function processOfflineSos(manual = false) {
         caseReceived: true,
         caseCode: data.caseCode,
         trackingToken: data.trackingToken,
+        confirmationToken: data.confirmationToken,
         error: data.error || "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
       };
     } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {

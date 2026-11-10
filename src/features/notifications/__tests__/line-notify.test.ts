@@ -136,7 +136,10 @@ describe("TF-34 ข้อความ LINE ไม่มีข้อมูลส�
   it("ยืนยันปิดเคส (จุดเชื่อม TF-58)", () => {
     const text = formatCloseConfirmationLine(ref);
     expect(text).toContain("กรุณากดยืนยัน");
+    expect(text).toContain("บัญชี LINE ที่ใช้แจ้งเคส");
     expect(text).toContain(`${ORIGIN}/track/FL-2611-0042?t=`);
+    const link = new URL(text.split("\n").at(-1)!);
+    expect([...link.searchParams.keys()]).toEqual(["t"]);
   });
 
   it("กู้ภัย: 1 เคส และหลายเคสรวมเป็นข้อความเดียว พร้อมลิงก์ไปหน้ารายการเคส", () => {

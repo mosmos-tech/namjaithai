@@ -103,6 +103,7 @@ export function OfflineSosSupport() {
         rememberSentCase({
           caseCode: next.caseCode,
           trackingToken: next.trackingToken,
+          confirmationToken: next.confirmationToken,
           phoneLast4,
           incidentType,
         });
@@ -127,6 +128,7 @@ export function OfflineSosSupport() {
           rememberSentCase({
             caseCode: next.caseCode,
             trackingToken: next.trackingToken,
+            confirmationToken: next.confirmationToken,
             phoneLast4: next.phoneLast4 ?? "",
             incidentType: next.incidentType as IncidentType | undefined,
           });

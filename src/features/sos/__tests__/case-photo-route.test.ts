@@ -7,13 +7,14 @@ const deps = vi.hoisted(() => ({
   after: vi.fn(),
   notify: vi.fn(),
   config: vi.fn(),
+  rpc: vi.fn(),
 }));
 vi.mock("next/server", () => ({ after: deps.after }));
 vi.mock("@/features/notifications/line-worker", () => ({ runLineNotifications: deps.notify }));
 vi.mock("@/features/notifications/server/line-config", () => ({
   lineWorkerConfigFromEnv: deps.config,
 }));
-vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ rpc: vi.fn() }) }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ rpc: deps.rpc }) }));
 vi.mock("@/features/auth/server/app-user", () => ({ getCurrentAppUser: async () => null }));
 vi.mock("@/features/sos/server/create-case", () => ({ handleCreateSosCase: deps.create }));
 vi.mock("@/features/sos/server/case-photos", () => ({
@@ -27,6 +28,7 @@ describe("SOS photo upload response", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("LINE_MESSAGING_CHANNEL_ACCESS_TOKEN", "");
+    deps.rpc.mockResolvedValue({ data: "secret-token", error: null });
     deps.parse.mockResolvedValue([{ bytes: Buffer.from("photo"), hash: "hash" }]);
     deps.create.mockResolvedValue({
       status: 201,
@@ -46,8 +48,46 @@ describe("SOS photo upload response", () => {
     expect(await response.json()).toMatchObject({
       caseCode: "FL-TEST",
       trackingToken: "token",
+      confirmationToken: "secret-token",
       photosPending: true,
     });
+  });
+  it("never discloses a confirmation token for an updated existing case", async () => {
+    deps.create.mockResolvedValue({
+      status: 200,
+      body: {
+        caseId: "existing",
+        caseCode: "FL-TEST",
+        trackingToken: "tracking",
+        updatedExisting: true,
+        replayed: true,
+      },
+    });
+    deps.save.mockResolvedValue("ok");
+    const response = await POST(
+      new Request("http://localhost/api/cases", {
+        method: "POST",
+        body: JSON.stringify({ photos: ["test"] }),
+      }),
+    );
+    expect((await response.json()).confirmationToken).toBeUndefined();
+    expect(deps.rpc).not.toHaveBeenCalledWith("confirmation_secret_for_case", expect.anything());
+  });
+  it("asks for an idempotent retry if confirmation capability cannot be retrieved", async () => {
+    deps.rpc.mockResolvedValue({ data: null, error: { message: "unavailable" } });
+    const response = await POST(
+      new Request("http://localhost/api/cases", {
+        method: "POST",
+        body: JSON.stringify({ photos: ["test"] }),
+      }),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      caseCode: "FL-TEST",
+      trackingToken: "token",
+      error: expect.stringContaining("กดส่งอีกครั้ง"),
+    });
+    expect(deps.save).not.toHaveBeenCalled();
   });
   it("rejects oversized requests before creating an SOS", async () => {
     const response = await POST(

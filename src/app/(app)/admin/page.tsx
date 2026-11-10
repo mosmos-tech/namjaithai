@@ -5,6 +5,7 @@ import { SignedInShell } from "@/features/auth/components/SignedInShell";
 import { AdminManagement } from "@/features/admin/AdminManagement";
 import { UnitInvitePanel } from "@/features/auth/components/UnitInvitePanel";
 import { LineDeliveryNotice } from "@/features/notifications/components/LineDeliveryNotice";
+import { LeadConfirmationQueue } from "@/features/notifications/components/LeadConfirmationQueue";
 
 export const metadata: Metadata = { title: "ห้องสั่งการ — น้ำใจไทย SOS", robots: { index: false } };
 
@@ -21,6 +22,7 @@ export default function Page({ searchParams }: PageProps<"/admin">) {
           จัดการเคส
         </Link>
         <LineDeliveryNotice />
+        <LeadConfirmationQueue />
         <AdminManagement />
         <UnitInvitePanel />
       </SignedInShell>

@@ -28,6 +28,7 @@ import { useTrackedCase } from "../use-tracked-case";
 import { TrackLookupForm } from "./TrackLookupForm";
 import { ReporterCaseActions } from "./ReporterCaseActions";
 import { WaitingAdvice } from "./WaitingAdvice";
+import { ReporterAccountConfirmation } from "./ReporterAccountConfirmation";
 
 /**
  * หน้าติดตามเคส /track/รหัสเคส?t=token (TF-13)
@@ -99,6 +100,13 @@ function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string 
 
       {state.kind === "ready" && (
         <>
+          {state.data.status === "AWAITING_CONFIRMATION" && (
+            <ReporterAccountConfirmation
+              caseCode={caseCode}
+              trackingToken={token}
+              onChanged={() => setRevision((value) => value + 1)}
+            />
+          )}
           <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
           {!isClosedStatus(state.data.status) && (
             <WaitingAdvice incidentType={state.data.incidentType} />
