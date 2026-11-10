@@ -63,6 +63,8 @@ export async function GET(request: NextRequest) {
     .select(
       "id,case_code,status,urgency,incident_type,created_at,province,district,landmark,assigned_unit_id,assigned_rescuer_id,duplicate_of_case_id,version,is_demo",
     )
+    // TF-70: คิวแอดมินเป็นงานจริง ไม่รวมเคสตัวอย่าง
+    .eq("is_demo", false)
     .order("created_at")
     .order("id")
     .range(offset, offset + 49);
