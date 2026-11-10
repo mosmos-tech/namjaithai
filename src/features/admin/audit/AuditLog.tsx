@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 type Log = {
   id: string;
   action: string;
+  user_status: "SUSPENDED" | "ACTIVE" | null;
   created_at: string;
   actor_user_id: string | null;
   target_user_id: string | null;
@@ -116,7 +117,15 @@ export function AuditLog() {
         <ul className="space-y-3">
           {logs.map((log) => (
             <li key={log.id} className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="font-semibold">{actions[log.action] ?? log.action}</p>
+              <p className="font-semibold">
+                {log.action === "USER_STATUS_CHANGED"
+                  ? log.user_status === "SUSPENDED"
+                    ? "ระงับผู้ใช้"
+                    : log.user_status === "ACTIVE"
+                      ? "เปิดใช้งานผู้ใช้"
+                      : "เปลี่ยนสถานะผู้ใช้"
+                  : (actions[log.action] ?? log.action)}
+              </p>
               <p>
                 ผู้ทำรายการ:{" "}
                 {log.actor?.display_name ?? (log.actor_user_id ? "ไม่พบชื่อผู้ใช้" : "ระบบ")}

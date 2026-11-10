@@ -35,6 +35,7 @@ test.beforeAll(async ({}, info) => {
       {
         actor_user_id: actor.id,
         action: "CASE_CONTACT_REVEALED",
+        metadata: {},
         target_type: "case",
         target_id: item!.id,
         case_id: item!.id,
@@ -42,14 +43,24 @@ test.beforeAll(async ({}, info) => {
       },
       {
         actor_user_id: actor.id,
-        action: "MEMBER_APPROVED",
+        action: "USER_STATUS_CHANGED",
+        metadata: { to: "SUSPENDED", private_note: "secret-test" },
         target_type: "user",
         target_user_id: ordinary.id,
         created_at: "2026-04-10T16:59:59Z",
       },
       {
         actor_user_id: actor.id,
+        action: "MEMBER_APPROVED",
+        metadata: {},
+        target_type: "user",
+        target_user_id: ordinary.id,
+        created_at: "2026-04-10T12:00:00Z",
+      },
+      {
+        actor_user_id: actor.id,
         action: "MEMBER_SUSPENDED",
+        metadata: {},
         target_type: "user",
         target_user_id: ordinary.id,
         created_at: "2026-04-10T17:00:00Z",
@@ -75,16 +86,18 @@ test("แอดมินเห็นการเปิดข้อมูลต�
   const region = page.getByRole("region", { name: "รายการบันทึกการตรวจสอบ" });
   await expect(region.getByText("เปิดดูข้อมูลติดต่อ")).toBeVisible();
   await expect(region.getByText(`เคส: ${caseCode}`, { exact: true })).toBeVisible();
+  await expect(region.getByText("ระงับผู้ใช้")).toBeVisible();
   await expect(region.getByText("อนุมัติสมาชิก")).toBeVisible();
-  await expect(region.getByText(ordinary.displayName, { exact: false })).toBeVisible();
+  await expect(region.getByText(ordinary.displayName, { exact: false })).toHaveCount(2);
   await expect(region.getByText("ระงับสมาชิก")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const response = await context.request.get(
     `/api/admin/audit?actor=${encodeURIComponent(actor.displayName)}&from=2026-04-10&to=2026-04-10`,
   );
   const body = await response.json();
-  expect(body.logs).toHaveLength(2);
+  expect(body.logs).toHaveLength(3);
   expect(JSON.stringify(body)).not.toContain("phone");
+  expect(JSON.stringify(body)).not.toContain("secret-test");
   expect(
     (await context.request.get("/api/admin/audit?from=2026-04-11&to=2026-04-10")).status(),
   ).toBe(400);

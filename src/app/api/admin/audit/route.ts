@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
     .from("audit_logs")
     .select(
       actor
-        ? "id,action,created_at,actor_user_id,target_user_id,case_id,actor:users!audit_logs_actor_user_id_fkey!inner(display_name),target:users!audit_logs_target_user_id_fkey(display_name),case:cases!audit_logs_case_id_fkey(case_code)"
-        : "id,action,created_at,actor_user_id,target_user_id,case_id,actor:users!audit_logs_actor_user_id_fkey(display_name),target:users!audit_logs_target_user_id_fkey(display_name),case:cases!audit_logs_case_id_fkey(case_code)",
+        ? "id,action,created_at,actor_user_id,target_user_id,case_id,metadata,actor:users!audit_logs_actor_user_id_fkey!inner(display_name),target:users!audit_logs_target_user_id_fkey(display_name),case:cases!audit_logs_case_id_fkey(case_code)"
+        : "id,action,created_at,actor_user_id,target_user_id,case_id,metadata,actor:users!audit_logs_actor_user_id_fkey(display_name),target:users!audit_logs_target_user_id_fkey(display_name),case:cases!audit_logs_case_id_fkey(case_code)",
     )
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
@@ -49,5 +49,15 @@ export async function GET(request: NextRequest) {
     );
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: "load_failed" }, { status: 500, headers });
-  return NextResponse.json({ logs: data.slice(0, 50), hasMore: data.length > 50 }, { headers });
+  const logs = data.slice(0, 50).map(({ metadata, ...row }) => {
+    const status =
+      row.action === "USER_STATUS_CHANGED" &&
+      metadata &&
+      typeof metadata === "object" &&
+      "to" in metadata
+        ? metadata.to
+        : null;
+    return { ...row, user_status: status === "SUSPENDED" || status === "ACTIVE" ? status : null };
+  });
+  return NextResponse.json({ logs, hasMore: data.length > 50 }, { headers });
 }
