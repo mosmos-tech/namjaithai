@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
@@ -16,6 +17,9 @@ export default function Page({ searchParams }: PageProps<"/admin">) {
         comingIn="TF-33"
         denied={searchParams.then((p) => p.denied === "1")}
       >
+        <Link href="/admin/cases" className="inline-flex min-h-12 items-center underline">
+          จัดการเคส
+        </Link>
         <LineDeliveryNotice />
         <AdminManagement />
         <UnitInvitePanel />
