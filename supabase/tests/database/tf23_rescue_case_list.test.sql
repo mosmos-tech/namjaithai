@@ -152,7 +152,10 @@ select is(
 select set_config('request.jwt.claims', '{"sub":"a2300000-0000-0000-0000-000000000003","role":"authenticated"}', true);
 select is((select count(*)::int from public.list_rescue_cases(p_limit => 1000)), 100,
   'ขอเกิน 100 แถว ได้แค่ 100');
-select is((select distinct total_count::int from public.list_rescue_cases()), 105,
+-- seed ของ TF-57 มีเคสตัวอย่างที่ยังเปิดอยู่ในภูเก็ต (หน่วยโชว์) รายการนับรวมด้วย
+select is((select distinct total_count::int from public.list_rescue_cases()),
+  105 + (select count(*)::int from public.cases where is_demo and province = 'ภูเก็ต'
+         and status in ('NEW', 'ACCEPTED', 'EN_ROUTE', 'ON_SITE')),
   'จำนวนทั้งหมดนับครบ 105 แม้ส่งกลับแค่ 100');
 
 -- ---------- ผู้ใช้ทั่วไปเรียกไม่ได้ ----------
