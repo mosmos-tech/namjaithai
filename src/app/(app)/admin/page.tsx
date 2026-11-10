@@ -22,6 +22,9 @@ export default function Page({ searchParams }: PageProps<"/admin">) {
         <Link href="/admin/cases" className="inline-flex min-h-12 items-center underline">
           จัดการเคส
         </Link>
+        <Link href="/admin/audit" className="inline-flex min-h-12 items-center underline">
+          บันทึกการตรวจสอบ
+        </Link>
         <LineDeliveryNotice />
         <LeadConfirmationQueue />
         <PerformanceReviewQueue />
