@@ -22,7 +22,7 @@ type Job = {
   case_code: string;
   tracking_token: string;
   // แถวจากคิวรุ่นก่อน TF-34 ไม่มี kind = แจ้งสถานะ
-  kind?: "CASE_STATUS" | "CLOSE_CONFIRM";
+  kind?: "CASE_STATUS" | "CLOSE_CONFIRM" | "STALE_UNCLAIMED" | "STALE_TEAM";
   to_status: CaseStatus | null;
   incident_type?: string | null;
   district?: string | null;
@@ -165,9 +165,19 @@ export async function deliverLineNotifications(config: LineWorkerConfig): Promis
         to: job.line_user_id,
         retryKey: job.id,
         text:
-          job.kind === "CLOSE_CONFIRM"
-            ? formatCloseConfirmationLine(ref)
-            : formatCaseStatusLine({ ...ref, toStatus: job.to_status!, at: job.created_at }),
+          job.kind === "STALE_UNCLAIMED"
+            ? [
+                `เคส ${job.case_code} ยังไม่มีทีมรับ โปรดตรวจสอบ`,
+                `เปิดรายการเคส: ${new URL("/admin/cases", origin).href}`,
+              ].join("\n")
+            : job.kind === "STALE_TEAM"
+              ? [
+                  `เคส ${job.case_code} ยังไม่มีการอัปเดต กรุณาตรวจสอบและอัปเดตสถานะหรือโน้ต`,
+                  `เปิดงานของฉัน: ${new URL("/rescue/my-tasks", origin).href}`,
+                ].join("\n")
+              : job.kind === "CLOSE_CONFIRM"
+                ? formatCloseConfirmationLine(ref)
+                : formatCaseStatusLine({ ...ref, toStatus: job.to_status!, at: job.created_at }),
       };
     },
     (job, result, failure) =>
