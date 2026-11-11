@@ -1,13 +1,15 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { rememberSentCase } from "../sent-case";
 import { saveOfflineSos } from "../offline-queue-core";
 import { WaitingAdvice } from "./WaitingAdvice";
 import { IncidentType, Need, type LocatedArea, type WaterLevel } from "../../../lib/domain";
+import { buildSosSmsLink } from "../../../lib/domain/sms-format";
 import {
+  SOS_SLOW_SUBMIT_NOTICE_MS,
   applyGpsPositionToDraft,
   applyIncidentTypeToDraft,
   applyLocatedAreaToDraft,
@@ -112,11 +114,22 @@ export function SosWizard() {
     missingSummary: [],
   });
   const isSubmittingRef = useRef(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSlowSubmitting, setIsSlowSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
   const [submittedType, setSubmittedType] = useState<IncidentType | null>(null);
   const [hasSentDetails, setHasSentDetails] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (slowTimerRef.current !== null) {
+        clearTimeout(slowTimerRef.current);
+        slowTimerRef.current = null;
+      }
+    };
+  }, []);
 
   function updateDraft(updater: (prev: SosDraft) => SosDraft): SosDraft {
     const latest = getSosDraftSnapshot();
@@ -372,6 +385,11 @@ export function SosWizard() {
     setSubmitError(null);
     setSubmitSuccessMessage(null);
     setIsSubmitting(true);
+    setIsSlowSubmitting(false);
+    if (slowTimerRef.current !== null) clearTimeout(slowTimerRef.current);
+    slowTimerRef.current = setTimeout(() => {
+      setIsSlowSubmitting(true);
+    }, SOS_SLOW_SUBMIT_NOTICE_MS);
 
     try {
       const result = await submitSosDraft({
@@ -438,7 +456,9 @@ export function SosWizard() {
               : undefined,
           );
           clearSosDraft();
-          window.dispatchEvent(new Event("sos-queued"));
+          window.dispatchEvent(
+            new CustomEvent("sos-queued", { detail: { skipImmediateRetry: true } }),
+          );
         } catch {
           setSubmitError(
             result.status === "photo_pending"
@@ -479,6 +499,11 @@ export function SosWizard() {
         setSubmitSuccessMessage(result.successMessage);
       }
     } finally {
+      if (slowTimerRef.current !== null) {
+        clearTimeout(slowTimerRef.current);
+        slowTimerRef.current = null;
+      }
+      setIsSlowSubmitting(false);
       setIsSubmitting(false);
     }
   }
@@ -648,30 +673,50 @@ export function SosWizard() {
             />
           )}
 
-          {hydrated && draft.currentStep === 5 && (
-            <Step5Contact
-              name={draft.name}
-              phone={draft.phone}
-              lineId={draft.lineId}
-              notes={draft.notes}
-              photos={draft.photos}
-              consent={draft.consent}
-              healthConsent={draft.healthConsent}
-              onConsentChange={(field, value) => {
-                const next = updateDraft((prev) => ({ ...prev, [field]: value }));
-                if (step5Attempted) setStep5Errors(validateStep5Draft(next).errors);
-              }}
-              errors={step5Errors}
-              isSubmitting={isSubmitting}
-              submitError={submitError}
-              submitSuccessMessage={submitSuccessMessage}
-              onChangeField={handleChangeContactField}
-              onAddPhoto={handleAddPhoto}
-              onRemovePhoto={handleRemovePhoto}
-              onPrev={() => handleGoToStep(4)}
-              onSubmit={handleStep5Submit}
-            />
-          )}
+          {hydrated && draft.currentStep === 5 && (() => {
+            const slowSms = buildSosSmsLink(
+              {
+                incidentType: draft.incidentType,
+                waterLevel: draft.waterLevel,
+                lat: draft.lat,
+                lng: draft.lng,
+                phone: draft.phone,
+                landmark: draft.landmark,
+                adults: draft.adults,
+                elderly: draft.elderly,
+                bedridden: draft.bedridden,
+                children: draft.children,
+              },
+              process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER ?? "",
+            );
+            return (
+              <Step5Contact
+                name={draft.name}
+                phone={draft.phone}
+                lineId={draft.lineId}
+                notes={draft.notes}
+                photos={draft.photos}
+                consent={draft.consent}
+                healthConsent={draft.healthConsent}
+                onConsentChange={(field, value) => {
+                  const next = updateDraft((prev) => ({ ...prev, [field]: value }));
+                  if (step5Attempted) setStep5Errors(validateStep5Draft(next).errors);
+                }}
+                errors={step5Errors}
+                isSubmitting={isSubmitting}
+                isSlowSubmitting={isSlowSubmitting}
+                slowSmsHref={slowSms.href}
+                slowSmsToSystem={slowSms.toSystem}
+                submitError={submitError}
+                submitSuccessMessage={submitSuccessMessage}
+                onChangeField={handleChangeContactField}
+                onAddPhoto={handleAddPhoto}
+                onRemovePhoto={handleRemovePhoto}
+                onPrev={() => handleGoToStep(4)}
+                onSubmit={handleStep5Submit}
+              />
+            );
+          })()}
         </div>
       </div>
     </div>

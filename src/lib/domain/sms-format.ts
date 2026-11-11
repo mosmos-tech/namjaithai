@@ -48,3 +48,56 @@ export function formatSmsSos(input: {
 export function smsHref(number: string, body: string): string {
   return `sms:${number}?body=${encodeURIComponent(body)}`;
 }
+
+export interface SmsSosLinkInput {
+  lat?: number;
+  lng?: number;
+  phone?: string;
+  landmark?: string;
+  incidentType?: IncidentType;
+  waterLevel?: WaterLevel;
+  adults?: number;
+  elderly?: number;
+  bedridden?: number;
+  children?: number;
+}
+
+/**
+ * สร้างลิงก์ปุ่ม "ส่งทาง SMS" — มี gateway และเป็นประเภทเหตุที่รองรับจะสร้างรูปแบบที่ระบบอ่านได้อัตโนมัติ
+ * มิฉะนั้นสร้างข้อความฉุกเฉินทั่วไปพร้อมพิกัดให้ผู้แจ้งส่งต่อให้ญาติหรือผู้ช่วยเหลือ
+ */
+export function buildSosSmsLink(
+  input: SmsSosLinkInput,
+  gatewayNumber: string = "",
+): { href: string; toSystem: boolean } {
+  const gateway = gatewayNumber.trim();
+  const located = typeof input.lat === "number" && typeof input.lng === "number";
+  if (
+    gateway &&
+    located &&
+    SMS_SUPPORTED_INCIDENTS.includes(input.incidentType ?? IncidentType.FLOOD)
+  ) {
+    return {
+      href: smsHref(gateway, formatSmsSos({ ...input, lat: input.lat!, lng: input.lng! })),
+      toSystem: true,
+    };
+  }
+  const text = located
+    ? `ขอความช่วยเหลือฉุกเฉิน พิกัด ${input.lat},${input.lng} จุดสังเกต ${input.landmark ?? ""} โทรกลับ ${input.phone ?? ""}`
+    : "ขอความช่วยเหลือฉุกเฉิน กรุณาติดต่อกลับ";
+  return { href: `sms:?body=${encodeURIComponent(text)}`, toSystem: false };
+}
+
+/** แปลง JSON body ที่คิวเก็บไว้เป็นลิงก์ SMS (กัน JSON พังแล้วสลับเป็นข้อความทั่วไป) */
+export function buildSosSmsLinkFromJson(
+  rawBody: string | undefined,
+  gatewayNumber: string = "",
+): { href: string; toSystem: boolean } {
+  let body: SmsSosLinkInput = {};
+  try {
+    body = JSON.parse(rawBody ?? "{}") as SmsSosLinkInput;
+  } catch {
+    /* Use the generic message. */
+  }
+  return buildSosSmsLink(body, gatewayNumber);
+}

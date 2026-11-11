@@ -1256,12 +1256,81 @@ export type SubmitSosDraftResult =
       successMessage: string;
     };
 
+/** เวลารอสูงสุดของคำขอส่ง SOS หลัก (12 วิ) เพื่อไม่ให้ปุ่มหมุนค้างหลายนาทีบนเน็ตช้าแล้วส่งเข้าคิว TF-15 */
+export const SOS_SUBMIT_TIMEOUT_MS = 12_000;
+
+/** เวลารอสูงสุดของคำขออัปโหลดรูปตามหลังเคส (12 วิ) — หากหมดเวลาจะเก็บคิวส่งรูปซ้ำโดยเคสไม่ล้ม */
+export const SOS_PHOTO_UPLOAD_TIMEOUT_MS = 12_000;
+
+/** เวลาที่รอเกินแล้วแสดงปุ่มโทร 1669 และส่งทาง SMS บนขั้นที่ 5 ทันที (5 วิ) */
+export const SOS_SLOW_SUBMIT_NOTICE_MS = 5_000;
+
 export interface SubmitSosDraftOptions {
   draft: SosDraft;
   storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   inFlightRef?: { current: boolean };
   fetchImpl?: typeof fetch;
   generateIdempotencyKey?: () => string;
+  timeoutMs?: number;
+  photoTimeoutMs?: number;
+}
+
+interface CaseSubmitApiResponse {
+  caseCode?: string;
+  trackingToken?: string;
+  confirmationToken?: string;
+  error?: string;
+  photoWarning?: string;
+  photosPending?: boolean;
+}
+
+/** ครอบ fetch ด้วย AbortController + timeout rejection เพื่อกันค้างบนเครือข่ายช้ามาก */
+async function fetchWithTimeout(
+  fetchImpl: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new DOMException("Request timed out", "TimeoutError");
+      controller.abort(err);
+      reject(err);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      fetchImpl(input, { ...init, signal: controller.signal }),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function postCasePayload(
+  fetchImpl: typeof fetch,
+  idempotencyKey: string,
+  body: string,
+  timeoutMs: number,
+): Promise<{ response: Response; data: CaseSubmitApiResponse }> {
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    "/api/cases",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body,
+    },
+    timeoutMs,
+  );
+  const data = (await response.json()) as CaseSubmitApiResponse;
+  return { response, data };
 }
 
 const _defaultInFlightRef = { current: false };
@@ -1287,6 +1356,8 @@ export async function submitSosDraft(
       storage = typeof window !== "undefined" ? window.localStorage : undefined,
       fetchImpl = fetch,
       generateIdempotencyKey = () => crypto.randomUUID(),
+      timeoutMs = SOS_SUBMIT_TIMEOUT_MS,
+      photoTimeoutMs = SOS_PHOTO_UPLOAD_TIMEOUT_MS,
     } = options;
 
     const check5 = validateStep5Draft(draft);
@@ -1377,7 +1448,7 @@ export async function submitSosDraft(
       }
     }
 
-    const requestBody = JSON.stringify({
+    const basePayload = {
       incidentType: nextDraft.incidentType,
       atScene: nextDraft.atScene,
       dangerSigns: nextDraft.dangerSigns,
@@ -1408,36 +1479,32 @@ export async function submitSosDraft(
       notes: nextDraft.notes || undefined,
       consent: nextDraft.consent,
       healthConsent: nextDraft.healthConsent,
-      ...(nextDraft.photos.length
-        ? { photos: nextDraft.photos.map((photo) => photo.dataUrl) }
-        : {}),
-    });
+    };
+    const hasPhotos = nextDraft.photos.length > 0;
+    const caseRequestBody = JSON.stringify(basePayload);
+    const fullRequestBody = hasPhotos
+      ? JSON.stringify({
+          ...basePayload,
+          photos: nextDraft.photos.map((photo) => photo.dataUrl),
+        })
+      : caseRequestBody;
 
+    let caseData: CaseSubmitApiResponse;
     try {
-      const response = await fetchImpl("/api/cases", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-        },
-        body: requestBody,
-      });
-
-      const data = (await response.json()) as {
-        caseCode?: string;
-        trackingToken?: string;
-        confirmationToken?: string;
-        error?: string;
-        photoWarning?: string;
-        photosPending?: boolean;
-      };
+      // ขั้น 1 (TF-69): ส่งเคสโดยไม่มีรูปก่อนเสมอเพื่อให้ถึงเซิร์ฟเวอร์เร็วแม้เน็ตช้ามาก
+      const { response, data } = await postCasePayload(
+        fetchImpl,
+        idempotencyKey,
+        caseRequestBody,
+        timeoutMs,
+      );
 
       if (!response.ok) {
         if (data.photosPending && data.caseCode && data.trackingToken) {
           return {
             status: "photo_pending",
             idempotencyKey,
-            requestBody,
+            requestBody: fullRequestBody,
             caseCode: data.caseCode,
             trackingToken: data.trackingToken,
             confirmationToken: data.confirmationToken,
@@ -1452,26 +1519,86 @@ export async function submitSosDraft(
         };
       }
 
-      // ส่งสำเร็จแล้วต้องล้างข้อมูลร่างในเครื่องทันทีเพื่อไม่ให้ค้างหรือส่งซ้ำ
-      clearSosDraft(storage);
-
-      const caseCode = data.caseCode ?? "";
-      return {
-        status: "submitted",
-        caseCode,
-        trackingToken: data.trackingToken,
-        confirmationToken: data.confirmationToken,
-        idempotencyKey,
-        successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${caseCode}${data.photoWarning ? ` — ${data.photoWarning}` : ""}`,
-      };
+      caseData = data;
     } catch {
       return {
         status: "network_error",
         error: "ไม่สามารถเชื่อมต่อเครือข่ายได้ ระบบบันทึกข้อมูลร่างไว้ในเครื่องแล้ว",
         idempotencyKey,
-        requestBody,
+        requestBody: fullRequestBody,
       };
     }
+
+    const caseCode = caseData.caseCode ?? "";
+    let finalCaseData: CaseSubmitApiResponse = caseData;
+    let photoWarning = caseData.photoWarning;
+
+    // ขั้น 2 (TF-69): เมื่อสร้างเคสได้รหัสแล้วค่อยอัปโหลดรูปด้วย Idempotency-Key เดิม — รูปล้มต้องไม่ทำให้เคสล้ม
+    if (hasPhotos) {
+      try {
+        const { response: photoResponse, data: photoData } = await postCasePayload(
+          fetchImpl,
+          idempotencyKey,
+          fullRequestBody,
+          photoTimeoutMs,
+        );
+        if (photoResponse.ok) {
+          finalCaseData = {
+            ...caseData,
+            ...photoData,
+            caseCode: photoData.caseCode ?? caseData.caseCode,
+            trackingToken: photoData.trackingToken ?? caseData.trackingToken,
+            confirmationToken: photoData.confirmationToken ?? caseData.confirmationToken,
+          };
+          photoWarning = photoData.photoWarning ?? photoWarning;
+        } else {
+          const isPermanent4xx =
+            photoResponse.status >= 400 &&
+            photoResponse.status < 500 &&
+            photoResponse.status !== 429;
+          if (isPermanent4xx) {
+            photoWarning =
+              photoData.error ?? "ไม่สามารถแนบรูปได้ แต่ทีมกู้ภัยได้รับคำขอของคุณแล้ว";
+          } else if (caseData.trackingToken) {
+            return {
+              status: "photo_pending",
+              idempotencyKey,
+              requestBody: fullRequestBody,
+              caseCode: photoData.caseCode ?? caseCode,
+              trackingToken: photoData.trackingToken ?? caseData.trackingToken,
+              confirmationToken: photoData.confirmationToken ?? caseData.confirmationToken,
+            };
+          } else {
+            photoWarning = "ไม่สามารถแนบรูปได้ในขณะนี้ แต่ทีมกู้ภัยได้รับคำขอของคุณแล้ว";
+          }
+        }
+      } catch {
+        if (caseData.trackingToken) {
+          return {
+            status: "photo_pending",
+            idempotencyKey,
+            requestBody: fullRequestBody,
+            caseCode,
+            trackingToken: caseData.trackingToken,
+            confirmationToken: caseData.confirmationToken,
+          };
+        }
+        photoWarning = "ไม่สามารถแนบรูปได้ในขณะนี้ แต่ทีมกู้ภัยได้รับคำขอของคุณแล้ว";
+      }
+    }
+
+    // ส่งสำเร็จแล้วต้องล้างข้อมูลร่างในเครื่องทันทีเพื่อไม่ให้ค้างหรือส่งซ้ำ
+    clearSosDraft(storage);
+
+    const finalCode = finalCaseData.caseCode ?? caseCode;
+    return {
+      status: "submitted",
+      caseCode: finalCode,
+      trackingToken: finalCaseData.trackingToken,
+      confirmationToken: finalCaseData.confirmationToken,
+      idempotencyKey,
+      successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${finalCode}${photoWarning ? ` — ${photoWarning}` : ""}`,
+    };
   } finally {
     inFlightRef.current = false;
   }
