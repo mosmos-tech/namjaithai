@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
 import { adminDb, closeTestCases } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
+import { expectReadableAxis } from "./helpers/chart";
 
 /**
  * TF-57 ผลงานหน่วย + ด่านกันปั๊มผลงาน
@@ -263,20 +264,13 @@ test("เลือกเดือนแล้วเห็นกราฟรา�
 
   const [year, monthNumber] = month.split("-").map(Number);
   const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-  const labels = page.getByTestId("chart-axis-labels").locator("span");
-  await expect(labels).toHaveCount(days);
-  const shown = await labels.evaluateAll((items) =>
-    items.map((item) => ({
-      text: item.textContent,
-      visible: getComputedStyle(item).visibility === "visible",
-      size: parseFloat(getComputedStyle(item).fontSize),
-    })),
-  );
-  expect(shown.filter((label) => label.visible).map((label) => label.text)).toEqual(
+  await expect(page.getByTestId("chart-axis-labels").locator("span")).toHaveCount(days);
+  // ป้ายแรกมีชื่อเดือน ("1 ต.ค.") ที่เหลือเป็นเลขวัน · 12px ไม่ทับกัน ไม่ล้นจอ
+  const shown = await expectReadableAxis(page);
+  expect(shown[0]).toMatch(/^1 [ก-๙.]+$/);
+  expect(shown.map((text) => text.split(" ")[0])).toEqual(
     ["1", "5", "10", "15", "20", "25", "30"].filter((day) => Number(day) <= days),
   );
-  expect(Math.min(...shown.map((label) => label.size))).toBeGreaterThanOrEqual(12);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   // ตารางและ CSV เป็นรายวันของเดือนเดียวกัน
   await page.getByText("ดูเป็นตาราง").click();

@@ -18,6 +18,14 @@ export function FooterContent({ yearBE }: { yearBE: number }) {
             <span className="mx-2 opacity-50 select-none">·</span>
             <Link
               prefetch={false}
+              href="/units"
+              className="hover:text-primary-600 underline underline-offset-2"
+            >
+              หน่วยกู้ภัย
+            </Link>
+            <span className="mx-2 opacity-50 select-none">·</span>
+            <Link
+              prefetch={false}
               href="/privacy"
               className="hover:text-primary-600 underline underline-offset-2"
             >

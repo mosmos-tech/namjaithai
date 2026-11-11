@@ -90,7 +90,7 @@ describe("TF-57 สถิติผลงานหน่วย", () => {
     expect(bars[1].helped).toBe(0);
     expect(bars.at(-1)).toMatchObject({ key: "2026-10-31", helped: 1, released: 1 });
     expect(bars.filter((bar) => bar.axisOnNarrow).map((bar) => bar.axisLabel)).toEqual([
-      "1",
+      "1 ต.ค.",
       "5",
       "10",
       "15",

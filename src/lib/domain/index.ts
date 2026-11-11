@@ -17,3 +17,4 @@ export * from "./sms-sos";
 export * from "./realtime";
 export * from "./case-claim";
 export * from "./unit-stats";
+export * from "./unit-directory";

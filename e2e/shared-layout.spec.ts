@@ -11,7 +11,7 @@ test.describe("แถบสายด่วนและ navbar", () => {
     }
   });
 
-  test("navbar จอคอม: 4 ลิงก์และโลโก้ไปหน้าถูก", async ({ page, isMobile }) => {
+  test("navbar จอคอม: 5 ลิงก์และโลโก้ไปหน้าถูก", async ({ page, isMobile }) => {
     test.skip(isMobile, "จอคอมเท่านั้น (มือถือใช้เมนูแฮมเบอร์เกอร์)");
     await page.goto("/hotlines");
     const nav = page.getByRole("navigation");
@@ -19,6 +19,7 @@ test.describe("แถบสายด่วนและ navbar", () => {
       ["แจ้งขอความช่วยเหลือ", "/request"],
       ["ติดตามเคส", "/track"],
       ["เบอร์สายด่วน", "/hotlines"],
+      ["หน่วยกู้ภัย", "/units"],
       ["คู่มือเอาตัวรอด", "/survival"],
     ]) {
       await expect(nav.getByRole("link", { name, exact: true })).toHaveAttribute("href", href);
@@ -38,6 +39,7 @@ test.describe("แถบสายด่วนและ navbar", () => {
       "แจ้งขอความช่วยเหลือ",
       "ติดตามเคส",
       "เบอร์สายด่วน",
+      "หน่วยกู้ภัย",
       "คู่มือเอาตัวรอด",
       "เข้าสู่ระบบ",
     ]) {
@@ -89,7 +91,16 @@ test.describe("footer", () => {
 });
 
 test.describe("ไม่มีเลื่อนแนวนอน (TF-06: ใช้ได้บนจอมือถือ)", () => {
-  for (const path of ["/", "/hotlines", "/survival", "/request", "/track", "/sos/sent", "/login"]) {
+  for (const path of [
+    "/",
+    "/hotlines",
+    "/units",
+    "/survival",
+    "/request",
+    "/track",
+    "/sos/sent",
+    "/login",
+  ]) {
     test(`หน้า ${path}`, async ({ page }) => {
       await page.goto(path);
       await page.waitForLoadState("networkidle");

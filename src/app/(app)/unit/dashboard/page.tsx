@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
 import { getCurrentAppUser } from "@/features/auth/server/app-user";
+import { incidentChartData } from "@/features/unit-stats/chart-data";
 import { HelpedChart } from "@/features/unit-stats/components/HelpedChart";
 import {
   countActiveCases,
@@ -9,6 +10,7 @@ import {
   loadPeriodBars,
   loadUnitMonthlyStats,
 } from "@/features/unit-stats/server/unit-dashboard";
+import { UnitPicker } from "@/features/units/components/UnitPicker";
 import { parseMonthParam, recentMonthOptions, thaiMonthLongLabel, unitTotals } from "@/lib/domain";
 
 export const metadata: Metadata = {
@@ -71,20 +73,10 @@ async function Dashboard({
       <header className="flex flex-col gap-3">
         <form method="get" className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
           {units.length > 1 ? (
-            <label className="flex min-w-0 flex-1 flex-col gap-1 text-base font-semibold">
-              เลือกหน่วย
-              <select
-                name="unit"
-                defaultValue={unit.id}
-                className="border-border-default bg-bg-surface min-h-12 w-full rounded-[12px] border px-3 text-base font-normal"
-              >
-                {units.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            // TF-71: ชื่อหน่วยยาวอ่านได้ครบบนจอแคบ จัดกลุ่มตามจังหวัด ใช้แป้นพิมพ์เลือกได้
+            <div className="min-w-0 flex-1">
+              <UnitPicker label="เลือกหน่วย" name="unit" value={unit.id} options={units} />
+            </div>
           ) : (
             <input type="hidden" name="unit" value={unit.id} />
           )}
@@ -142,8 +134,7 @@ async function Dashboard({
       </dl>
 
       <HelpedChart
-        bars={bars}
-        period={month ? "day" : "month"}
+        data={incidentChartData(bars, month ? "day" : "month")}
         title={
           month
             ? `ช่วยสำเร็จรายวัน ${thaiMonthLongLabel(month)}`
