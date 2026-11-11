@@ -15,6 +15,15 @@ export async function openFreshSosForm(page: Page, path = "/request") {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.getByText("ขั้นที่ 1 จาก 5")).toBeVisible();
+  await waitForSosFormReady(page);
+}
+
+/**
+ * TF-68: "ขั้นที่ 1 จาก 5" มาจากเซิร์ฟเวอร์ตั้งแต่ก่อน JS โหลด — กดปุ่มตอนนั้นการกดจะหายเงียบ
+ * หน้าเว็บแสดง "กำลังโหลด..." จนกว่าจะ hydrate เสร็จ จึงรอให้ข้อความนั้นหายก่อนเริ่มกด
+ */
+export async function waitForSosFormReady(page: Page) {
+  await expect(page.getByTestId("hydration-pending")).toHaveCount(0);
 }
 
 // ปุ่มถัดไปที่มองเห็นอยู่ (มือถือ/จอคอมใช้ข้อความต่างกัน เช่น "ถัดไป" กับ "ถัดไป: ตำแหน่ง")

@@ -49,8 +49,8 @@ npm run dev
 
 ```bash
 npm run db:start                 # ครั้งแรกรอ 5–10 นาที
-npx supabase status -o env       # ดูคีย์
-cp .env.example .env.local       # แล้วใส่ค่า PUBLISHABLE_KEY ลงไป
+cp .env.example .env.local       # ครั้งแรก
+npm run env:sync                 # ใส่ URL/คีย์ Supabase ในเครื่องลง .env.local ให้ (สำรองไฟล์เดิมเป็น .env.local.bak)
 npm run dev
 ```
 
@@ -109,7 +109,7 @@ npm run dev
 
 ```bash
 npm run db:start        # ต้องเปิด Supabase ในเครื่องก่อน (test ใช้ฐานข้อมูลในเครื่องเท่านั้น)
-npm run e2e             # รันทั้งหมดแบบไม่เห็นจอ (เปิด npm run dev ให้เอง ถ้าเปิดค้างไว้จะใช้ตัวนั้น)
+npm run e2e             # รันทั้งหมดแบบไม่เห็นจอ (เปิด dev server ให้เอง — ต้องปิด npm run dev ที่เปิดค้างไว้ก่อน)
 npm run e2e:headed      # เห็นเบราว์เซอร์กดทีละขั้น
 npm run e2e:ui          # UI mode: เลือก test, ดูทีละขั้น, ย้อนดูหน้าจอ
 npx playwright test e2e/auth.spec.ts --project=mobile   # รันเฉพาะไฟล์/ขนาดจอ
@@ -118,6 +118,10 @@ npx playwright test e2e/auth.spec.ts --project=mobile   # รันเฉพา�
 - ต้องมี Google Chrome ในเครื่อง ครั้งแรกรัน `npx playwright install ffmpeg` (ใช้อัดวิดีโอตอน test ล้ม)
 - test ล้มแล้วดูวิดีโอ/ภาพหน้าจอได้ใน `test-results/` (ใน CI โหลดได้จาก Artifacts ของ job **e2e**)
 - ก่อนรัน ระบบล้างตัวนับ rate limit ในฐานข้อมูลในเครื่องให้ (`e2e/global-setup.ts`) และจะไม่ยอมรันถ้าชี้ไป Supabase ที่ไม่ใช่ในเครื่อง
+- **ห้ามเปิด `npm run dev` ค้างไว้ตอนรัน E2E** (TF-68): ถ้าพอร์ต 3000 ถูกใช้อยู่ Playwright จะหยุดพร้อมบอกวิธีปิด
+- คีย์ใน `.env.local` ไม่ตรงกับ Supabase ในเครื่อง E2E จะหยุดพร้อมบอกให้รัน `npm run env:sync` (ดูหัวข้อ "Realtime ในเครื่องตอบ MalformedJWT" ใน `docs/environments.md`)
+- ก่อนเริ่ม test ระบบเปิดหน้าหลักทุกหน้า 1 รอบให้ dev server compile ไว้ก่อน (เวลาแต่ละหน้าอยู่ในบรรทัด `[global-setup]`)
+- หน้าที่ต้องใช้ JS ให้รอ "กำลังโหลด..." หาย (`waitForSosFormReady`) หรือรอปุ่มกดได้ ห้ามใช้ `waitForTimeout`
 
 **เพิ่ม test ใหม่**
 

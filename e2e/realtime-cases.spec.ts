@@ -207,9 +207,20 @@ test.describe("TF-27 อัปเดตแบบเรียลไทม์", ()
     baseURL,
   }, testInfo) => {
     const { listPointB } = AREAS[testInfo.project.name];
+    // TF-68: แอดมินเห็นเคสที่ยังไม่ปิดทั้งประเทศ หน้าละ 100 เคส (เคสแดงเก่าขึ้นก่อน)
+    // เคสค้างจาก test ไฟล์อื่นในฐานข้อมูลในเครื่องดันเคสใหม่ไปหน้า 2 ได้ (รอบแรกผ่าน รอบต่อๆ ไปล้ม)
+    // จึงกรองรัศมี 5 กม. รอบจุดทดสอบ ให้ test ขึ้นกับข้อมูลของตัวเองเท่านั้น
     await context.clearPermissions();
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({
+      latitude: listPointB.lat,
+      longitude: listPointB.lng,
+      accuracy: 20,
+    });
     await applySession(context, adminAccount);
     await page.goto("/rescue/cases");
+    await page.getByLabel("รัศมีจากตำแหน่งของคุณ").selectOption("5000");
+    await expect(page.getByTestId("case-count")).toBeVisible();
 
     await expect(page.getByTestId("rescue-live-status")).toHaveAttribute(
       "data-live-mode",
