@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { label: "แจ้งขอความช่วยเหลือ", href: "/request" },
   { label: "ติดตามเคส", href: "/track" },
   { label: "เบอร์สายด่วน", href: "/hotlines" },
+  { label: "หน่วยกู้ภัย", href: "/units" },
   { label: "คู่มือเอาตัวรอด", href: "/survival" },
 ];
 

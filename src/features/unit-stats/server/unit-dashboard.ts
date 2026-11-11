@@ -10,7 +10,7 @@ import {
 } from "@/lib/domain";
 import type { AppUser } from "@/features/auth/server/app-user";
 
-export type DashboardUnit = { id: string; label: string; isDemo: boolean };
+export type DashboardUnit = { id: string; label: string; province: string; isDemo: boolean };
 
 type UnitRow = {
   id: string;
@@ -28,6 +28,7 @@ function toDashboardUnit(unit: UnitRow): DashboardUnit {
   return {
     id: unit.id,
     label: unitDisplayName({ ...unit, organization: unit.organizations?.name }),
+    province: unit.province,
     isDemo: unit.source === "DEMO",
   };
 }

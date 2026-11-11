@@ -22,6 +22,7 @@ export type UnitPeriodBar = {
   label: string; // ป้ายเต็มสำหรับตาราง/คำอธิบาย เช่น "ต.ค. 69" หรือ "5 ต.ค. 69"
   axisLabel: string; // ป้ายใต้แท่ง เช่น "ต.ค." หรือ "5"
   axisOnNarrow: boolean; // จอ 375px แสดงป้ายนี้ไหม (เว้นเดือน / ทุก 5 วัน)
+  axisOnWide: boolean; // จอกว้างแสดงป้ายนี้ไหม (ซ่อนเฉพาะป้ายที่ชนป้ายมีชื่อเดือน)
   helpedByType: Partial<Record<IncidentType, number>>;
   helped: number;
   leadClosed: number;
@@ -114,12 +115,14 @@ function emptyBar(
   label: string,
   axisLabel: string,
   axisOnNarrow: boolean,
+  axisOnWide = true,
 ): UnitPeriodBar {
   return {
     key,
     label,
     axisLabel,
     axisOnNarrow,
+    axisOnWide,
     helpedByType: {},
     helped: 0,
     leadClosed: 0,
@@ -157,22 +160,67 @@ export function lastTwelveMonths(rows: readonly UnitMonthlyRow[], now: Date): Un
   return bars;
 }
 
-/** วันที่ 1 ถึงวันสุดท้ายของเดือน วันละแท่ง วันที่ไม่มีเคสเป็น 0 · จอแคบแสดงเลขวัน 1, 5, 10, ... */
+/** วันที่ 1 ถึงวันสุดท้ายของเดือน วันละแท่ง วันที่ไม่มีเคสเป็น 0 · ป้ายแกนตาม dailyAxisLabels (จอแคบ 1, 5, 10, ...) */
 export function daysOfMonth(rows: readonly UnitDailyRow[], month: string): UnitPeriodBar[] {
   const { days } = monthRange(month);
   const short = thaiMonthLabel(month);
-  const bars = Array.from({ length: days }, (_, i) => {
-    const day = i + 1;
-    return emptyBar(
-      `${month}-${String(day).padStart(2, "0")}`,
-      `${day} ${short}`,
-      String(day),
-      day === 1 || day % 5 === 0,
-    );
-  });
+  const keys = Array.from({ length: days }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
+  const axis = dailyAxisLabels(keys, (i) => i === 0 || (i + 1) % 5 === 0);
+  const bars = keys.map((key, i) =>
+    emptyBar(key, `${i + 1} ${short}`, axis[i].axisLabel, axis[i].axisOnNarrow, axis[i].axisOnWide),
+  );
   const byKey = new Map(bars.map((bar) => [bar.key, bar]));
   for (const row of rows) addCounts(byKey.get(row.day.slice(0, 10)), row);
   return bars;
+}
+
+/** วันที่/เดือนเต็ม ปี พ.ศ. 4 หลัก เช่น "21 ต.ค. 2569" หรือ "ต.ค. 2569" — แถบตัวเลขตอนแตะแท่ง */
+export function thaiFullPeriodLabel(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  const label = `${THAI_MONTHS[month - 1]} ${year + 543}`;
+  return day ? `${day} ${label}` : label;
+}
+
+export type DailyAxisLabel = { axisLabel: string; axisOnNarrow: boolean; axisOnWide: boolean };
+
+/**
+ * ป้ายแกน X ของกราฟรายวัน (ใช้ทั้ง /unit/dashboard และ /units/[id])
+ * - ป้ายแรกและวันที่ 1 ของเดือนใหม่มีชื่อเดือน เช่น "12 ต.ค." "1 พ.ย." ที่เหลือเป็นเลขวัน
+ * - ป้ายมีชื่อเดือนกว้างราว 3–4 แท่งบนจอ 375px จึงซ่อนเลขวันที่อยู่ใกล้ (ตัวหนังสือยัง 12px ไม่ล้นจอ)
+ *   ป้ายแรกชิดซ้ายของแท่ง (ล้นไปทางขวา) ป้ายอื่นอยู่กลางแท่ง
+ * - isRegularTick: เลขวันที่จอแคบแสดงตามปกติ (เช่น ทุก 5 วัน)
+ */
+export function dailyAxisLabels(
+  keys: readonly string[],
+  isRegularTick: (index: number) => boolean,
+): DailyAxisLabel[] {
+  const day = (key: string) => Number(key.slice(8, 10));
+  const monthStarts = keys.flatMap((key, i) => (i > 0 && day(key) === 1 ? [i] : []));
+  // ระยะ (จำนวนแท่ง) ที่ป้ายมีชื่อเดือนกินพื้นที่บนจอแคบ: ป้ายแรกชิดซ้าย "12 ต.ค." ยาวกว่า "1 พ.ย." ที่อยู่กลางแท่ง
+  const firstReach = day(keys[0] ?? "") >= 10 ? 4 : 3;
+  const nearNarrow = (i: number) =>
+    (i > 0 && i <= firstReach) || monthStarts.some((j) => j !== i && Math.abs(i - j) <= 3);
+  const nearWide = (i: number) =>
+    (i > 0 && i <= 1) || monthStarts.some((j) => j !== i && Math.abs(i - j) <= 1);
+  return keys.map((key, i) => {
+    const month = THAI_MONTHS[Number(key.slice(5, 7)) - 1];
+    if (i === 0) {
+      // เดือนใหม่เริ่มใกล้ป้ายแรกมาก: ป้ายเดือนใหม่สำคัญกว่า ซ่อนป้ายแรกแทน
+      return {
+        axisLabel: `${day(key)} ${month}`,
+        axisOnNarrow: !monthStarts.some((j) => j <= 5),
+        axisOnWide: !monthStarts.some((j) => j <= 2),
+      };
+    }
+    if (monthStarts.includes(i)) {
+      return { axisLabel: `${day(key)} ${month}`, axisOnNarrow: true, axisOnWide: true };
+    }
+    return {
+      axisLabel: String(day(key)),
+      axisOnNarrow: isRegularTick(i) && !nearNarrow(i),
+      axisOnWide: !nearWide(i),
+    };
+  });
 }
 
 /** ตัวเลข 3 ช่องจากสถิติ (ช่อง "กำลังช่วย" ดึงสดจากเคสที่หน่วยถืออยู่) */
