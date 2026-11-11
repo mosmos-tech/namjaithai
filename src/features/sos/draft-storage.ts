@@ -1245,11 +1245,13 @@ export type SubmitSosDraftResult =
       requestBody: string;
       caseCode: string;
       trackingToken: string;
+      confirmationToken?: string;
     }
   | {
       status: "submitted";
       caseCode: string;
       trackingToken?: string;
+      confirmationToken?: string;
       idempotencyKey: string;
       successMessage: string;
     };
@@ -1424,6 +1426,7 @@ export async function submitSosDraft(
       const data = (await response.json()) as {
         caseCode?: string;
         trackingToken?: string;
+        confirmationToken?: string;
         error?: string;
         photoWarning?: string;
         photosPending?: boolean;
@@ -1437,6 +1440,7 @@ export async function submitSosDraft(
             requestBody,
             caseCode: data.caseCode,
             trackingToken: data.trackingToken,
+            confirmationToken: data.confirmationToken,
           };
         }
         return {
@@ -1456,6 +1460,7 @@ export async function submitSosDraft(
         status: "submitted",
         caseCode,
         trackingToken: data.trackingToken,
+        confirmationToken: data.confirmationToken,
         idempotencyKey,
         successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${caseCode}${data.photoWarning ? ` — ${data.photoWarning}` : ""}`,
       };

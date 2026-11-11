@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
-import { adminDb } from "./helpers/db";
+import { adminDb, closeTestCases } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
 
 function clientOf(account: TestAccount) {
@@ -77,8 +77,8 @@ test("TF-29 หัวหน้ามอบหมายและย้ายเ�
     const replacementPage = await replacementContext.newPage();
     await memberPage.goto("/rescue/my-tasks");
     await replacementPage.goto("/rescue/my-tasks");
-    await expect(memberPage.getByText("ยังไม่มีเคสที่ได้รับมอบหมาย")).toBeVisible();
-    await expect(replacementPage.getByText("ยังไม่มีเคสที่ได้รับมอบหมาย")).toBeVisible();
+    await expect(memberPage.getByText("ตอนนี้ยังไม่มีเคสที่คุณรับไว้")).toBeVisible();
+    await expect(replacementPage.getByText("ตอนนี้ยังไม่มีเคสที่คุณรับไว้")).toBeVisible();
     await applySession(page.context(), lead);
     await page.goto(`/rescue/cases/${item!.id}`);
     const form = page.getByRole("region", { name: "มอบหมายเคส" });
@@ -90,6 +90,7 @@ test("TF-29 หัวหน้ามอบหมายและย้ายเ�
     await expect(memberPage.getByRole("link", { name: new RegExp(tag) })).toBeVisible({
       timeout: 25_000,
     });
+    await expect(memberPage.getByRole("button", { name: "เริ่มเดินทาง" })).toBeVisible();
     await select.selectOption(`${unit!.id}:${replacement.id}`);
     await form.getByRole("button", { name: "มอบหมายเคส", exact: true }).click();
     await expect(replacementPage.getByRole("link", { name: new RegExp(tag) })).toBeVisible({
@@ -150,7 +151,7 @@ test("TF-29 หัวหน้ามอบหมายและย้ายเ�
       expect(assign.error?.code).not.toBe("40P01");
       if (assign.error) expect(assign.error.code).toBe("42501");
       else expect(assign.data.status).toBe("ASSIGNED");
-      await db.from("cases").update({ status: "RESOLVED" }).eq("id", candidate!.id).throwOnError();
+      await closeTestCases([candidate!.id]);
       const restored = await leaderClient.rpc("review_unit_members", {
         p_unit_id: unit!.id,
         p_member_ids: [membership!.id],
@@ -193,8 +194,7 @@ test("TF-29 หัวหน้ามอบหมายและย้ายเ�
   } finally {
     await memberContext.close();
     await replacementContext.close();
-    await db.from("cases").update({ status: "RESOLVED" }).eq("id", item!.id);
-    if (raceCases.length) await db.from("cases").update({ status: "RESOLVED" }).in("id", raceCases);
+    await closeTestCases([item!.id, ...raceCases]);
     await db.from("units").update({ is_active: false }).in("id", [unit!.id, otherUnit!.id]);
     await db
       .from("users")

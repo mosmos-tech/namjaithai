@@ -21,6 +21,7 @@
     "geo:build-seed": "node scripts/geo/build-seed.mjs",
     "auth:setup-line": "node --env-file=.env.local scripts/auth/setup-line-provider.mjs",
     "notifications:line": "node --env-file=.env.local scripts/notifications/run-line.mjs",
+    "check:migrations": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ci/check-migration-order.ts",
     "osm:import": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/import-osm-units.ts",
     "osm:build-seed": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/osm/build-units-sql.ts seed",
     "osm:build-migration": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/osm/build-units-sql.ts migration"

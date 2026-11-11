@@ -6,7 +6,7 @@ import {
   type WebSocketRoute,
 } from "@playwright/test";
 import { applySession, createAccount, deleteAccount, type TestAccount } from "./helpers/accounts";
-import { adminDb, createCaseViaApi, randomPhone } from "./helpers/db";
+import { adminDb, closeTestCases, createCaseViaApi, randomPhone, stepTestCase } from "./helpers/db";
 import { goToStep5, openFreshSosForm } from "./helpers/sos";
 
 /**
@@ -54,14 +54,15 @@ test.beforeAll(async ({}, testInfo) => {
   const prefix = `TF27${testInfo.project.name === "desktop" ? "D" : "M"}`;
   tag = `${prefix}${crypto.randomUUID().slice(0, 4)}`;
 
-  // ปิดเคสค้างของรอบก่อนในจังหวัดทดสอบ (case_events เป็น append-only จึงปิดด้วย RESOLVED แทนลบ)
-  await db
+  // ปิดเคสค้างของรอบก่อนในจังหวัดทดสอบ (case_events เป็น append-only จึงปิดแทนลบ — TF-26 ปิดผ่าน RPC ของระบบ)
+  const { data: leftovers } = await db
     .from("cases")
-    .update({ status: "RESOLVED" })
+    .select("id")
     .eq("province", province)
     .like("landmark", `${prefix}%`)
-    .neq("status", "RESOLVED")
+    .in("status", ["NEW", "ACCEPTED", "EN_ROUTE", "ON_SITE", "AWAITING_CONFIRMATION"])
     .throwOnError();
+  await closeTestCases((leftovers ?? []).map((row) => row.id));
 
   rescuer = await createAccount({ displayName: `กู้ภัย ${tag}`, role: "RESCUER" });
   adminAccount = await createAccount({ displayName: `แอดมิน ${tag}`, role: "ADMIN" });
@@ -89,11 +90,12 @@ test.beforeAll(async ({}, testInfo) => {
 test.afterAll(async () => {
   const db = adminDb();
   if (createdCaseCodes.length > 0) {
-    await db
+    const { data: created } = await db
       .from("cases")
-      .update({ status: "RESOLVED" })
+      .select("id")
       .in("case_code", createdCaseCodes)
       .throwOnError();
+    await closeTestCases((created ?? []).map((row) => row.id));
   }
   if (unitId) await db.from("units").delete().eq("id", unitId);
   for (const account of [rescuer, adminAccount, reporterAccount]) {
@@ -190,11 +192,8 @@ test.describe("TF-27 อัปเดตแบบเรียลไทม์", ()
     const card = page.getByTestId("rescue-case-card").filter({ hasText: listCase.caseCode });
     await expect(card).toBeVisible({ timeout: 3_000 });
 
-    const { error: listUpdateError } = await db
-      .from("cases")
-      .update({ status: "EN_ROUTE", assigned_unit_id: unitId })
-      .eq("case_code", listCase.caseCode);
-    if (listUpdateError) throw listUpdateError;
+    // TF-26: เลื่อนทีละขั้น (ข้ามขั้น NEW → EN_ROUTE ไม่ได้)
+    await stepTestCase(listCase.caseCode, ["ACCEPTED", "EN_ROUTE"], { assigned_unit_id: unitId });
 
     await expect(card).toContainText("กำลังเดินทาง", { timeout: 3_000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

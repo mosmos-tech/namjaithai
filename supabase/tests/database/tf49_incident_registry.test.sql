@@ -31,7 +31,8 @@ select is(
 -- ---------- cases ----------
 select hasnt_column('public', 'cases', 'water_level', 'ลบคอลัมน์ water_level แล้ว ระดับน้ำอยู่ที่ details ที่เดียว');
 select is(
-  (select count(*)::int from public.cases where incident_type <> 'FLOOD'),
+  -- ไม่นับเคสตัวอย่างใน seed (TF-57 หน่วยโชว์มีหลายประเภทเหตุ)
+  (select count(*)::int from public.cases where incident_type <> 'FLOOD' and not is_demo),
   0,
   'เคสเดิมทั้งหมดเป็น FLOOD'
 );

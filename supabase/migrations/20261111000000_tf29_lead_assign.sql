@@ -12,7 +12,7 @@ language sql stable security definer set search_path = '' as $$
   join public.unit_members m on m.unit_id = un.id and m.status = 'APPROVED'
     and (m.expires_at is null or m.expires_at > now())
   join public.users u on u.id = m.user_id and u.status = 'ACTIVE' and u.role in ('RESCUER','UNIT_LEAD')
-  where c.id = p_case_id and c.status in ('NEW','ACCEPTED','EN_ROUTE','ON_SITE')
+  where c.id = p_case_id and not c.is_demo and c.status in ('NEW','ACCEPTED','EN_ROUTE','ON_SITE')
     and rls.current_user_id() is not null
   order by un.name, u.display_name, u.id
 $$;
@@ -46,6 +46,9 @@ begin
       and status = 'APPROVED' and (expires_at is null or expires_at > now())
   ) then raise exception 'rescuer is not an active member of this unit' using errcode = '42501'; end if;
   select * into v_before from public.cases where id = p_case_id for update;
+  if found and v_before.is_demo then
+    raise exception 'case is not assignable by this unit' using errcode = '42501';
+  end if;
   if not found or not rls.can_see_case(p_case_id) or (
     (v_before.status = 'NEW' and v_before.assigned_unit_id is null and v_before.province =
       (select province from public.units where id = p_unit_id))
@@ -60,7 +63,7 @@ begin
     return jsonb_build_object('status','UNCHANGED','version',v_before.version);
   end if;
   select count(*) into v_active from public.cases
-  where assigned_rescuer_id = p_rescuer_id and status in ('ACCEPTED','EN_ROUTE','ON_SITE');
+  where assigned_rescuer_id = p_rescuer_id and not is_demo and status in ('ACCEPTED','EN_ROUTE','ON_SITE');
   if v_active >= 2 then return jsonb_build_object('status','LIMIT','max',2); end if;
 
   update public.cases c set assigned_unit_id = p_unit_id, assigned_rescuer_id = p_rescuer_id,

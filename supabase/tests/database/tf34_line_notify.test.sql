@@ -54,6 +54,8 @@ update public.cases set status = 'ACCEPTED' where case_code = 'TF34-S';
 select is((select count(*)::int from public.case_line_notifications n join public.cases c on c.id = n.case_id
   where c.case_code = 'TF34-S' and n.kind = 'CASE_STATUS' and n.to_status = 'ACCEPTED'), 1,
   'เปลี่ยนสถานะแล้วเข้าคิวแจ้งผู้แจ้ง (trigger ของ TF-43 เปิดแล้ว)');
+-- TF-26: ถอยกลับ NEW ได้เฉพาะช่องทางปล่อยเคส (release_case ตั้งค่านี้)
+set local app.case_release = 'on';
 update public.cases set status = 'NEW' where case_code = 'TF34-S';
 update public.cases set status = 'ACCEPTED' where case_code = 'TF34-S';
 select is((select count(*)::int from public.case_line_notifications n join public.cases c on c.id = n.case_id

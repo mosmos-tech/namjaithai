@@ -1,5 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
-import { adminDb, createCaseViaApi, randomPhone, type CreatedCase } from "./helpers/db";
+import {
+  adminDb,
+  createCaseViaApi,
+  randomPhone,
+  stepTestCase,
+  type CreatedCase,
+} from "./helpers/db";
 import { openFreshSosForm, goToStep5 } from "./helpers/sos";
 
 // F. /sos/sent · G. /track · H. /track/[code] (TF-13)
@@ -206,14 +212,11 @@ test.describe("/track/[code] หน้าสถานะเคส", () => {
       })
       .select("id")
       .single();
-    await db
-      .from("cases")
-      .update({
-        status: "EN_ROUTE",
-        assigned_unit_id: unit!.id,
-        accepted_at: new Date().toISOString(),
-      })
-      .eq("case_code", c.caseCode);
+    // TF-26: เลื่อนทีละขั้น (ข้ามขั้น NEW → EN_ROUTE ไม่ได้)
+    await stepTestCase(c.caseCode, ["ACCEPTED", "EN_ROUTE"], {
+      assigned_unit_id: unit!.id,
+      accepted_at: new Date().toISOString(),
+    });
 
     await expect(page.getByRole("heading", { name: "ทีมกู้ภัยกำลังมาหาคุณ" })).toBeVisible({
       timeout: 32_000,

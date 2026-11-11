@@ -56,7 +56,7 @@ export function formatCaseStatusLine(
 export function formatCloseConfirmationLine(input: CaseRef): string {
   return [
     `${HEADER} · เคส ${input.caseCode}`,
-    "ทีมกู้ภัยแจ้งว่าช่วยเหลือเสร็จแล้ว กรุณากดยืนยันที่ลิงก์",
+    "ทีมกู้ภัยแจ้งว่าช่วยเหลือเสร็จแล้ว กรุณากดยืนยันที่ลิงก์ โดยเข้าสู่ระบบด้วยบัญชี LINE ที่ใช้แจ้งเคส",
     new URL(trackPath(input.caseCode, input.trackingToken), input.origin).href,
   ].join("\n");
 }

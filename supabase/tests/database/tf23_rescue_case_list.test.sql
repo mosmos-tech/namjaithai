@@ -152,6 +152,7 @@ select is(
 select set_config('request.jwt.claims', '{"sub":"a2300000-0000-0000-0000-000000000003","role":"authenticated"}', true);
 select is((select count(*)::int from public.list_rescue_cases(p_limit => 1000)), 100,
   'ขอเกิน 100 แถว ได้แค่ 100');
+-- TF-70: เคสตัวอย่างของหน่วยโชว์ในภูเก็ตไม่ขึ้นรายการกู้ภัย จึงนับเฉพาะ 105 เคสของ test
 select is((select distinct total_count::int from public.list_rescue_cases()), 105,
   'จำนวนทั้งหมดนับครบ 105 แม้ส่งกลับแค่ 100');
 

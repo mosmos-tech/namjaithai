@@ -70,10 +70,12 @@ export function useTrackedCase(caseCode: string, token: string, revision = 0): S
 
     load();
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("namjaithai:confirmation-changed", load);
     return () => {
       cancelled = true;
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("namjaithai:confirmation-changed", load);
     };
   }, [caseCode, token, revision]);
 

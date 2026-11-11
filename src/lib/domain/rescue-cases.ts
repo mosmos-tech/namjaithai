@@ -22,6 +22,7 @@ export const openCaseStatusLabel: Partial<Record<CaseStatus, string>> = {
   ACCEPTED: "รับเคสแล้ว",
   EN_ROUTE: "กำลังเดินทาง",
   ON_SITE: "ถึงจุดเกิดเหตุ",
+  AWAITING_CONFIRMATION: "รอผู้แจ้งยืนยัน",
 };
 
 // ฐานข้อมูลรับเฉพาะ 3 ค่านี้ (null = ทั้งหมด)

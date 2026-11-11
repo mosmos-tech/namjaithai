@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(33);
+select plan(34);
 
 select has_table('public', 'organizations', 'มีตารางองค์กร');
 select has_column('public', 'units', 'organization_id', 'หน่วยผูกกับองค์กรได้');
@@ -9,12 +9,14 @@ select has_column('public', 'units', 'branch_name', 'หน่วยมีชื
 select has_column('public', 'units', 'source', 'หน่วยมีที่มา');
 select has_column('public', 'cases', 'is_demo', 'ระบุเคสตัวอย่างได้');
 select is((select count(*)::int from public.organizations where is_demo), 4, 'มี 4 องค์กรสมมติ');
-select is((select count(*)::int from public.units where source = 'DEMO'), 77, 'มีหน่วยตัวอย่าง 77 หน่วย');
+select is((select count(*)::int from public.units where source = 'DEMO'), 81, 'มีหน่วยตัวอย่าง 77 หน่วย (จังหวัดละหน่วย) + หน่วยโชว์ 4 หน่วยของ TF-57');
 select is((select count(distinct province)::int from public.units where source = 'DEMO'), 77, 'หน่วยตัวอย่างครอบคลุมทุกจังหวัด');
 select is((select count(*)::int from public.provinces p where not exists (select 1 from public.units u where u.source = 'DEMO' and u.province = p.name_th)), 0, 'ไม่มีจังหวัดที่ขาดหน่วยตัวอย่าง');
 select is((select count(*)::int from public.organizations o where o.is_demo and (select count(distinct u.province) from public.units u where u.organization_id = o.id and u.source = 'DEMO') > 1), 4, 'ทุกองค์กรตัวอย่างมีสาขาต่างจังหวัด');
 select is((select count(*)::int from public.units where source = 'DEMO' and (name not like '%สมมติ%' or name not like '%ตัวอย่าง%' or is_active)), 0, 'หน่วยตัวอย่างมีชื่อสมมติและไม่รับงานจริง');
-select is((select count(*)::int from public.cases where is_demo), 367, 'มีเคสตัวอย่างหนึ่งรายการต่อวัน');
+select is((select count(*)::int from public.cases where is_demo and id::text like 'd5620000%'), 367, 'มีเคสตัวอย่างหนึ่งรายการต่อวัน');
+-- TF-57: หน่วยโชว์ 4 หน่วย จำนวนตายตัว (มาจาก md5 ของค่าคงที่ ไม่ขึ้นกับวันที่รัน)
+select is((select count(*)::int from public.cases where is_demo), 2643, 'เคสตัวอย่างรวมหน่วยโชว์ตายตัว 2,643 เคส (ปิดแล้ว 2,633 + กำลังช่วย 10)');
 select is((select count(distinct (created_at at time zone 'Asia/Bangkok')::date)::int from public.cases where is_demo and (created_at at time zone 'Asia/Bangkok')::date between (now() at time zone 'Asia/Bangkok')::date - 29 and (now() at time zone 'Asia/Bangkok')::date), 30, 'มีข้อมูลทุกวันใน 30 วันล่าสุด');
 select ok((select min((created_at at time zone 'Asia/Bangkok')::date) <= ((now() at time zone 'Asia/Bangkok')::date - interval '12 months')::date from public.cases where is_demo), 'ข้อมูลย้อนหลังอย่างน้อย 12 เดือน');
 select is((select count(*)::int from public.cases c left join public.units u on u.id = c.assigned_unit_id where c.is_demo and (u.id is null or u.source <> 'DEMO')), 0, 'เคสตัวอย่างผูกเฉพาะหน่วย DEMO');

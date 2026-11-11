@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
-import { adminDb, createCaseViaApi } from "./helpers/db";
+import { adminDb, createCaseViaApi, stepTestCase } from "./helpers/db";
 
 type TestAccount = {
   id: string;
@@ -158,15 +158,11 @@ test.describe("TF-20 คิวอนุมัติและระงับส�
         [own.caseCode, unitId],
         [other.caseCode, otherUnit!.id],
       ]) {
-        const { error } = await db
-          .from("cases")
-          .update({
-            status: "EN_ROUTE",
-            assigned_unit_id: assignedUnit,
-            assigned_rescuer_id: applicant1.id,
-          })
-          .eq("case_code", code);
-        expect(error).toBeNull();
+        // TF-26: เลื่อนทีละขั้น (ข้ามขั้น NEW → EN_ROUTE ไม่ได้)
+        await stepTestCase(code, ["ACCEPTED", "EN_ROUTE"], {
+          assigned_unit_id: assignedUnit,
+          assigned_rescuer_id: applicant1.id,
+        });
       }
       await applySession(context, lead);
       if (isMobile) await page.setViewportSize({ width: 375, height: 812 });
