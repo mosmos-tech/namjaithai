@@ -22,6 +22,9 @@ interface Step5ContactProps {
   onConsentChange: (field: "consent" | "healthConsent", value: boolean) => void;
   errors: Step5ValidationErrors;
   isSubmitting?: boolean;
+  isSlowSubmitting?: boolean;
+  slowSmsHref?: string;
+  slowSmsToSystem?: boolean;
   submitError?: string | null;
   submitSuccessMessage?: string | null;
   onChangeField: (field: "name" | "phone" | "lineId" | "notes", value: string) => void;
@@ -50,6 +53,9 @@ export function Step5Contact({
   onConsentChange,
   errors,
   isSubmitting = false,
+  isSlowSubmitting = false,
+  slowSmsHref = "sms:",
+  slowSmsToSystem = false,
   submitError = null,
   submitSuccessMessage = null,
   onChangeField,
@@ -422,6 +428,48 @@ export function Step5Contact({
           </div>
         )}
       </section>
+
+      {/* ปุ่มช่วยเหลือด่วนระหว่างรอนานเกิน 5 วินาที (TF-69) */}
+      {isSubmitting && isSlowSubmitting && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="step5-slow-submit-fallback"
+          className="rounded-[12px] border-2 border-amber-600 bg-amber-50 p-4 text-base text-amber-950"
+        >
+          <p className="font-heading font-bold">
+            สัญญาณช้ากว่าปกติ ระบบกำลังส่งคำขออยู่ — หากเร่งด่วนกดโทรหรือส่ง SMS ได้เลย
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <a
+              href="tel:1669"
+              data-testid="step5-slow-call-1669"
+              className="flex min-h-[48px] items-center justify-center rounded-xl bg-red-600 px-4 py-3 text-center text-base font-bold text-white transition-colors hover:bg-red-700"
+            >
+              โทร 1669
+            </a>
+            <a
+              href="tel:1784"
+              data-testid="step5-slow-call-1784"
+              className="flex min-h-[48px] items-center justify-center rounded-xl bg-red-700 px-4 py-3 text-center text-base font-bold text-white transition-colors hover:bg-red-800"
+            >
+              โทร 1784
+            </a>
+            <a
+              href={slowSmsHref}
+              data-testid="step5-slow-sms"
+              className="flex min-h-[48px] items-center justify-center rounded-xl border-2 border-amber-700 bg-white px-4 py-3 text-center text-base font-bold text-amber-950 transition-colors hover:bg-amber-100"
+            >
+              ส่งทาง SMS
+            </a>
+          </div>
+          <p className="mt-2 text-xs text-amber-900">
+            {slowSmsToSystem
+              ? "ส่ง SMS ได้แม้เน็ตช้า ระบบจะตอบรหัสเคสกลับอัตโนมัติ"
+              : "เปิดแอปข้อความพร้อมพิกัด เลือกส่งให้ญาติหรือผู้ช่วยเหลือได้ทันที"}
+          </p>
+        </div>
+      )}
 
       {/* ปุ่มย้อนกลับ / ส่งคำขอความช่วยเหลือ */}
       <div className="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-between">
