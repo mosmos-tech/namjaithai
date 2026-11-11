@@ -10,47 +10,10 @@ import {
 } from "../offline-queue-core";
 import { rememberSentCase } from "../sent-case";
 import type { IncidentType } from "@/lib/domain/incidents/types";
-import type { WaterLevel } from "@/lib/domain/enums";
-import { formatSmsSos, smsHref, SMS_SUPPORTED_INCIDENTS } from "@/lib/domain/sms-format";
+import { buildSosSmsLinkFromJson } from "@/lib/domain/sms-format";
 
 // TF-36: เบอร์ซิมในเครื่อง SMS gateway — ไม่ได้ตั้ง = ปุ่มเปิดแอปข้อความแบบไม่มีเบอร์ (ส่งให้ญาติเอง)
 const SMS_GATEWAY_NUMBER = process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER?.trim() ?? "";
-
-/** ลิงก์ปุ่ม "ส่งทาง SMS": มี gateway = ข้อความรูปแบบที่ระบบอ่านได้ ไม่งั้นข้อความทั่วไปให้ส่งต่อเอง */
-function smsLink(rawBody: string | undefined): { href: string; toSystem: boolean } {
-  let body: {
-    lat?: number;
-    lng?: number;
-    phone?: string;
-    landmark?: string;
-    incidentType?: IncidentType;
-    waterLevel?: WaterLevel;
-    adults?: number;
-    elderly?: number;
-    bedridden?: number;
-    children?: number;
-  } = {};
-  try {
-    body = JSON.parse(rawBody ?? "{}");
-  } catch {
-    /* Use the generic message. */
-  }
-  const located = typeof body.lat === "number" && typeof body.lng === "number";
-  if (
-    SMS_GATEWAY_NUMBER &&
-    located &&
-    SMS_SUPPORTED_INCIDENTS.includes(body.incidentType ?? ("FLOOD" as IncidentType))
-  ) {
-    return {
-      href: smsHref(SMS_GATEWAY_NUMBER, formatSmsSos({ ...body, lat: body.lat!, lng: body.lng! })),
-      toSystem: true,
-    };
-  }
-  const text = located
-    ? `ขอความช่วยเหลือฉุกเฉิน พิกัด ${body.lat},${body.lng} จุดสังเกต ${body.landmark ?? ""} โทรกลับ ${body.phone ?? ""}`
-    : "ขอความช่วยเหลือฉุกเฉิน กรุณาติดต่อกลับ";
-  return { href: `sms:?body=${encodeURIComponent(text)}`, toSystem: false };
-}
 
 type SyncRegistration = ServiceWorkerRegistration & {
   sync?: { register(tag: string): Promise<void> };
@@ -160,11 +123,14 @@ export function OfflineSosSupport() {
   );
 
   useEffect(() => {
-    const queued = () => {
+    const queued = (event: Event) => {
       setOpen(true);
       void refresh();
       void registerBackgroundSync().catch(() => undefined);
-      if (navigator.onLine) void send();
+      const skipImmediateRetry =
+        event instanceof CustomEvent &&
+        (event.detail as { skipImmediateRetry?: boolean } | null)?.skipImmediateRetry === true;
+      if (navigator.onLine && !skipImmediateRetry) void send();
     };
     const online = () => {
       void send();
@@ -203,7 +169,7 @@ export function OfflineSosSupport() {
   if (!item) return null;
   const pending = item.status !== "sent";
   const blocked = item.status === "blocked";
-  const sms = smsLink(item.body);
+  const sms = buildSosSmsLinkFromJson(item.body, SMS_GATEWAY_NUMBER);
   const button =
     "flex min-h-14 w-full items-center justify-center rounded-xl px-5 py-3 text-center text-lg font-semibold";
 
