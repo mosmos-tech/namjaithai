@@ -57,6 +57,9 @@
 - migration ใหม่ต้องมี timestamp ใหม่กว่า migration ล่าสุดใน develop (Supabase ไม่ยอมลงไฟล์ที่เก่ากว่าตัวที่ลงไปแล้ว Deploy DB จะล้มและ migration ที่ตามมาไม่ได้ลงเลย)
   ก่อน push: `git fetch origin && git rebase origin/develop` แล้ว `npm run check:migrations` ถ้าไม่ผ่านให้เปลี่ยนชื่อไฟล์เป็นเวลาปัจจุบัน แล้ว `db:reset` + `test:db` ใหม่ — CI เช็กซ้ำทุก PR
 - ก่อนเปิด PR: lint, typecheck, test ต้องผ่าน; ไม่มีคีย์ลับในโค้ด (.env.local ไม่ขึ้น git)
+- ห้ามรัน E2E ตอนเปิด `npm run dev` ค้างไว้ (Playwright หยุดเองถ้าพอร์ต 3000 ถูกใช้) · คีย์ใน .env.local ไม่ตรงกับ Supabase ในเครื่อง ให้รัน `npm run env:sync` (TF-68)
+- E2E ห้ามรอด้วยเวลาตายตัว (`waitForTimeout`) ให้รอเงื่อนไขบนหน้าจอ · กดก่อน hydrate แล้วการกดหายเป็นบั๊กหน้าเว็บ แก้ที่หน้าเว็บ (useHydrated + "กำลังโหลด...") ลิงก์ tel:/sms: ต้องกดได้เสมอ
+- test ที่เปลี่ยนข้อมูลกลาง (เช่น incident_types) ต้องตั้งค่าที่ตัวเองต้องการตอนเริ่มและคืนค่าเดิมตอนจบ และไม่ใช้แถวเดียวกับ test อื่นที่รันพร้อมกัน
 - รายละเอียดและเกณฑ์ผ่านของการ์ดทุกใบอยู่ใน docs/backlog.md (สถานะ/คนหยิบดูที่บอร์ด)
 
 ## การสื่อสารกับผู้ใช้
