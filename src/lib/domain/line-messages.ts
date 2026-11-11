@@ -1,4 +1,5 @@
 import type { CaseStatus } from "./case-status";
+import { CASE_TRANSFER_TIMEOUT_MINUTES } from "./case-transfer";
 import { urgencyLabel, type Urgency } from "./enums";
 import { INCIDENT_REGISTRY, type IncidentType } from "./incidents";
 import { formatThaiDateTime } from "./thai-date";
@@ -58,6 +59,23 @@ export function formatCloseConfirmationLine(input: CaseRef): string {
     `${HEADER} · เคส ${input.caseCode}`,
     "ทีมกู้ภัยแจ้งว่าช่วยเหลือเสร็จแล้ว กรุณากดยืนยันที่ลิงก์ โดยเข้าสู่ระบบด้วยบัญชี LINE ที่ใช้แจ้งเคส",
     new URL(trackPath(input.caseCode, input.trackingToken), input.origin).href,
+  ].join("\n");
+}
+
+/**
+ * หัวหน้าหน่วย (TF-59): ส่งต่อไม่สำเร็จ ไม่มีหน่วยกดรับในเวลาที่กำหนด เคสกลับเข้าคิวแล้ว
+ * ลิงก์ไปหน้าเคสของกู้ภัย (ต้องล็อกอิน) ไม่ใช่หน้าติดตามของผู้แจ้ง
+ */
+export function formatTransferExpiredLine(
+  input: Omit<CaseRef, "trackingToken"> & { caseId: string },
+): string {
+  return [
+    `${HEADER} · เคส ${input.caseCode}`,
+    `ส่งต่อไม่สำเร็จ: ไม่มีหน่วยกดรับภายใน ${CASE_TRANSFER_TIMEOUT_MINUTES} นาที เคสกลับเข้าคิวรอรับพร้อมแท็กอุปกรณ์ที่ต้องใช้`,
+    [incidentText(input.incidentType), areaText(input.district, input.province)]
+      .filter(Boolean)
+      .join(" · "),
+    `ดูเคส: ${new URL(`/rescue/cases/${encodeURIComponent(input.caseId)}`, input.origin).href}`,
   ].join("\n");
 }
 

@@ -37,7 +37,11 @@ export type CaseEventType =
   | "MARKED_UNREACHABLE"
   | "AUTO_ESCALATED"
   | "NOTE_ADDED"
-  | "SMS_REPEATED";
+  | "SMS_REPEATED"
+  | "TRANSFER_REQUESTED"
+  | "TRANSFER_ACCEPTED"
+  | "TRANSFER_CANCELLED"
+  | "TRANSFER_EXPIRED";
 
 export type TrackedCase = {
   caseCode: string;
@@ -50,6 +54,8 @@ export type TrackedCase = {
   area: { province: string | null; district: string | null; subdistrict: string | null };
   // null = ยังไม่มีทีมรับ; unitName เป็น null ได้ถ้ามีกู้ภัยรับแต่ไม่ได้ผูกหน่วย
   team: { unitName: string | null; contactPhone: string | null } | null;
+  // TF-59: กำลังส่งต่อให้หน่วยที่มีอุปกรณ์ (ไม่มีชื่อหน่วยปลายทาง)
+  transferPending?: boolean;
   timeline: { type: CaseEventType; toStatus: CaseStatus | null; at: string }[];
 };
 
@@ -168,6 +174,11 @@ const EVENT_LABEL: Record<CaseEventType, string> = {
   NOTE_ADDED: "ทีมเพิ่มบันทึก",
   // TF-36: เบอร์เดิมส่ง SMS SOS มาอีกขณะเคสยังเปิด (ไม่เก็บเนื้อความ)
   SMS_REPEATED: "ได้รับ SMS ซ้ำจากผู้แจ้ง",
+  // TF-59: ไม่บอกชื่อหน่วย
+  TRANSFER_REQUESTED: "กำลังส่งต่อให้ทีมที่มีอุปกรณ์",
+  TRANSFER_ACCEPTED: "ทีมที่มีอุปกรณ์รับเคสแล้ว",
+  TRANSFER_CANCELLED: "ทีมเดิมดูแลเคสต่อ",
+  TRANSFER_EXPIRED: "กำลังหาทีมที่มีอุปกรณ์",
 };
 
 export function timelineLabel(type: CaseEventType, toStatus: CaseStatus | null): string {

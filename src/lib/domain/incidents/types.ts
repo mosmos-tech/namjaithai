@@ -28,6 +28,17 @@ export const UnitCapability = {
 } as const;
 export type UnitCapability = (typeof UnitCapability)[keyof typeof UnitCapability];
 
+/** TF-72: ชื่อไทยของความสามารถหน่วย — ที่เดียวในโปรเจกต์ ทุกหน้าใช้ชุดนี้ */
+export const UNIT_CAPABILITY_LABELS: Record<UnitCapability, string> = {
+  BOAT: "เรือ",
+  EMS: "การแพทย์ฉุกเฉิน",
+  FIRE_SUPPRESSION: "ดับเพลิง",
+  EXTRICATION: "ตัดถ่าง",
+  WATER_RESCUE: "กู้ภัยทางน้ำ",
+  ANIMAL_CAPTURE: "จับสัตว์",
+  EVACUATION: "อพยพ",
+};
+
 /**
  * ข้อความ 2 ภาษา: ใส่ th ก่อน, en เติมทีหลังตอนทำฟอร์มภาษาอังกฤษ (TF-63)
  */

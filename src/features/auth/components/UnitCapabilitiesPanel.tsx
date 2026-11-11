@@ -1,16 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { UnitCapability, type UnitCapability as Capability } from "@/lib/domain/incidents";
+import {
+  UNIT_CAPABILITY_LABELS,
+  UnitCapability,
+  type UnitCapability as Capability,
+} from "@/lib/domain/incidents";
 
-const names: Record<Capability, string> = {
-  BOAT: "เรือ",
-  EMS: "การแพทย์ฉุกเฉิน",
-  FIRE_SUPPRESSION: "ดับเพลิง",
-  EXTRICATION: "ตัดถ่าง",
-  WATER_RESCUE: "ช่วยเหลือทางน้ำ",
-  ANIMAL_CAPTURE: "จับสัตว์",
-  EVACUATION: "อพยพ",
-};
 type Data = {
   units: { id: string; name: string }[];
   capabilities: { unit_id: string; capability: Capability }[];
@@ -128,7 +123,7 @@ export function UnitCapabilitiesPanel() {
                     )
                   }
                 />
-                {names[capability]}
+                {UNIT_CAPABILITY_LABELS[capability]}
               </label>
             ))}
           </fieldset>

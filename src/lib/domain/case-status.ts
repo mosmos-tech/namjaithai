@@ -41,9 +41,16 @@ const NEXT_STEP: Partial<Record<CaseStatus, CaseStatus>> = {
  * - release: release_case ของ TF-25 (app.case_release) ถอยกลับ NEW ได้
  * - reporterCancel: ผู้แจ้งกดปลอดภัยแล้ว TF-14 (app.case_cancel_by_reporter) ปิดเป็น CANCELLED ได้
  * - leadClose: หัวหน้า/แอดมิน/ระบบปิดเคส (app.case_close_by_lead) — TODO(TF-31/TF-58) ยังไม่มีหน้าจอเรียก
+ * - transfer: ส่งต่อเคส TF-59 (app.case_transfer) — หน่วยใหม่กดรับ → ACCEPTED, หมดเวลา → NEW
  */
 export type CaseTransitionMode =
-  "normal" | "release" | "reporterCancel" | "leadClose" | "reporterReopen";
+  "normal" | "release" | "reporterCancel" | "leadClose" | "reporterReopen" | "transfer";
+
+const TEAM_HOLDING: ReadonlySet<CaseStatus> = new Set([
+  CaseStatus.ACCEPTED,
+  CaseStatus.EN_ROUTE,
+  CaseStatus.ON_SITE,
+]);
 
 /**
  * ตรวจว่าเปลี่ยนสถานะจาก `from` → `to` ได้หรือไม่ (กติกาเดียวกับ case_status_transition_allowed ในฐานข้อมูล)
@@ -58,6 +65,9 @@ export function canTransition(
   mode: CaseTransitionMode = "normal",
 ): boolean {
   if (from === to || TERMINAL.has(from)) return false;
+  if (mode === "transfer") {
+    return TEAM_HOLDING.has(from) && (to === CaseStatus.NEW || to === CaseStatus.ACCEPTED);
+  }
   switch (to) {
     case CaseStatus.NEW:
       return (

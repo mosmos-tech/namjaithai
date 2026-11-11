@@ -5,6 +5,7 @@ import { MyTasksView } from "../components/MyTasksView";
 
 vi.mock("../components/MyTasksLive", () => ({ MyTasksLive: () => null }));
 vi.mock("../components/MyTaskCard", () => ({ MyTaskCard: () => null }));
+vi.mock("../components/IncomingTransfers", () => ({ IncomingTransfers: () => null }));
 
 describe("หน้างานของฉัน", () => {
   it("แสดงข้อผิดพลาดและทางลองใหม่เมื่อโหลดเคสไม่ได้ โดยไม่อ้างว่าไม่มีเคส", () => {

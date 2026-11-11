@@ -18,6 +18,7 @@ import {
   formatThaiDateTime,
   formatThaiTime,
   isClosedStatus,
+  REPORTER_TRANSFER_TEXT,
   reporterStatusView,
   timelineLabel,
   type CaseStatus,
@@ -163,6 +164,18 @@ function TrackedCaseDetail({
           <div className="text-text-primary mt-6 flex gap-3 rounded-[12px] bg-amber-50 p-4 text-lg">
             <TriangleAlert className="mt-1 size-6 shrink-0 text-amber-700" aria-hidden="true" />
             <p>ระหว่างรอ: เปิดเสียงโทรศัพท์ไว้ ทีมจะโทรหาก่อนออกเดินทาง</p>
+          </div>
+        )}
+
+        {/* TF-59: ไม่บอกชื่อหน่วยปลายทางจนกว่าจะรับ — ทีมเดิมยังดูแลอยู่ระหว่างนี้ */}
+        {data.transferPending && (
+          <div
+            role="status"
+            data-testid="transfer-pending"
+            className="bg-primary-50 text-text-primary mt-6 rounded-[12px] p-4 text-lg"
+          >
+            <p className="font-semibold">{REPORTER_TRANSFER_TEXT}</p>
+            <p className="mt-1">ระหว่างนี้ทีมเดิมยังดูแลคุณอยู่</p>
           </div>
         )}
 

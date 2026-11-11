@@ -22,6 +22,13 @@ const actionSchema = z.discriminatedUnion("action", [
     unitId: z.uuid(),
     capabilities: z.array(z.enum(UnitCapability)).max(7),
   }),
+  // TF-59: พิกัดที่ตั้งหน่วย (null ทั้งคู่ = ล้าง กลับไปใช้จุดกลางอำเภอ/จังหวัด)
+  z.object({
+    action: z.literal("unit_location"),
+    unitId: z.uuid(),
+    lat: z.number().min(5).max(21).nullable(),
+    lng: z.number().min(97).max(106).nullable(),
+  }),
   z.object({
     action: z.literal("incident_type"),
     code: z.string().regex(/^[A-Z_]+$/),
@@ -49,7 +56,7 @@ export async function GET(request: NextRequest) {
     userQuery,
     db
       .from("units")
-      .select("id,name,province,lead_user_id,is_active,source")
+      .select("id,name,province,lead_user_id,is_active,source,location_lat,location_lng")
       .order("name")
       .limit(300),
     db.from("unit_capabilities").select("unit_id,capability"),

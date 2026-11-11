@@ -11,10 +11,13 @@ import { TriageOverrideForm } from "@/features/cases/components/TriageOverrideFo
 import { CaseClaimActions } from "@/features/rescue/components/CaseClaimActions";
 import { CaseAssignment, type AssignmentOption } from "@/features/rescue/components/CaseAssignment";
 import { CaseContact } from "@/features/rescue/components/CaseContact";
+import { CaseTransferPanel } from "@/features/rescue/components/CaseTransferPanel";
+import { getMyUnitCapabilities } from "@/features/rescue/server/my-unit-capabilities";
 import { CaseWait } from "@/features/rescue/components/CaseWait";
 import { LocationAccuracyBadge } from "@/features/rescue/components/LocationAccuracyBadge";
 import { createClient } from "@/lib/supabase/server";
 import {
+  capabilityListText,
   INCIDENT_REGISTRY,
   needLabel,
   openCaseStatusLabel,
@@ -23,6 +26,8 @@ import {
   type CaseStatus,
   type IncidentType,
   type Need,
+  type PendingTransfer,
+  type UnitCapability,
   type Urgency,
 } from "@/lib/domain";
 
@@ -72,7 +77,8 @@ export default function Page({ params }: PageProps<"/rescue/cases/[id]">) {
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
   // SignedInShell ตรวจสิทธิ์และ redirect ให้แล้ว — ที่นี่แค่อ่านผู้ใช้ ห้าม redirect ซ้ำกลางการวาดหน้า
   // (redirect ซ้ำทำให้หน้าโหลดวนตอนเปิดพร้อมกันหลายคน แบบเดียวกับที่เคยเกิดกับ /unit)
-  if (!(await getCurrentAppUser())) return null;
+  const user = await getCurrentAppUser();
+  if (!user) return null;
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) notFound();
   const supabase = await createClient();
@@ -117,7 +123,14 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
     override: boolean;
     accept: boolean;
     release: boolean;
+    // TF-59
+    transfer: boolean;
+    acceptTransfer: boolean;
+    cancelTransfer: boolean;
+    pendingTransfer: PendingTransfer | null;
+    requiredCapabilities: UnitCapability[];
   };
+  const unitCapabilities = permissions.transfer ? await getMyUnitCapabilities(user.id) : [];
   const assignmentOptions = await supabase.rpc("case_assignment_options", { p_case_id: id });
   const incident = INCIDENT_REGISTRY[item.incident_type];
   const sensitive = sensitiveResult.data?.details ?? null;
@@ -173,12 +186,27 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
           systemUrgency={item.system_urgency}
           overrideReason={item.urgency_override_reason}
         />
+        {permissions.requiredCapabilities.length > 0 && (
+          <p className="font-semibold" data-testid="required-capabilities">
+            ต้องใช้: {capabilityListText(permissions.requiredCapabilities)}
+          </p>
+        )}
         {item.status === "NEW" && <CaseWait createdAt={item.created_at} />}
         <CaseClaimActions
           caseId={item.id}
           version={item.version}
           canAccept={permissions.accept}
           canRelease={permissions.release}
+        />
+        <CaseTransferPanel
+          caseId={item.id}
+          version={item.version}
+          incidentType={item.incident_type}
+          unitCapabilities={unitCapabilities}
+          canRequest={permissions.transfer}
+          canAccept={permissions.acceptTransfer}
+          canCancel={permissions.cancelTransfer}
+          pendingTransfer={permissions.pendingTransfer}
         />
         <CaseAssignment caseId={item.id} version={item.version} options={(assignmentOptions.data ?? []) as AssignmentOption[]} />
         <p className="break-words">
