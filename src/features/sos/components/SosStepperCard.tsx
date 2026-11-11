@@ -19,9 +19,12 @@ const STEP_HINT: Record<SosStepNumber, string> = {
 export function SosStepperCard({
   currentStep,
   onSelectStep,
+  disabled = false,
 }: {
   currentStep: SosStepNumber;
   onSelectStep: (step: SosStepNumber) => void;
+  /** TF-68: ยัง hydrate ไม่เสร็จ — กดแล้วจะไม่มีอะไรเกิดขึ้น จึงปิดไว้ก่อน */
+  disabled?: boolean;
 }) {
   return (
     <aside className="border-border-default bg-bg-surface hidden w-[340px] shrink-0 flex-col gap-2 rounded-[28px] border px-7 py-8 lg:flex">
@@ -42,6 +45,7 @@ export function SosStepperCard({
             <li key={step}>
               <button
                 type="button"
+                disabled={disabled}
                 onClick={() => onSelectStep(step)}
                 aria-current={current ? "step" : undefined}
                 className={`flex w-full items-center gap-4 rounded-[18px] p-[14px] text-left transition-colors ${

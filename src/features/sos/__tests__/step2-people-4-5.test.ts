@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { IncidentType, Need, WaterLevel } from "../../../lib/domain";
 import {
   SOS_DRAFT_STORAGE_KEY,
+  SOS_SLOW_SUBMIT_NOTICE_MS,
+  SOS_SUBMIT_TIMEOUT_MS,
   createInitialSosDraft,
   loadSosDraft,
   saveSosDraft,
@@ -780,5 +782,258 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
       isTrappedInSmoke: false,
       hasInjured: false,
     });
+  });
+});
+
+describe("TF-69: ส่ง SOS ตอนเน็ตช้ามาก (timeout + ส่งเคสก่อนรูป)", () => {
+  function createMemoryStorage() {
+    const map = new Map<string, string>();
+    return {
+      storage: {
+        getItem: (k: string) => map.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          map.set(k, v);
+        },
+        removeItem: (k: string) => {
+          map.delete(k);
+        },
+      },
+    };
+  }
+
+  function createValidDraftWithPhoto() {
+    return {
+      ...createInitialSosDraft(),
+      incidentType: IncidentType.FLOOD,
+      atScene: true,
+      dangerSigns: [],
+      canSelfEvacuate: true,
+      waterLevel: WaterLevel.WAIST_CHEST,
+      lat: 13.7563,
+      lng: 100.5018,
+      landmark: "สะพานควาย",
+      adults: 2,
+      needs: [Need.FOOD],
+      name: "สมหญิง ทดสอบ",
+      phone: "0891112222",
+      consent: true,
+      healthConsent: true,
+      photos: [
+        {
+          id: "photo-1",
+          name: "flood.jpg",
+          mimeType: "image/jpeg",
+          originalBytes: 1000,
+          compressedBytes: 500,
+          width: 400,
+          height: 300,
+          dataUrl: "data:image/jpeg;base64,AAAA",
+        },
+      ],
+    };
+  }
+
+  it("กำหนดค่า timeout หลัก 12 วินาที และข้อความปุ่มช่วยระหว่างรอหลัง 5 วินาที", () => {
+    expect(SOS_SUBMIT_TIMEOUT_MS).toBe(12_000);
+    expect(SOS_SLOW_SUBMIT_NOTICE_MS).toBe(5_000);
+  });
+
+  it("เน็ตค้างเกิน timeout -> abort fetch แล้วคืน network_error พร้อม idempotencyKey และ requestBody รวมรูป", async () => {
+    const { storage } = createMemoryStorage();
+    const draft = createValidDraftWithPhoto();
+    saveSosDraft(draft, storage);
+
+    let capturedSignal: AbortSignal | null | undefined;
+    const hangingFetch = vi.fn<typeof fetch>((_input, init) => {
+      capturedSignal = init?.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      });
+    });
+
+    const inFlightRef = { current: false };
+    const result = await submitSosDraft({
+      draft,
+      storage,
+      inFlightRef,
+      fetchImpl: hangingFetch,
+      timeoutMs: 25,
+      generateIdempotencyKey: () => "idem-timeout-1",
+    });
+
+    expect(inFlightRef.current).toBe(false);
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(result.status).toBe("network_error");
+    if (result.status !== "network_error") throw new Error("Expected network_error");
+    expect(result.idempotencyKey).toBe("idem-timeout-1");
+    expect(JSON.parse(result.requestBody ?? "{}").photos).toEqual([
+      "data:image/jpeg;base64,AAAA",
+    ]);
+    // ร่างต้องยังอยู่เมื่อส่งไม่สำเร็จ
+    expect(storage.getItem(SOS_DRAFT_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it("มีรูปแนบ: ส่งคำขอสร้างเคสแบบไม่มีรูปก่อน แล้วค่อยส่งคำขอรูปด้วย Idempotency-Key เดิม", async () => {
+    const { storage } = createMemoryStorage();
+    const draft = createValidDraftWithPhoto();
+    saveSosDraft(draft, storage);
+
+    const requests: Array<{ key?: string; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      requests.push({
+        key: headers.get("idempotency-key") ?? undefined,
+        body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
+      });
+      return new Response(
+        JSON.stringify({
+          caseCode: "FL-2611-0100",
+          trackingToken: "tok_split_1",
+          confirmationToken: "conf_split_1",
+        }),
+        { status: requests.length === 1 ? 201 : 200 },
+      );
+    });
+
+    const result = await submitSosDraft({
+      draft,
+      storage,
+      fetchImpl: fetchMock,
+      generateIdempotencyKey: () => "idem-split-1",
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0].key).toBe("idem-split-1");
+    expect(requests[0].body.photos).toBeUndefined();
+    expect(requests[1].key).toBe("idem-split-1");
+    expect(requests[1].body.photos).toEqual(["data:image/jpeg;base64,AAAA"]);
+
+    expect(result.status).toBe("submitted");
+    if (result.status !== "submitted") throw new Error("Expected submitted");
+    expect(result.caseCode).toBe("FL-2611-0100");
+    expect(storage.getItem(SOS_DRAFT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("ไม่มีรูปแนบ: ส่งคำขอเพียง 1 ครั้งและไม่มีฟิลด์ photos", async () => {
+    const { storage } = createMemoryStorage();
+    const draft = { ...createValidDraftWithPhoto(), photos: [] };
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(body.photos).toBeUndefined();
+      return new Response(
+        JSON.stringify({ caseCode: "FL-2611-0101", trackingToken: "tok_no_photo" }),
+        { status: 201 },
+      );
+    });
+
+    const result = await submitSosDraft({
+      draft,
+      storage,
+      fetchImpl: fetchMock,
+      generateIdempotencyKey: () => "idem-no-photo",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("submitted");
+  });
+
+  it("ส่งเคสได้รหัสแล้วแต่คำขอรูป 503 หรือ timeout -> คืน photo_pending พร้อม caseCode (เคสไม่ล้ม)", async () => {
+    const { storage } = createMemoryStorage();
+    const draft = createValidDraftWithPhoto();
+
+    // กรณี 2a: รูปได้ 503 photosPending
+    const fetch503 = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      if (!body.photos) {
+        return new Response(
+          JSON.stringify({ caseCode: "FL-2611-0102", trackingToken: "tok_503" }),
+          { status: 201 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          caseCode: "FL-2611-0102",
+          trackingToken: "tok_503",
+          photosPending: true,
+          error: "อัปโหลดรูปชั่วคราวไม่สำเร็จ",
+        }),
+        { status: 503 },
+      );
+    });
+
+    const res503 = await submitSosDraft({
+      draft,
+      storage,
+      fetchImpl: fetch503,
+      generateIdempotencyKey: () => "idem-photo-503",
+    });
+    expect(res503.status).toBe("photo_pending");
+    if (res503.status !== "photo_pending") throw new Error("Expected photo_pending");
+    expect(res503.caseCode).toBe("FL-2611-0102");
+    expect(JSON.parse(res503.requestBody).photos).toEqual(["data:image/jpeg;base64,AAAA"]);
+
+    // กรณี 2b: คำขอรูปค้างจน timeout
+    let callCount = 0;
+    const fetchPhotoTimeout = vi.fn<typeof fetch>((_input, init) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ caseCode: "FL-2611-0103", trackingToken: "tok_photo_to" }),
+            { status: 201 },
+          ),
+        );
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      });
+    });
+
+    const resTimeout = await submitSosDraft({
+      draft,
+      storage,
+      fetchImpl: fetchPhotoTimeout,
+      photoTimeoutMs: 25,
+      generateIdempotencyKey: () => "idem-photo-timeout",
+    });
+    expect(resTimeout.status).toBe("photo_pending");
+    if (resTimeout.status !== "photo_pending") throw new Error("Expected photo_pending");
+    expect(resTimeout.caseCode).toBe("FL-2611-0103");
+    expect(resTimeout.trackingToken).toBe("tok_photo_to");
+    expect(resTimeout.idempotencyKey).toBe("idem-photo-timeout");
+  });
+
+  it("ส่งเคสได้รหัสแล้วแต่คำขอรูปถูกปฏิเสธ 400 ถาวร -> ยังถือว่าเคสสำเร็จพร้อมคำเตือนรูป", async () => {
+    const { storage } = createMemoryStorage();
+    const draft = createValidDraftWithPhoto();
+    saveSosDraft(draft, storage);
+
+    const fetch400 = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      if (!body.photos) {
+        return new Response(
+          JSON.stringify({ caseCode: "FL-2611-0104", trackingToken: "tok_400" }),
+          { status: 201 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "รูปภาพไม่รองรับ" }), { status: 400 });
+    });
+
+    const result = await submitSosDraft({
+      draft,
+      storage,
+      fetchImpl: fetch400,
+      generateIdempotencyKey: () => "idem-photo-400",
+    });
+
+    expect(result.status).toBe("submitted");
+    if (result.status !== "submitted") throw new Error("Expected submitted");
+    expect(result.caseCode).toBe("FL-2611-0104");
+    expect(result.successMessage).toContain("FL-2611-0104");
+    expect(result.successMessage).toContain("รูปภาพไม่รองรับ");
+    expect(storage.getItem(SOS_DRAFT_STORAGE_KEY)).toBeNull();
   });
 });

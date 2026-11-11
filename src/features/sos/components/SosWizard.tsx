@@ -1,13 +1,15 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { rememberSentCase } from "../sent-case";
 import { saveOfflineSos } from "../offline-queue-core";
 import { WaitingAdvice } from "./WaitingAdvice";
 import { IncidentType, Need, type LocatedArea, type WaterLevel } from "../../../lib/domain";
+import { buildSosSmsLink } from "../../../lib/domain/sms-format";
 import {
+  SOS_SLOW_SUBMIT_NOTICE_MS,
   applyGpsPositionToDraft,
   applyIncidentTypeToDraft,
   applyLocatedAreaToDraft,
@@ -39,6 +41,8 @@ import { SosStepperCard } from "./SosStepperCard";
 import { SosTopBar } from "./SosTopBar";
 import { DangerCallBar } from "./DangerCallBar";
 import { useEnabledIncidentTypes } from "../enabled-incidents";
+import { useHydrated } from "../../../lib/use-hydrated";
+import { HydrationPending } from "../../../components/public/HydrationPending";
 import { Step1Incident } from "./Step1Incident";
 import { Step2Details, type PeopleGroupKey } from "./Step2Details";
 import { Step3Location } from "./Step3Location";
@@ -65,6 +69,8 @@ export function SosWizard() {
     getSosDraftServerSnapshot,
   );
   const enabledIncidents = useEnabledIncidentTypes();
+  // TF-68: ก่อน hydrate เสร็จ ปุ่มในฟอร์มกดแล้วการกดหายเงียบ จึงยังไม่แสดงฟอร์ม (แถบบนที่มีปุ่มโทร 1669 แสดงตลอด)
+  const hydrated = useHydrated();
   // ตรวจว่าประเภทที่เลือกยังเปิดรับแจ้งอยู่ เฉพาะเมื่อรู้รายการจริงแล้ว (ตอนออฟไลน์ให้เซิร์ฟเวอร์ตรวจตอนส่ง)
   const knownEnabledTypes =
     enabledIncidents.source === "network" || enabledIncidents.source === "cache"
@@ -108,11 +114,22 @@ export function SosWizard() {
     missingSummary: [],
   });
   const isSubmittingRef = useRef(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSlowSubmitting, setIsSlowSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
   const [submittedType, setSubmittedType] = useState<IncidentType | null>(null);
   const [hasSentDetails, setHasSentDetails] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (slowTimerRef.current !== null) {
+        clearTimeout(slowTimerRef.current);
+        slowTimerRef.current = null;
+      }
+    };
+  }, []);
 
   function updateDraft(updater: (prev: SosDraft) => SosDraft): SosDraft {
     const latest = getSosDraftSnapshot();
@@ -368,6 +385,11 @@ export function SosWizard() {
     setSubmitError(null);
     setSubmitSuccessMessage(null);
     setIsSubmitting(true);
+    setIsSlowSubmitting(false);
+    if (slowTimerRef.current !== null) clearTimeout(slowTimerRef.current);
+    slowTimerRef.current = setTimeout(() => {
+      setIsSlowSubmitting(true);
+    }, SOS_SLOW_SUBMIT_NOTICE_MS);
 
     try {
       const result = await submitSosDraft({
@@ -434,7 +456,9 @@ export function SosWizard() {
               : undefined,
           );
           clearSosDraft();
-          window.dispatchEvent(new Event("sos-queued"));
+          window.dispatchEvent(
+            new CustomEvent("sos-queued", { detail: { skipImmediateRetry: true } }),
+          );
         } catch {
           setSubmitError(
             result.status === "photo_pending"
@@ -475,6 +499,11 @@ export function SosWizard() {
         setSubmitSuccessMessage(result.successMessage);
       }
     } finally {
+      if (slowTimerRef.current !== null) {
+        clearTimeout(slowTimerRef.current);
+        slowTimerRef.current = null;
+      }
+      setIsSlowSubmitting(false);
       setIsSubmitting(false);
     }
   }
@@ -541,7 +570,11 @@ export function SosWizard() {
 
   return (
     <div className="lg:mx-auto lg:flex lg:max-w-[1200px] lg:items-start lg:gap-10 lg:px-10 lg:pt-14 lg:pb-24">
-      <SosStepperCard currentStep={draft.currentStep} onSelectStep={handleGoToStep} />
+      <SosStepperCard
+        currentStep={draft.currentStep}
+        onSelectStep={handleGoToStep}
+        disabled={!hydrated}
+      />
 
       <div className="min-w-0 flex-1">
         {/* TF-55: ติ๊กสัญญาณอันตรายแล้วแถบโทรค้างบนสุดทุกขั้น */}
@@ -552,9 +585,10 @@ export function SosWizard() {
         {/* การ์ดฟอร์ม: มือถือเต็มจอ จอคอมเป็นการ์ดขาวมีขอบ */}
         <div className="lg:border-border-default lg:bg-bg-surface flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:px-14 lg:py-12">
           <SosProgressBar currentStep={draft.currentStep} />
+          {!hydrated && <HydrationPending emergencyHelp />}
 
           {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
-          {submitSuccessMessage && draft.currentStep !== 5 && (
+          {hydrated && submitSuccessMessage && draft.currentStep !== 5 && (
             <div
               role="status"
               data-testid="step5-submit-success"
@@ -577,7 +611,7 @@ export function SosWizard() {
           )}
           {submitSuccessMessage && submittedType && <WaitingAdvice incidentType={submittedType} />}
 
-          {draft.currentStep === 1 && (
+          {hydrated && draft.currentStep === 1 && (
             <Step1Incident
               incidentType={draft.incidentType}
               atScene={draft.atScene}
@@ -589,7 +623,7 @@ export function SosWizard() {
             />
           )}
 
-          {draft.currentStep === 2 && (
+          {hydrated && draft.currentStep === 2 && (
             <Step2Details
               incidentType={draft.incidentType ?? IncidentType.FLOOD}
               details={draft.details}
@@ -613,7 +647,7 @@ export function SosWizard() {
             />
           )}
 
-          {draft.currentStep === 3 && (
+          {hydrated && draft.currentStep === 3 && (
             <Step3Location
               draft={draft}
               errors={step3Errors}
@@ -626,7 +660,7 @@ export function SosWizard() {
             />
           )}
 
-          {draft.currentStep === 4 && (
+          {hydrated && draft.currentStep === 4 && (
             <Step4Needs
               incidentType={draft.incidentType ?? IncidentType.FLOOD}
               needs={draft.needs}
@@ -639,30 +673,50 @@ export function SosWizard() {
             />
           )}
 
-          {draft.currentStep === 5 && (
-            <Step5Contact
-              name={draft.name}
-              phone={draft.phone}
-              lineId={draft.lineId}
-              notes={draft.notes}
-              photos={draft.photos}
-              consent={draft.consent}
-              healthConsent={draft.healthConsent}
-              onConsentChange={(field, value) => {
-                const next = updateDraft((prev) => ({ ...prev, [field]: value }));
-                if (step5Attempted) setStep5Errors(validateStep5Draft(next).errors);
-              }}
-              errors={step5Errors}
-              isSubmitting={isSubmitting}
-              submitError={submitError}
-              submitSuccessMessage={submitSuccessMessage}
-              onChangeField={handleChangeContactField}
-              onAddPhoto={handleAddPhoto}
-              onRemovePhoto={handleRemovePhoto}
-              onPrev={() => handleGoToStep(4)}
-              onSubmit={handleStep5Submit}
-            />
-          )}
+          {hydrated && draft.currentStep === 5 && (() => {
+            const slowSms = buildSosSmsLink(
+              {
+                incidentType: draft.incidentType,
+                waterLevel: draft.waterLevel,
+                lat: draft.lat,
+                lng: draft.lng,
+                phone: draft.phone,
+                landmark: draft.landmark,
+                adults: draft.adults,
+                elderly: draft.elderly,
+                bedridden: draft.bedridden,
+                children: draft.children,
+              },
+              process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER ?? "",
+            );
+            return (
+              <Step5Contact
+                name={draft.name}
+                phone={draft.phone}
+                lineId={draft.lineId}
+                notes={draft.notes}
+                photos={draft.photos}
+                consent={draft.consent}
+                healthConsent={draft.healthConsent}
+                onConsentChange={(field, value) => {
+                  const next = updateDraft((prev) => ({ ...prev, [field]: value }));
+                  if (step5Attempted) setStep5Errors(validateStep5Draft(next).errors);
+                }}
+                errors={step5Errors}
+                isSubmitting={isSubmitting}
+                isSlowSubmitting={isSlowSubmitting}
+                slowSmsHref={slowSms.href}
+                slowSmsToSystem={slowSms.toSystem}
+                submitError={submitError}
+                submitSuccessMessage={submitSuccessMessage}
+                onChangeField={handleChangeContactField}
+                onAddPhoto={handleAddPhoto}
+                onRemovePhoto={handleRemovePhoto}
+                onPrev={() => handleGoToStep(4)}
+                onSubmit={handleStep5Submit}
+              />
+            );
+          })()}
         </div>
       </div>
     </div>

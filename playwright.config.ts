@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -14,10 +15,31 @@ try {
 }
 
 // TF-36: ค่าทดสอบของ SMS gateway ให้ dev server ที่ playwright เปิดเอง (ไม่มี API key = ไม่ส่ง SMS จริง)
-// ถ้าเปิด npm run dev ค้างไว้เอง ต้องใส่ค่านี้ใน .env.local ด้วย ไม่งั้น webhook ตอบ 503
 process.env.HTTPSMS_WEBHOOK_SIGNING_KEY ||= "e2e-tf36-signing-key-not-secret";
 
 const PORT = 3000;
+
+// TF-68: ห้ามรัน E2E ตอนเปิด npm run dev ค้างไว้ — server ที่เปิดเองไม่มีค่าทดสอบของ SMS (TF-36)
+// และอาจใช้ .env.local คนละชุด ทำให้ test ล้มแบบไม่เกี่ยวกับโค้ด จึงหยุดตั้งแต่แรกพร้อมบอกวิธีแก้
+// เช็กครั้งเดียวในโปรเซสหลัก (worker โหลด config ซ้ำตอนที่ server ของ test เปิดอยู่แล้ว)
+function portInUse(port: number): boolean {
+  const probe = spawnSync(process.execPath, [
+    "-e",
+    `const s=require("node:net").connect(${port},"127.0.0.1");` +
+      `s.on("connect",()=>process.exit(0));s.on("error",()=>process.exit(1));` +
+      `setTimeout(()=>process.exit(1),1000);`,
+  ]);
+  return probe.status === 0;
+}
+if (!process.env.TEST_WORKER_INDEX && !process.env.E2E_PORT_CHECKED) {
+  if (portInUse(PORT)) {
+    throw new Error(
+      `พอร์ต ${PORT} ถูกใช้อยู่ (น่าจะเปิด npm run dev ค้างไว้) — ปิดก่อนแล้วรัน E2E ใหม่ ` +
+        `Playwright จะเปิด dev server ที่มีค่าทดสอบครบเอง (macOS/Linux: lsof -ti:${PORT} | xargs kill)`,
+    );
+  }
+  process.env.E2E_PORT_CHECKED = "1";
+}
 
 export default defineConfig({
   testDir: "./e2e",
@@ -59,8 +81,8 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: `http://localhost:${PORT}`,
-    // ในเครื่องถ้าเปิด npm run dev ค้างไว้แล้วใช้ตัวนั้นเลย
-    reuseExistingServer: !process.env.CI,
+    // TF-68: ไม่ใช้ server ที่เปิดค้างไว้ (เช็กพอร์ตด้านบนแล้ว) — ทุกรอบใช้ server ที่มีค่าทดสอบครบ
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

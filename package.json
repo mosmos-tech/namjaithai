@@ -19,6 +19,7 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "geo:build-seed": "node scripts/geo/build-seed.mjs",
+    "env:sync": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/dev/env-sync.ts",
     "auth:setup-line": "node --env-file=.env.local scripts/auth/setup-line-provider.mjs",
     "notifications:line": "node --env-file=.env.local scripts/notifications/run-line.mjs",
     "check:migrations": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ci/check-migration-order.ts",

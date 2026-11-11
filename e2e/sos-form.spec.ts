@@ -473,10 +473,23 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     let succeed = false;
     const requests: { key: string; body: string | null }[] = [];
     await context.route("**/api/cases", async (route) => {
+      const postData = route.request().postData();
+      const parsed = JSON.parse(postData ?? "{}") as { photos?: unknown[] };
       requests.push({
         key: route.request().headers()["idempotency-key"],
-        body: route.request().postData(),
+        body: postData,
       });
+      if (!parsed.photos?.length) {
+        await route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({
+            caseCode: "FL-TEST-PENDING",
+            trackingToken: "a".repeat(32),
+          }),
+        });
+        return;
+      }
       await route.fulfill({
         status: succeed ? 200 : 503,
         contentType: "application/json",
@@ -497,13 +510,11 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await expect(
       page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
     ).toBeVisible();
-    expect(requests.length).toBeGreaterThanOrEqual(2);
-    expect(
-      requests.every(
-        (request) => request.key === requests[0].key && request.body === requests[0].body,
-      ),
-    ).toBe(true);
-    expect(JSON.parse(requests[0].body!).photos).toHaveLength(1);
+    expect(requests).toHaveLength(3);
+    expect(requests.every((request) => request.key === requests[0].key)).toBe(true);
+    expect(JSON.parse(requests[0].body!).photos).toBeUndefined();
+    expect(JSON.parse(requests[1].body!).photos).toHaveLength(1);
+    expect(requests[2].body).toBe(requests[1].body);
   });
 
   test("แนบรูปแล้วส่ง SOS เก็บรูปส่วนตัว ส่งซ้ำไม่เพิ่มรูป และผู้รับเคสเปิดดูได้", async ({
@@ -924,5 +935,264 @@ test.describe("TF-51: ขั้น 2 และ 4 วาดจากทะเบ�
       timeout: 15_000,
     });
     expect(await countCasesByPhone(phoneAnimal)).toBe(1);
+  });
+});
+
+test.describe("TF-69: ส่ง SOS ตอนเน็ตช้ามาก (timeout + ส่งเคสก่อนรูป + ปุ่มช่วยเหลือระหว่างรอ)", () => {
+  async function prepareStep5Ready(page: import("@playwright/test").Page, name: string, phone: string) {
+    await openFreshSosForm(page);
+    await goToStep5(page);
+    await seedLocationIntoDraft(page);
+    await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill(name);
+    await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(phone);
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+    await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+  }
+
+  async function createSamplePngBase64(page: import("@playwright/test").Page) {
+    return page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 8;
+      canvas.height = 8;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "green";
+      ctx.fillRect(0, 0, 8, 8);
+      return canvas.toDataURL("image/png").split(",")[1];
+    });
+  }
+
+  test("เน็ตช้าเกิน 5 วิแสดงปุ่มโทร 1669 และ SMS ทันที และเกิน timeout 12 วิเข้าคิว TF-15 พร้อมปุ่ม SMS และโทร", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await prepareStep5Ready(page, "ทดสอบเน็ตช้าคิว", randomPhone());
+
+    const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+    await page.route("**/api/cases", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 14_000);
+        pendingTimers.push(timer);
+      });
+      await route.abort("timedout").catch(() => undefined);
+    });
+
+    await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+
+    // ก่อนถึง 5 วินาที กล่องช่วยเหลือด่วนยังไม่แสดง
+    await expect(page.getByTestId("step5-slow-submit-fallback")).toHaveCount(0);
+
+    // เกิน 5 วินาที ปุ่มโทร 1669 / 1784 และส่งทาง SMS ต้องแสดงบนหน้าขั้น 5 ทันทีไม่ต้องรอ timeout
+    const slowBox = page.getByTestId("step5-slow-submit-fallback");
+    await expect(slowBox).toBeVisible({ timeout: 8_000 });
+    const call1669 = page.getByTestId("step5-slow-call-1669");
+    const call1784 = page.getByTestId("step5-slow-call-1784");
+    const sendSms = page.getByTestId("step5-slow-sms");
+    await expect(call1669).toHaveAttribute("href", "tel:1669");
+    await expect(call1784).toHaveAttribute("href", "tel:1784");
+    await expect(sendSms).toHaveAttribute("href", /^sms:/);
+
+    // ตรวจความพอดีบนทั้งจอมือถือ 375px และจอคอม (ปุ่มสูง >= 48px และไม่ล้นหน้าจอ)
+    const layoutOk = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(layoutOk.scrollWidth).toBeLessThanOrEqual(layoutOk.innerWidth);
+    for (const locator of [call1669, sendSms]) {
+      const box = await locator.boundingBox();
+      expect(box!.height).toBeGreaterThanOrEqual(48);
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(layoutOk.innerWidth + 1);
+    }
+
+    // เกิน 12 วินาที เข้าหน้าจอคิวรอส่งของ TF-15 พร้อมปุ่ม SMS และโทร 1669 / 1784
+    await expect(
+      page.getByRole("heading", { name: "บันทึกไว้ในเครื่องแล้ว — ยังไม่ถึงทีมกู้ภัย" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("link", { name: "ส่งทาง SMS" })).toHaveAttribute("href", /^sms:/);
+    await expect(page.getByRole("link", { name: "โทร 1669" })).toHaveAttribute("href", "tel:1669");
+    await expect(page.getByRole("link", { name: "โทร 1784" })).toHaveAttribute("href", "tel:1784");
+    await expect(page.getByRole("button", { name: /ลองส่งอีกครั้ง|กำลังลองส่ง/ })).toBeVisible();
+
+    for (const t of pendingTimers) clearTimeout(t);
+    await page.unroute("**/api/cases");
+  });
+
+  test("คำขอแรกถึงเซิร์ฟเวอร์ช้าเกิน timeout + คำขอส่งซ้ำจากคิว ได้เคสเดียวใน DB", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const phone = randomPhone();
+    await prepareStep5Ready(page, "ทดสอบเน็ตช้าส่งซ้ำ", phone);
+
+    const requestKeys: string[] = [];
+    let attempt = 0;
+    let resolveServerCreated!: () => void;
+    const serverCreated = new Promise<void>((resolve) => {
+      resolveServerCreated = resolve;
+    });
+    let resolveAllowRetry!: () => void;
+    const allowRetry = new Promise<void>((resolve) => {
+      resolveAllowRetry = resolve;
+    });
+    const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+
+    await page.route("**/api/cases", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      attempt += 1;
+      const key = route.request().headers()["idempotency-key"];
+      requestKeys.push(key);
+
+      if (attempt === 1) {
+        // ยิงไปที่เซิร์ฟเวอร์จริงให้สร้างเคสสำเร็จก่อน แต่หน่วงคำตอบไว้ 14 วิให้ฝั่งผู้ใช้ timeout เข้าคิว TF-15
+        const response = await route.fetch({
+          headers: {
+            ...route.request().headers(),
+            "x-forwarded-for": `10.69.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+          },
+        });
+        expect(response.status()).toBe(201);
+        resolveServerCreated();
+        await new Promise<void>((r) => {
+          pendingTimers.push(setTimeout(r, 14_000));
+        });
+        await route.fulfill({ response }).catch(() => undefined);
+        return;
+      }
+
+      // รอให้ตรวจหน้าจอคิวส้ม TF-15 และให้คำขอแรกสร้างเคสบนเซิร์ฟเวอร์เสร็จก่อน ค่อยปล่อยคำขอส่งซ้ำ
+      await allowRetry;
+      await route.fallback();
+    });
+
+    await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "บันทึกไว้ในเครื่องแล้ว — ยังไม่ถึงทีมกู้ภัย" }),
+    ).toBeVisible({ timeout: 20_000 });
+    await serverCreated;
+    resolveAllowRetry();
+
+    const retryBtn = page.getByRole("button", { name: "ลองส่งอีกครั้ง" });
+    if (await retryBtn.isVisible().catch(() => false)) {
+      await retryBtn.click({ timeout: 2_000 }).catch(() => undefined);
+    }
+    await expect(
+      page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    expect(requestKeys.length).toBeGreaterThanOrEqual(2);
+    expect(requestKeys[1]).toBe(requestKeys[0]);
+    expect(await countCasesByPhone(phone)).toBe(1);
+
+    const { data: contacts } = await adminDb()
+      .from("case_contacts")
+      .select("case_id")
+      .eq("phone", phone)
+      .throwOnError();
+    await closeTestCases((contacts ?? []).map((c) => c.case_id));
+    for (const t of pendingTimers) clearTimeout(t);
+    await page.unroute("**/api/cases");
+  });
+
+  test("คำขอสร้างเคสไม่มีรูป แล้วส่งรูปตามหลังได้รหัสเคส และรูปล้มถาวร 400 ไม่ทำให้เคสล้ม", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // กรณี 1: แนบรูปแล้วส่งจริง -> รอบแรกไม่มีรูป, รอบสองส่งรูปตามหลัง, ได้ 1 เคส + 1 รูปใน DB
+    const phoneOk = randomPhone();
+    await prepareStep5Ready(page, "ทดสอบแยกเคสก่อนรูป", phoneOk);
+    const sampleImage = await createSamplePngBase64(page);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "split-ok.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(sampleImage, "base64"),
+    });
+    await expect(page.getByRole("button", { name: /^ลบรูป split-ok\./ })).toBeVisible();
+
+    const captured: Array<{ key: string; hasPhotos: boolean }> = [];
+    await page.route("**/api/cases", async (route) => {
+      if (route.request().method() === "POST") {
+        const parsed = JSON.parse(route.request().postData() ?? "{}") as { photos?: unknown[] };
+        captured.push({
+          key: route.request().headers()["idempotency-key"],
+          hasPhotos: Array.isArray(parsed.photos) && parsed.photos.length > 0,
+        });
+      }
+      await route.fallback();
+    });
+
+    await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
+      timeout: 20_000,
+    });
+
+    expect(captured).toHaveLength(2);
+    expect(captured[0].hasPhotos).toBe(false);
+    expect(captured[1].hasPhotos).toBe(true);
+    expect(captured[1].key).toBe(captured[0].key);
+    expect(await countCasesByPhone(phoneOk)).toBe(1);
+
+    const db = adminDb();
+    const { data: contactsOk } = await db
+      .from("case_contacts")
+      .select("case_id")
+      .eq("phone", phoneOk)
+      .throwOnError();
+    const { data: mediaOk } = await db
+      .from("case_media")
+      .select("id")
+      .eq("case_id", contactsOk![0].case_id)
+      .throwOnError();
+    expect(mediaOk).toHaveLength(1);
+    await closeTestCases([contactsOk![0].case_id]);
+    await page.unroute("**/api/cases");
+
+    // กรณี 2: สร้างเคสไม่มีรูปสำเร็จ แต่คำขออัปโหลดรูปโดนปฏิเสธ 400 -> เคสยังสำเร็จพร้อมรหัสเคสและคำเตือน
+    const phonePhotoFail = randomPhone();
+    await prepareStep5Ready(page, "ทดสอบรูปล้มเคสไม่ล้ม", phonePhotoFail);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "split-fail.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(sampleImage, "base64"),
+    });
+    await expect(page.getByRole("button", { name: /^ลบรูป split-fail\./ })).toBeVisible();
+
+    await page.route("**/api/cases", async (route) => {
+      if (route.request().method() === "POST") {
+        const parsed = JSON.parse(route.request().postData() ?? "{}") as { photos?: unknown[] };
+        if (parsed.photos?.length) {
+          await route.fulfill({
+            status: 400,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "ไฟล์รูปไม่ถูกต้อง" }),
+          });
+          return;
+        }
+      }
+      await route.fallback();
+    });
+
+    await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+    const successBanner = page.getByTestId("step5-submit-success");
+    await expect(successBanner).toBeVisible({ timeout: 20_000 });
+    await expect(successBanner).toContainText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/);
+    await expect(successBanner).toContainText("ไฟล์รูปไม่ถูกต้อง");
+    await expect(page.getByTestId("step5-submit-error")).toHaveCount(0);
+    expect(await countCasesByPhone(phonePhotoFail)).toBe(1);
+
+    const { data: contactsFail } = await db
+      .from("case_contacts")
+      .select("case_id")
+      .eq("phone", phonePhotoFail)
+      .throwOnError();
+    await closeTestCases([contactsFail![0].case_id]);
+    await page.unroute("**/api/cases");
   });
 });

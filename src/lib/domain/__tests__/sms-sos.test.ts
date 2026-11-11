@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSosSmsLink,
+  buildSosSmsLinkFromJson,
   formatSmsReply,
   formatSmsSos,
+  IncidentType,
   normalizeThaiPhone,
   parseSmsSos,
   smsHref,
@@ -95,6 +98,56 @@ describe("TF-36 สร้างข้อความ SMS", () => {
     expect(smsHref("0800000000", "SOS FLOOD 13.75,100.5 P1")).toBe(
       "sms:0800000000?body=SOS%20FLOOD%2013.75%2C100.5%20P1",
     );
+  });
+
+  it("TF-69: buildSosSmsLink สร้างลิงก์ SMS เข้าระบบเมื่อมี gateway และเป็น FLOOD", () => {
+    const link = buildSosSmsLink(
+      {
+        incidentType: IncidentType.FLOOD,
+        lat: 13.75,
+        lng: 100.5,
+        adults: 2,
+        elderly: 1,
+        phone: "0812345678",
+        landmark: "ซอย 4",
+      },
+      "0800000000",
+    );
+    expect(link.toSystem).toBe(true);
+    expect(link.href.startsWith("sms:0800000000?body=")).toBe(true);
+    expect(decodeURIComponent(link.href.split("?body=")[1])).toContain("SOS FLOOD 13.75000,100.50000");
+  });
+
+  it("TF-69: buildSosSmsLink สลับเป็นข้อความทั่วไปเมื่อไม่มี gateway หรือไม่ใช่เหตุ FLOOD", () => {
+    const noGateway = buildSosSmsLink(
+      {
+        incidentType: IncidentType.FLOOD,
+        lat: 13.75,
+        lng: 100.5,
+        landmark: "หน้าโรงเรียน",
+        phone: "0812345678",
+      },
+      "",
+    );
+    expect(noGateway.toSystem).toBe(false);
+    expect(decodeURIComponent(noGateway.href)).toContain("พิกัด 13.75,100.5");
+
+    const fireWithGateway = buildSosSmsLink(
+      {
+        incidentType: IncidentType.FIRE,
+        lat: 13.75,
+        lng: 100.5,
+      },
+      "0800000000",
+    );
+    expect(fireWithGateway.toSystem).toBe(false);
+    expect(fireWithGateway.href.startsWith("sms:?body=")).toBe(true);
+  });
+
+  it("TF-69: buildSosSmsLinkFromJson รองรับ JSON พังหรือไม่มีพิกัด", () => {
+    const invalid = buildSosSmsLinkFromJson("{not-json", "0800000000");
+    expect(invalid.toSystem).toBe(false);
+    expect(decodeURIComponent(invalid.href)).toContain("ขอความช่วยเหลือฉุกเฉิน กรุณาติดต่อกลับ");
   });
 });
 

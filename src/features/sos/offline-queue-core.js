@@ -1,7 +1,10 @@
 // Shared by the page and the generated service worker. One durable request per device.
+// IMPORTANT: scripts/pwa/build.mjs only strips "export async function" when building public/sw.js.
+// Internal helpers and constants in this file must NOT use `export`.
 const SOS_DB = "namjaithai-offline-sos";
 const SOS_STORE = "queue";
 const SOS_KEY = "current";
+const SOS_SUBMIT_TIMEOUT_MS = 12000;
 
 function openSosDb() {
   return new Promise((resolve, reject) => {
@@ -87,6 +90,57 @@ export async function discardBlockedOfflineSos(id) {
   }));
 }
 
+function parseQueueBody(rawBody) {
+  try {
+    return JSON.parse(rawBody || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function splitCaseBody(rawBody) {
+  const parsed = parseQueueBody(rawBody);
+  const hasPhotos = Array.isArray(parsed.photos) && parsed.photos.length > 0;
+  if (!hasPhotos) return { parsed, hasPhotos: false, caseBody: rawBody };
+  const withoutPhotos = { ...parsed };
+  delete withoutPhotos.photos;
+  return { parsed, hasPhotos: true, caseBody: JSON.stringify(withoutPhotos) };
+}
+
+function buildSentResult(item, parsedBody, data, photoWarning) {
+  return {
+    id: item.id,
+    status: "sent",
+    lastAttempt: item.lastAttempt,
+    caseCode: data.caseCode || item.caseCode,
+    trackingToken: data.trackingToken || item.trackingToken,
+    confirmationToken: data.confirmationToken || item.confirmationToken,
+    phoneLast4: String(parsedBody.phone || "")
+      .replace(/\D/g, "")
+      .slice(-4),
+    incidentType: parsedBody.incidentType,
+    photoWarning: photoWarning || data.photoWarning,
+  };
+}
+
+async function fetchCaseWithTimeout(id, body) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SOS_SUBMIT_TIMEOUT_MS);
+  try {
+    const response = await fetch("/api/cases", {
+      method: "POST",
+      credentials: "same-origin",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", "Idempotency-Key": id },
+      body,
+    });
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function processOfflineSos(manual = false) {
   const now = Date.now();
   const lease = now + 20000;
@@ -99,53 +153,97 @@ export async function processOfflineSos(manual = false) {
   });
   if (item === "locked") throw new Error("Request is already being sent");
   if (!item) return;
+
+  const { parsed, hasPhotos, caseBody } = splitCaseBody(item.body);
+  let activeItem = item;
   let result;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch("/api/cases", {
-      method: "POST",
-      credentials: "same-origin",
-      signal: controller.signal,
-      headers: { "Content-Type": "application/json", "Idempotency-Key": item.id },
-      body: item.body,
-    });
-    const data = await response.json().catch(() => ({}));
-    if (response.ok && data.caseCode && data.trackingToken) {
-      const body = JSON.parse(item.body);
-      result = {
-        id: item.id,
-        status: "sent",
-        lastAttempt: item.lastAttempt,
-        caseCode: data.caseCode,
-        trackingToken: data.trackingToken,
-        confirmationToken: data.confirmationToken,
-        phoneLast4: String(body.phone || "")
-          .replace(/\D/g, "")
-          .slice(-4),
-        incidentType: body.incidentType,
-        photoWarning: data.photoWarning,
-      };
-    } else if (data.photosPending && data.caseCode && data.trackingToken) {
-      result = {
-        ...item,
-        lease: 0,
-        status: "pending",
-        caseReceived: true,
-        caseCode: data.caseCode,
-        trackingToken: data.trackingToken,
-        confirmationToken: data.confirmationToken,
-        error: data.error || "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
-      };
-    } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-      result = {
-        ...item,
-        lease: 0,
-        status: "blocked",
-        error: data.error || "ส่งไม่ได้ กรุณาโทรสายด่วน",
-      };
-    } else {
-      throw new Error("Server unavailable");
+    // ขั้น 1 (TF-69): ถ้ามีรูปและยังไม่ได้รับรหัสเคส ส่งคำขอสร้างเคสแบบไม่มีรูปก่อนเสมอ
+    if (hasPhotos && !activeItem.caseReceived) {
+      const { response: caseRes, data: caseData } = await fetchCaseWithTimeout(
+        activeItem.id,
+        caseBody,
+      );
+      if (caseRes.ok && caseData.caseCode && caseData.trackingToken) {
+        const checkpoint = {
+          ...activeItem,
+          caseReceived: true,
+          caseCode: caseData.caseCode,
+          trackingToken: caseData.trackingToken,
+          confirmationToken: caseData.confirmationToken,
+          error: "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
+        };
+        await updateSosQueue((current) =>
+          current && current.id === activeItem.id && current.lease === lease
+            ? { value: checkpoint }
+            : {},
+        );
+        activeItem = checkpoint;
+      } else if (caseData.photosPending && caseData.caseCode && caseData.trackingToken) {
+        result = {
+          ...activeItem,
+          lease: 0,
+          status: "pending",
+          caseReceived: true,
+          caseCode: caseData.caseCode,
+          trackingToken: caseData.trackingToken,
+          confirmationToken: caseData.confirmationToken,
+          error: caseData.error || "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
+        };
+      } else if (caseRes.status >= 400 && caseRes.status < 500 && caseRes.status !== 429) {
+        result = {
+          ...activeItem,
+          lease: 0,
+          status: "blocked",
+          error: caseData.error || "ส่งไม่ได้ กรุณาโทรสายด่วน",
+        };
+      } else {
+        throw new Error("Server unavailable");
+      }
+    }
+
+    // ขั้น 2: ส่งคำขอฉบับเต็ม (ไม่มีรูป = ส่งเคสครั้งแรก, มีรูป = อัปโหลดรูปหลังได้รหัสเคส)
+    if (!result) {
+      const { response, data } = await fetchCaseWithTimeout(activeItem.id, activeItem.body);
+      if (
+        response.ok &&
+        (data.caseCode || activeItem.caseCode) &&
+        (data.trackingToken || activeItem.trackingToken)
+      ) {
+        result = buildSentResult(activeItem, parsed, data);
+      } else if (data.photosPending && data.caseCode && data.trackingToken) {
+        result = {
+          ...activeItem,
+          lease: 0,
+          status: "pending",
+          caseReceived: true,
+          caseCode: data.caseCode,
+          trackingToken: data.trackingToken,
+          confirmationToken: data.confirmationToken,
+          error: data.error || "ส่งรูปยังไม่สำเร็จ ระบบจะลองอีกครั้ง",
+        };
+      } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        if (activeItem.caseReceived && activeItem.caseCode && activeItem.trackingToken) {
+          // เคสสร้างสำเร็จแล้ว — รูปล้มถาวรต้องไม่บล็อกเคสที่ได้รับรหัสแล้ว
+          result = buildSentResult(
+            activeItem,
+            parsed,
+            data,
+            data.error || "ไม่สามารถแนบรูปได้ แต่ทีมกู้ภัยได้รับคำขอของคุณแล้ว",
+          );
+        } else {
+          result = {
+            ...activeItem,
+            lease: 0,
+            status: "blocked",
+            error: data.error || "ส่งไม่ได้ กรุณาโทรสายด่วน",
+          };
+        }
+      } else if (activeItem.caseReceived) {
+        throw new Error("Photos still pending");
+      } else {
+        throw new Error("Server unavailable");
+      }
     }
   } catch (error) {
     await updateSosQueue((current) =>
@@ -154,9 +252,8 @@ export async function processOfflineSos(manual = false) {
         : {},
     );
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
+
   await updateSosQueue((current) =>
     current && current.id === item.id && current.lease === lease ? { value: result } : {},
   );

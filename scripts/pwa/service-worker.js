@@ -1,5 +1,5 @@
 /* Build template; emitted to public/sw.js by scripts/pwa/build.mjs. */
-/* global __CACHE_VERSION__ */
+/* global __CACHE_VERSION__, __BRAND_ASSETS__ */
 const CACHE = "namjaithai-public-" + __CACHE_VERSION__;
 
 // ปุ่ม SOS บนหน้าแรกพาไป /request ตรงๆ (TF-66 เลือกประเภทเหตุในขั้นที่ 1) ต้องเปิดได้ตอนออฟไลน์ด้วย
@@ -50,7 +50,8 @@ self.addEventListener("install", (event) => {
       }
 
       const pages = await Promise.all(PAGES.map(async (url) => (await download(url)).text()));
-      const assets = new Set();
+      // TF-68: ไอคอนที่วาดหลัง hydrate ไม่อยู่ใน HTML — เก็บทั้งโฟลเดอร์ /brand
+      const assets = new Set(__BRAND_ASSETS__);
       for (const html of pages) {
         for (const match of html.matchAll(/(?:src|href)="(\/(?:_next\/static|brand)\/[^"?#]+)"/g)) {
           assets.add(match[1]);
