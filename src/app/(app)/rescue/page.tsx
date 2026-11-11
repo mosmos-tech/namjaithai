@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { SignedInShell } from "@/features/auth/components/SignedInShell";
 import { requireAccess } from "@/features/auth/server/require-role";
@@ -20,6 +21,7 @@ export default function Page({ searchParams }: PageProps<"/rescue">) {
         wide
         denied={searchParams.then((p) => p.denied === "1")}
       >
+        <Link href="/rescue/my-tasks" className="text-primary-700 inline-flex min-h-12 items-center font-semibold underline">งานของฉัน</Link>
         <RescueMapWithCapabilities />
       </SignedInShell>
     </Suspense>

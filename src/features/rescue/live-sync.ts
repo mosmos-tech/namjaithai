@@ -30,6 +30,7 @@ export type ChannelSubscription = {
 export type RescueLiveSyncOptions = {
   role: UserRole | null | undefined;
   realtimeEnabled?: boolean;
+  catchUpOnFirstSubscribe?: boolean;
   subscribeChannel: (handlers: SubscribeChannelHandlers) => ChannelSubscription;
   onRefresh: () => Promise<boolean | void> | boolean | void;
   onStatusChange?: (status: RescueLiveStatus) => void;
@@ -65,6 +66,7 @@ export function createRescueLiveSyncController(
   const {
     role,
     realtimeEnabled = true,
+    catchUpOnFirstSubscribe = false,
     subscribeChannel,
     onRefresh,
     onStatusChange,
@@ -78,6 +80,7 @@ export function createRescueLiveSyncController(
   let disposed = false;
   let started = false;
   let needsCatchUp = false;
+  let firstSubscription = true;
   let wasHiddenWhileRealtime = false;
   let inFlight = false;
   let rerunQueued = false;
@@ -179,7 +182,8 @@ export function createRescueLiveSyncController(
     if (nextStatus === "SUBSCRIBED") {
       clearConnectTimeout();
       stopPolling();
-      const shouldCatchUp = needsCatchUp;
+      const shouldCatchUp = needsCatchUp || (firstSubscription && catchUpOnFirstSubscribe);
+      firstSubscription = false;
       needsCatchUp = false;
       setMode("realtime", null);
       if (shouldCatchUp) {

@@ -155,13 +155,15 @@ select throws_ok(
     values ('b0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000001', 'APPROVED')$$,
   '42501', null, 'หัวหน้า: ดึงคนเข้าหน่วยเองไม่ได้ (ต้องผ่านลิงก์เชิญ)');
 
-select is(
-  pg_temp.rows_affected($$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001', assigned_rescuer_id = 'b0000000-0000-0000-0000-000000000003' where case_code = 'T-C2'$$), 1, 'หัวหน้า: มอบเคสในพื้นที่ให้ลูกทีมตัวเองได้');
+select throws_ok(
+  $$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001', assigned_rescuer_id = 'b0000000-0000-0000-0000-000000000003' where case_code = 'T-C2'$$,
+  '42501', null, 'หัวหน้า: ต้องมอบหมายผ่าน RPC ที่บันทึกประวัติ');
 select throws_ok(
   $$update public.cases set assigned_rescuer_id = 'b0000000-0000-0000-0000-000000000004' where case_code = 'T-C2'$$,
   '42501', null, 'หัวหน้า: มอบเคสให้กู้ภัยหน่วยอื่นไม่ได้');
-select is(
-  pg_temp.rows_affected($$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001' where case_code = 'T-C3'$$), 0, 'หัวหน้า: มอบเคสนอกพื้นที่หน่วยไม่ได้');
+select throws_ok(
+  $$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001' where case_code = 'T-C3'$$,
+  '42501', null, 'หัวหน้า: แก้หน่วยที่รับเคสโดยตรงไม่ได้');
 select is(pg_temp.rows_affected($$update public.units set province = 'เชียงใหม่' where name = 'หน่วย กทม.'$$), 0,
   'หัวหน้า: เปลี่ยนจังหวัดของหน่วยเพื่อขยายพื้นที่ไม่ได้');
 reset role;

@@ -18,6 +18,28 @@ let unitId: string;
 let realCaseId: string;
 let realCode: string;
 
+test("แอดมินไม่เห็นเคสตัวอย่างที่ผูกกับตนในงานของฉัน", async ({ page, context }) => {
+  const db = adminDb();
+  const { data: demoUnit } = await db.from("units")
+    .insert({ name: `${tag} หน่วยตัวอย่าง`, province: "กรุงเทพมหานคร", source: "DEMO" })
+    .select("id").single().throwOnError();
+  const code = `${tag}-ADMIN-DEMO`;
+  const { data: demo } = await db.from("cases").insert({
+    case_code: code, urgency: "YELLOW", status: "ACCEPTED", lat: 13.72, lng: 100.52,
+    province: "กรุงเทพมหานคร", landmark: "ข้อมูลตัวอย่าง", incident_type: "FLOOD",
+    is_demo: true, assigned_unit_id: demoUnit!.id, assigned_rescuer_id: admin.id,
+  }).select("id").single().throwOnError();
+  try {
+    await applySession(context, admin);
+    await page.goto("/rescue/my-tasks");
+    await expect(page.getByText("ตอนนี้ยังไม่มีเคสที่คุณรับไว้")).toBeVisible();
+    await expect(page.getByText(code)).toHaveCount(0);
+  } finally {
+    await db.from("cases").delete().eq("id", demo!.id).throwOnError();
+    await db.from("units").delete().eq("id", demoUnit!.id).throwOnError();
+  }
+});
+
 test.beforeAll(async ({}, testInfo) => {
   const db = adminDb();
   tag = `TF70${testInfo.project.name[0]}${crypto.randomUUID().slice(0, 6)}`.toUpperCase();

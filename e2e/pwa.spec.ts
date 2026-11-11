@@ -399,9 +399,10 @@ test("TF-66 ส่งคิวซ้ำแล้วเซิร์ฟเวอ�
   });
   // ส่งจากเบื้องหลังตามรอบปกติ (ไม่ได้กดเอง) — หน้าส่งไม่สำเร็จต้องเปิดขึ้นเอง
   await page.reload();
+  // รีโหลดอาจขัดจังหวะการส่งที่เริ่มก่อนหน้า ต้องเผื่อ lease 20 วินาทีและรอบตรวจซ้ำ 10 วินาที
   await expect(
     page.getByRole("heading", { name: "ส่งคำขอไม่สำเร็จ — ยังไม่ถึงทีมกู้ภัย" }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 35_000 });
   await expect(
     page.getByRole("alert").filter({ hasText: "ประเภทเหตุนี้ปิดรับแจ้งชั่วคราว" }),
   ).toBeVisible();
