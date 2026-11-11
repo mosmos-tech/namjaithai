@@ -36,6 +36,8 @@ import { TriageTag } from "@/features/cases/components/TriageTag";
 import { useCapabilityFilter } from "@/features/cases/use-capability-filter";
 import { DEFAULT_THAILAND_CENTER } from "@/features/sos/draft-storage";
 import { RescueLiveStatus } from "./RescueLiveStatus";
+import { DutyModeToggle } from "./DutyModeToggle";
+import { useTeamMarkers, type TeamLocation } from "./TeamMarkers";
 import { useRescueCasesLive } from "../use-rescue-cases-live";
 import { fetchAllRescueCases, type RescueCase, type RescueCaseQuery } from "../rescue-cases";
 
@@ -124,6 +126,9 @@ export function RescueMap({
   const [screenClusters, setScreenClusters] = useState<ScreenCluster[]>([]);
 
   const now = useNow();
+  // TF-28: หมุดทีม — เวลาเดินถี่กว่าเพื่อให้สีจาง/ซ่อนตรงเวลา
+  const teamNow = useNow(15_000);
+  const [team, setTeam] = useState<TeamLocation[]>([]);
 
   // ขอพิกัดกู้ภัย
   useEffect(() => {
@@ -194,16 +199,39 @@ export function RescueMap({
     if (query) void loadCases(query);
   }, [query, loadCases]);
 
+  // TF-28: ตำแหน่งทีมทั้งชุดของจังหวัด (แอดมิน = ทุกจังหวัด) ผ่าน RPC เดียว ไม่ส่งรายคน
+  const teamSeqRef = useRef(0);
+  const loadTeam = useCallback(async () => {
+    const seq = ++teamSeqRef.current;
+    const { data, error: teamError } = await createClient().rpc("list_team_locations");
+    if (seq !== teamSeqRef.current || teamError) return;
+    setTeam((data ?? []) as TeamLocation[]);
+  }, []);
+  const teamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // หลายคนอัปเดตพร้อมกัน รวมเป็นการดึงครั้งเดียว
+  const onTeamLocationsChange = useCallback(() => {
+    if (teamTimerRef.current) clearTimeout(teamTimerRef.current);
+    teamTimerRef.current = setTimeout(() => void loadTeam(), 500);
+  }, [loadTeam]);
+  useEffect(() => {
+    void loadTeam(); // โหลดตำแหน่งทีมครั้งแรก
+    return () => {
+      if (teamTimerRef.current) clearTimeout(teamTimerRef.current);
+    };
+  }, [loadTeam]);
+
   const refreshCases = useCallback(async () => {
     const currentQuery = queryRef.current;
     if (!currentQuery) return false;
+    void loadTeam(); // รอบดึงสำรองตอน Realtime หลุดก็ดึงตำแหน่งทีมด้วย
     return loadCases(currentQuery, { silent: true });
-  }, [loadCases]);
+  }, [loadCases, loadTeam]);
 
   const live = useRescueCasesLive({
     role: userRole,
     enabled: query !== null,
     onRefresh: refreshCases,
+    onTeamLocationsChange,
   });
   const { notifyManualSync } = live;
 
@@ -547,11 +575,15 @@ export function RescueMap({
     }
   }, [geojson, sourceLoaded, syncScreenElements]);
 
+  useTeamMarkers(mapRef, sourceLoaded, team, teamNow);
+
   return (
     <section aria-labelledby="rescue-map-heading" className="flex flex-col gap-4">
       <h2 id="rescue-map-heading" className="sr-only">
         แผนที่กู้ภัย
       </h2>
+
+      <DutyModeToggle role={userRole} />
 
       {/* แถบเครื่องมือด้านบน: สลับไปหน้ารายการเคส + ตัวกรองต่างๆ */}
       <div className="flex flex-col gap-3">
@@ -582,12 +614,22 @@ export function RescueMap({
             <RescueLiveStatus mode={live.mode} reason={live.reason} />
           </div>
 
-          <p
-            data-testid="rescue-map-counter"
-            className="text-text-primary font-heading text-lg font-semibold"
-          >
-            แสดง {visibleCases.length} จาก {cases.length} เคส
-          </p>
+          <div className="flex flex-col items-end gap-1">
+            <p
+              data-testid="rescue-map-counter"
+              className="text-text-primary font-heading text-lg font-semibold"
+            >
+              แสดง {visibleCases.length} จาก {cases.length} เคส
+            </p>
+            {/* TF-28: คำอธิบายหมุดทีม (แยกจากหมุดเคส) */}
+            <p className="text-text-secondary flex items-center gap-2 text-sm">
+              <span
+                aria-hidden="true"
+                className="inline-block size-3 rounded-[3px] bg-violet-700"
+              />
+              ทีมกู้ภัยที่แชร์ตำแหน่ง (สีจาง = ไม่อัปเดตเกิน 2 นาที)
+            </p>
+          </div>
         </div>
 
         {/* ตัวกรองความเร่งด่วน (สีหมุด) */}

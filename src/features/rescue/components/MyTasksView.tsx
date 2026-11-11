@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { UserRole } from "@/lib/domain";
 import { MyTaskCard, type MyTask } from "./MyTaskCard";
 import { MyTasksLive } from "./MyTasksLive";
+import { DutyModeToggle } from "./DutyModeToggle";
 
 export function MyTasksView({
   role,
@@ -16,6 +17,7 @@ export function MyTasksView({
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <DutyModeToggle role={role} />
       <MyTasksLive role={role} />
       {loadError ? (
         <section role="alert" className="flex flex-col items-start gap-3 rounded-[14px] border p-5">

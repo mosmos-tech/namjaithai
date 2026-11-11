@@ -30,6 +30,11 @@ export type UseRescueCasesLiveOptions = {
   onRefresh: () => Promise<boolean | void> | boolean | void;
   realtimeEnabled?: boolean;
   catchUpOnFirstSubscribe?: boolean;
+  /**
+   * TF-28: ฟังตำแหน่งทีม (rescuer_locations) ในช่องเดียวกันด้วย — ไม่เปิดช่องใหม่
+   * เรียกเมื่อมีคนในจังหวัดอัปเดต/หยุดแชร์ ให้หน้าเว็บดึงทั้งชุดใหม่ (Realtime ส่งตาม RLS)
+   */
+  onTeamLocationsChange?: () => void;
 };
 
 /**
@@ -45,6 +50,7 @@ export function useRescueCasesLive({
   onRefresh,
   realtimeEnabled = isRealtimeEnabled(),
   catchUpOnFirstSubscribe = false,
+  onTeamLocationsChange,
 }: UseRescueCasesLiveOptions): RescueLiveStatus & { notifyManualSync: () => void } {
   const allowed = canUseRealtime(role);
   const active = enabled && allowed;
@@ -52,6 +58,8 @@ export function useRescueCasesLive({
   const channelSeqRef = useRef(0);
   const controllerRef = useRef<RescueLiveSyncController | null>(null);
   const onRefreshRef = useRef(onRefresh);
+  const onTeamRef = useRef(onTeamLocationsChange);
+  const listenTeam = onTeamLocationsChange !== undefined;
 
   const [status, setStatus] = useState<RescueLiveStatus>(() => ({
     mode: !allowed ? "off" : realtimeEnabled ? "connecting" : "polling",
@@ -61,7 +69,8 @@ export function useRescueCasesLive({
 
   useEffect(() => {
     onRefreshRef.current = onRefresh;
-  }, [onRefresh]);
+    onTeamRef.current = onTeamLocationsChange;
+  }, [onRefresh, onTeamLocationsChange]);
 
   useEffect(() => {
     if (!active) {
@@ -86,11 +95,18 @@ export function useRescueCasesLive({
           })
           .on("postgres_changes", { event: "*", schema: "public", table: "cases" }, () => {
             handlers.onChange();
-          })
-          .subscribe((next) => {
-            const mapped = mapChannelStatus(next);
-            if (mapped) handlers.onStatus(mapped);
           });
+        if (listenTeam) {
+          channel.on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "rescuer_locations" },
+            () => onTeamRef.current?.(),
+          );
+        }
+        channel.subscribe((next) => {
+          const mapped = mapChannelStatus(next);
+          if (mapped) handlers.onStatus(mapped);
+        });
 
         return {
           unsubscribe: () => {
@@ -120,7 +136,15 @@ export function useRescueCasesLive({
         controllerRef.current = null;
       }
     };
-  }, [active, catchUpOnFirstSubscribe, instanceId, providedClient, realtimeEnabled, role]);
+  }, [
+    active,
+    catchUpOnFirstSubscribe,
+    instanceId,
+    listenTeam,
+    providedClient,
+    realtimeEnabled,
+    role,
+  ]);
 
   const notifyManualSync = useCallback(() => {
     controllerRef.current?.notifyManualSync();

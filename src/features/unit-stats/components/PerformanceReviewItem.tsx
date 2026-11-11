@@ -11,6 +11,11 @@ const REASON_LABEL: Record<string, string> = {
   FAR_FROM_SCENE: "ตอนถึงที่เกิดเหตุอยู่ห่างจากเคสเกิน 1 กม.",
 };
 
+// TF-28: ข้อมูลประกอบ ไม่ใช่เหตุติดด่าน
+const NOTE_LABEL: Record<string, string> = {
+  LOCATION_UNAVAILABLE: "ไม่มีข้อมูลตำแหน่งตอนถึงที่เกิดเหตุ",
+};
+
 export function PerformanceReviewItem({ item }: { item: PendingReview }) {
   const router = useRouter();
   const [note, setNote] = useState("");
@@ -38,6 +43,11 @@ export function PerformanceReviewItem({ item }: { item: PendingReview }) {
           <li key={reason}>{REASON_LABEL[reason] ?? reason}</li>
         ))}
       </ul>
+      {item.notes.length > 0 && (
+        <p className="text-text-secondary text-sm" data-testid="performance-review-note">
+          ข้อมูลประกอบ: {item.notes.map((note) => NOTE_LABEL[note] ?? note).join(" · ")}
+        </p>
+      )}
       <label className="flex flex-col gap-1">
         หมายเหตุ (ไม่บังคับ)
         <input
