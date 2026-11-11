@@ -16,6 +16,8 @@ try {
 
 // TF-36: ค่าทดสอบของ SMS gateway ให้ dev server ที่ playwright เปิดเอง (ไม่มี API key = ไม่ส่ง SMS จริง)
 process.env.HTTPSMS_WEBHOOK_SIGNING_KEY ||= "e2e-tf36-signing-key-not-secret";
+// ใช้เฉพาะ server ที่ Playwright เปิดเอง; ห้ามใช้ค่านี้กับระบบจริง
+process.env.RETENTION_WORKER_SECRET ||= "tf44-local-e2e-secret-not-for-production";
 
 const PORT = 3000;
 
