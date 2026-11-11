@@ -61,7 +61,7 @@ begin
       insert into public.case_stale_alerts(case_id,kind,activity_at) values(item.id,'UNCLAIMED',activity) on conflict do nothing;
     else
       select greatest(item.last_status_updated_at,coalesce(max(e.created_at),item.last_status_updated_at)) into activity
-        from public.case_events e where e.case_id=item.id and e.event_type='NOTE_ADDED'
+        from public.case_events e where e.case_id=item.id and e.event_type in ('NOTE_ADDED','ASSIGNED')
           and e.actor_unit_id=item.assigned_unit_id and e.created_at >= item.last_status_updated_at;
       if activity <= now()-interval '15 minutes' then
         insert into public.case_stale_alerts(case_id,kind,activity_at,unit_id,rescuer_id)
@@ -101,7 +101,7 @@ language sql stable security definer set search_path='' as $$
     or (a.kind='TEAM_SILENT' and c.status in ('ACCEPTED','EN_ROUTE','ON_SITE')
       and c.assigned_unit_id=a.unit_id and c.assigned_rescuer_id is not distinct from a.rescuer_id
       and (rls.is_admin() or (exists(select 1 from public.users u where u.id=rls.current_user_id() and u.role in ('RESCUER','UNIT_LEAD')) and ((a.rescuer_id=rls.current_user_id() and a.unit_id in (select rls.my_unit_ids())) or a.unit_id in (select rls.my_unit_ids(true)))))
-      and not exists(select 1 from public.case_events e where e.case_id=c.id and e.event_type='NOTE_ADDED'
+      and not exists(select 1 from public.case_events e where e.case_id=c.id and e.event_type in ('NOTE_ADDED','ASSIGNED')
         and e.actor_unit_id=a.unit_id and e.created_at > a.activity_at)
       and c.last_status_updated_at <= a.activity_at)
   ) order by a.created_at desc limit 100;
@@ -122,7 +122,7 @@ language sql stable set search_path='' as $$
       or (a.kind='TEAM_SILENT' and c.status in ('ACCEPTED','EN_ROUTE','ON_SITE')
         and c.assigned_unit_id=a.unit_id and c.assigned_rescuer_id is not distinct from a.rescuer_id
         and c.last_status_updated_at <= a.activity_at
-        and not exists(select 1 from public.case_events e where e.case_id=c.id and e.event_type='NOTE_ADDED'
+        and not exists(select 1 from public.case_events e where e.case_id=c.id and e.event_type in ('NOTE_ADDED','ASSIGNED')
           and e.actor_unit_id=a.unit_id and e.created_at>a.activity_at))));
 $$;
 revoke all on function public.tf35_alert_is_current(uuid) from public,anon,authenticated;

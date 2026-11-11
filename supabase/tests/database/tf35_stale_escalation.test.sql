@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path=public,extensions;
-select plan(26);
+select plan(27);
 insert into auth.users(id) values ('a3500000-0000-0000-0000-000000000001'),('a3500000-0000-0000-0000-000000000002'),('a3500000-0000-0000-0000-000000000003');
 insert into public.users(id,auth_user_id,display_name,role,status) values
  ('b3500000-0000-0000-0000-000000000001','a3500000-0000-0000-0000-000000000001','TF35 admin','ADMIN','ACTIVE'),
@@ -21,6 +21,10 @@ insert into public.cases(id,case_code,urgency,status,lat,lng,landmark,province,i
  ('d3500000-0000-0000-0000-000000000007','TF35-SITE','YELLOW','ON_SITE',12.24,102.51,'วัด','ตราด','FLOOD','c3500000-0000-0000-0000-000000000001','b3500000-0000-0000-0000-000000000002',now()-interval '21 minutes');
 insert into public.cases(id,case_code,urgency,status,lat,lng,landmark,province,incident_type,assigned_unit_id,is_demo,last_status_updated_at)
  values('d3500000-0000-0000-0000-000000000008','TF35-DEMO','RED','NEW',12.24,102.51,'วัด','ตราด','FLOOD','c3500000-0000-0000-0000-000000000002',true,now()-interval '40 minutes');
+insert into public.cases(id,case_code,urgency,status,lat,lng,landmark,province,incident_type,assigned_unit_id,assigned_rescuer_id,last_status_updated_at)
+ values('d3500000-0000-0000-0000-000000000009','TF35-REASSIGNED','YELLOW','EN_ROUTE',12.24,102.51,'วัด','ตราด','FLOOD','c3500000-0000-0000-0000-000000000001','b3500000-0000-0000-0000-000000000002',now()-interval '21 minutes');
+insert into public.case_events(case_id,event_type,from_status,to_status,actor_user_id,actor_unit_id,actor_role)
+ values('d3500000-0000-0000-0000-000000000009','ASSIGNED','EN_ROUTE','EN_ROUTE','b3500000-0000-0000-0000-000000000001','c3500000-0000-0000-0000-000000000001','UNIT_LEAD');
 insert into public.case_events(case_id,event_type,from_status,to_status,actor_user_id,actor_unit_id,actor_role,note)
  values('d3500000-0000-0000-0000-000000000006','NOTE_ADDED','ACCEPTED','ACCEPTED','b3500000-0000-0000-0000-000000000002','c3500000-0000-0000-0000-000000000001','RESCUER','ยังดำเนินการ');
 select ok(not has_function_privilege('authenticated','public.tf35_escalate_stale_cases()','EXECUTE'),'users cannot run worker');
@@ -35,6 +39,7 @@ select is((select status::text from public.cases where id='d3500000-0000-0000-00
 select is((select status::text from public.cases where id='d3500000-0000-0000-0000-000000000005'),'NEW','silent en route returned to new');
 select is((select status::text from public.cases where id='d3500000-0000-0000-0000-000000000007'),'NEW','silent on site returned to new');
 select is((select status::text from public.cases where id='d3500000-0000-0000-0000-000000000006'),'ACCEPTED','recent note prevents release');
+select is((select status::text from public.cases where id='d3500000-0000-0000-0000-000000000009'),'EN_ROUTE','recent reassignment prevents release');
 select is((select assigned_rescuer_id from public.cases where id='d3500000-0000-0000-0000-000000000005'),null::uuid,'released assignment cleared');
 select is((select count(*) from public.case_events where case_id='d3500000-0000-0000-0000-000000000005' and event_type='AUTO_ESCALATED'),1::bigint,'release recorded');
 select is((select count(*) from public.case_stale_alerts where case_id='d3500000-0000-0000-0000-000000000008'),0::bigint,'demo case never alerted');
