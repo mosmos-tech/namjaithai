@@ -13,6 +13,7 @@ create table rls.case_media_deletion_queue (
   attempts integer not null default 0,
   locked_until timestamptz,
   lease_id uuid,
+  failed_at timestamptz,
   created_at timestamptz not null default pg_catalog.now()
 );
 alter table rls.case_media_deletion_queue enable row level security;
@@ -87,14 +88,12 @@ begin
       and (c.pii_redacted_at is null or
         exists (
           select 1 from public.case_contacts cc
-          where (cc.case_id = c.id or exists (
-            select 1 from rls.case_merged_contacts mc
-            where mc.original_case_id = c.id and mc.contact_id = cc.id
-          ))
+          where cc.case_id = c.id
             and (cc.redacted_at is null or cc.name is not null or cc.phone is not null
               or cc.phone_last4 is not null or cc.line_id is not null or cc.detailed_address is not null)
         )
         or exists (select 1 from public.case_sensitive_details sd where sd.case_id = c.id)
+        or exists (select 1 from public.case_media m where m.case_id = c.id)
       )
     order by c.closed_at, c.id limit 100 for update of c skip locked
   ) eligible;
@@ -117,10 +116,31 @@ begin
   update public.case_contacts cc
   set name = null, phone = null, phone_last4 = null, line_id = null,
       detailed_address = null, redacted_at = coalesce(cc.redacted_at, pg_catalog.now())
-  where (cc.case_id = any(v_case_ids) or exists (
-      select 1 from rls.case_merged_contacts mc
-      where mc.original_case_id = any(v_case_ids) and mc.contact_id = cc.id
-    ))
+  where (
+      cc.case_id = any(v_case_ids)
+      or (
+        exists (
+          select 1 from rls.case_merged_contacts mc
+          join public.cases orig on orig.id = mc.original_case_id
+          where mc.original_case_id = any(v_case_ids)
+            and mc.contact_id = cc.id
+            and (orig.duplicate_of_case_id is null or exists (
+              select 1 from public.cases p
+              where p.id = orig.duplicate_of_case_id
+                and not p.is_demo
+                and p.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
+                and p.closed_at < pg_catalog.now() - interval '90 days'
+            ))
+        )
+        and exists (
+          select 1 from public.cases owner
+          where owner.id = cc.case_id
+            and not owner.is_demo
+            and owner.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
+            and owner.closed_at < pg_catalog.now() - interval '90 days'
+        )
+      )
+    )
     and (cc.redacted_at is null or cc.name is not null or cc.phone is not null
       or cc.phone_last4 is not null or cc.line_id is not null or cc.detailed_address is not null);
   get diagnostics v_contacts = row_count;
@@ -153,11 +173,31 @@ begin
   delete from rls.case_confirmation_secrets where case_id = any(v_case_ids);
 
   -- รูปของเคสซ้ำอาจถูกย้ายไปเคสหลัก แต่ prefix ของ path ยังคงเป็น id เคสเดิม
+  -- รอให้เคสหลักปิดเกิน 90 วันด้วย เพื่อไม่ให้ลบรูปของเคสหลักที่ยังใช้งานอยู่
   with detached as (
     delete from public.case_media m
     where m.case_id = any(v_case_ids)
-       or pg_catalog.split_part(m.storage_path, '/', 1) = any(
-         array(select id::text from pg_catalog.unnest(v_case_ids) id))
+       or (
+         exists (
+           select 1 from public.cases orig
+           where orig.id = any(v_case_ids)
+             and orig.id::text = pg_catalog.split_part(m.storage_path, '/', 1)
+             and (orig.duplicate_of_case_id is null or exists (
+               select 1 from public.cases p
+               where p.id = orig.duplicate_of_case_id
+                 and not p.is_demo
+                 and p.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
+                 and p.closed_at < pg_catalog.now() - interval '90 days'
+             ))
+         )
+         and exists (
+           select 1 from public.cases owner
+           where owner.id = m.case_id
+             and not owner.is_demo
+             and owner.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
+             and owner.closed_at < pg_catalog.now() - interval '90 days'
+         )
+       )
     returning m.id, m.case_id, m.storage_path
   )
   insert into rls.case_media_deletion_queue(id, case_id, storage_path)
@@ -182,6 +222,7 @@ revoke all on function public.purge_closed_case_pii() from public, anon, authent
 grant execute on function public.purge_closed_case_pii() to service_role;
 
 -- worker รับคิวแบบมี lease เพื่อให้ลองใหม่ได้หลังหมดเวลา และไม่ลบคิวก่อน Storage ยืนยัน
+-- จำกัดจำนวนครั้งลองใหม่ (10 ครั้ง) เพื่อไม่ให้ไฟล์ที่มีปัญหาถาวรวนลองซ้ำไม่รู้จบ
 create function public.claim_case_media_deletions(p_limit integer default 25)
 returns table(id uuid, storage_path text, lease_id uuid)
 language plpgsql security definer set search_path = '' as $$
@@ -189,11 +230,25 @@ begin
   if p_limit is null or p_limit < 1 or p_limit > 100 then
     raise exception 'invalid limit' using errcode = '22023';
   end if;
+  with exhausted as (
+    update rls.case_media_deletion_queue q
+    set failed_at = pg_catalog.now(), lease_id = null, locked_until = null
+    where q.failed_at is null
+      and q.attempts >= 10
+      and (q.locked_until is null or q.locked_until < pg_catalog.now())
+    returning q.case_id
+  )
+  insert into public.audit_logs(action, target_type, case_id, metadata)
+  select 'CASE_MEDIA_PURGE_FAILED', 'case', e.case_id, '{"reason":"retry_limit"}'::jsonb
+  from exhausted e;
+
   return query
   with selected as (
     select q.id from rls.case_media_deletion_queue q
-    where q.locked_until is null or q.locked_until < pg_catalog.now()
-    order by q.created_at, q.id for update skip locked limit p_limit
+    where q.failed_at is null
+      and q.attempts < 10
+      and (q.locked_until is null or q.locked_until < pg_catalog.now())
+    order by q.attempts, q.created_at, q.id for update skip locked limit p_limit
   )
   update rls.case_media_deletion_queue q
   set lease_id = pg_catalog.gen_random_uuid(), locked_until = pg_catalog.now() + interval '2 minutes',
@@ -204,20 +259,32 @@ $$;
 
 create function public.finish_case_media_deletion(p_id uuid, p_lease_id uuid, p_success boolean)
 returns boolean language plpgsql security definer set search_path = '' as $$
-declare v_case_id uuid;
+declare
+  v_case_id uuid;
+  v_attempts integer;
 begin
   if p_success is null then raise exception 'invalid result' using errcode = '22023'; end if;
   if p_success then
-    delete from rls.case_media_deletion_queue q where q.id = p_id and q.lease_id = p_lease_id
+    delete from rls.case_media_deletion_queue q
+    where q.id = p_id and q.lease_id = p_lease_id and q.failed_at is null
     returning q.case_id into v_case_id;
     if not found then return false; end if;
     insert into public.audit_logs(action, target_type, case_id, metadata)
     values ('CASE_MEDIA_PURGED', 'case', v_case_id, '{}'::jsonb);
     return true;
   end if;
-  update rls.case_media_deletion_queue q set lease_id = null, locked_until = null
-  where q.id = p_id and q.lease_id = p_lease_id;
-  return found;
+  update rls.case_media_deletion_queue q
+  set lease_id = null,
+      locked_until = null,
+      failed_at = case when q.attempts >= 10 then pg_catalog.now() else null end
+  where q.id = p_id and q.lease_id = p_lease_id and q.failed_at is null
+  returning q.case_id, q.attempts into v_case_id, v_attempts;
+  if not found then return false; end if;
+  if v_attempts >= 10 then
+    insert into public.audit_logs(action, target_type, case_id, metadata)
+    values ('CASE_MEDIA_PURGE_FAILED', 'case', v_case_id, '{"reason":"retry_limit"}'::jsonb);
+  end if;
+  return true;
 end;
 $$;
 revoke all on function public.claim_case_media_deletions(integer) from public, anon, authenticated;
@@ -229,13 +296,13 @@ create function public.run_case_media_retention_worker()
 returns void language plpgsql security definer set search_path = '' as $$
 declare v_url text; v_secret text;
 begin
+  if not exists (select 1 from rls.case_media_deletion_queue where failed_at is null) then
+    return;
+  end if;
   select decrypted_secret into v_url from vault.decrypted_secrets where name = 'retention_worker_url';
   select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'retention_worker_secret';
   if v_url is null or v_secret is null then
-    if exists (select 1 from rls.case_media_deletion_queue) then
-      raise exception 'retention media worker is not configured';
-    end if;
-    return;
+    raise exception 'retention media worker is not configured';
   end if;
   perform net.http_post(url := v_url, body := '{}'::jsonb,
     headers := pg_catalog.jsonb_build_object('Authorization', 'Bearer ' || v_secret, 'Content-Type', 'application/json'),

@@ -19,10 +19,12 @@ export async function runMediaRetention(client: MediaRetentionClient) {
           typeof item?.lease_id === "string",
       )
     ) {
+      console.error("[tf44-media] รับคิวลบรูปไม่สำเร็จ");
       return { status: 503, claimed: 0, deleted: 0, failed: 1 };
     }
     jobs = result.data as MediaJob[];
   } catch {
+    console.error("[tf44-media] รับคิวลบรูปไม่สำเร็จ");
     return { status: 503, claimed: 0, deleted: 0, failed: 1 };
   }
 
@@ -30,11 +32,13 @@ export async function runMediaRetention(client: MediaRetentionClient) {
   let failed = 0;
   for (const job of jobs) {
     let removed = false;
-    try {
-      const result = await client.remove([job.storage_path]);
-      removed = !result.error;
-    } catch {
-      // ปล่อยคิวไว้ให้ลองใหม่เมื่อ Storage ไม่พร้อม
+    if (job.storage_path.trim().length > 0) {
+      try {
+        const result = await client.remove([job.storage_path]);
+        removed = !result.error;
+      } catch {
+        // ปล่อยคิวไว้ให้ลองใหม่เมื่อ Storage ไม่พร้อม
+      }
     }
     try {
       const result = await client.rpc("finish_case_media_deletion", {
@@ -43,9 +47,13 @@ export async function runMediaRetention(client: MediaRetentionClient) {
         p_success: removed,
       });
       if (removed && !result.error && result.data === true) deleted++;
-      else failed++;
+      else {
+        console.error(`[tf44-media] ลบรูปไม่สำเร็จ (คิว ${job.id})`);
+        failed++;
+      }
     } catch {
       // lease จะหมดเวลาและรับคิวได้อีกครั้งหากยืนยันผลไม่ได้
+      console.error(`[tf44-media] ยืนยันผลลบรูปไม่สำเร็จ (คิว ${job.id})`);
       failed++;
     }
   }
