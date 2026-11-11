@@ -4,6 +4,7 @@ import Link from "next/link";
 type Alert = { id: string; case_id: string; case_code: string; kind: "UNCLAIMED" | "TEAM_SILENT" };
 export function StaleCaseAlerts() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [error, setError] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
@@ -12,9 +13,11 @@ export function StaleCaseAlerts() {
           cache: "no-store",
           signal: controller.signal,
         });
-        if (response.ok) setAlerts((await response.json()).alerts);
+        if (!response.ok) throw new Error("alerts unavailable");
+        setAlerts((await response.json()).alerts);
+        setError(false);
       } catch {
-        /* retry on the next poll */
+        if (!controller.signal.aborted) setError(true);
       }
     }
     void load();
@@ -24,13 +27,14 @@ export function StaleCaseAlerts() {
       controller.abort();
     };
   }, []);
-  if (!alerts.length) return null;
+  if (!alerts.length && !error) return null;
   return (
     <section
       aria-label="แจ้งเตือนเคสค้าง"
       className="rounded-xl border border-amber-400 bg-amber-50 p-4"
     >
       <h2 className="font-heading text-xl font-bold">แจ้งเตือนเคสค้าง</h2>
+      {error && <p role="alert">โหลดแจ้งเตือนเคสค้างไม่สำเร็จ ระบบจะลองใหม่</p>}
       <ul>
         {alerts.map((alert) => (
           <li key={alert.id} className="mt-3">

@@ -41,3 +41,14 @@ test("แอดมินเห็นเคสแดงที่รอนาน�
   await applySession(context, user);
   expect((await context.request.get("/api/stale-alerts")).status()).toBe(403);
 });
+
+test("แจ้งเตือนเมื่อโหลดรายการเคสค้างไม่สำเร็จ", async ({ page, context }) => {
+  await applySession(context, admin);
+  await page.route("**/api/stale-alerts", async (route) =>
+    route.fulfill({ status: 503, body: "{}" }),
+  );
+  await page.goto("/admin");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "โหลดแจ้งเตือนเคสค้างไม่สำเร็จ" }),
+  ).toBeVisible();
+});
