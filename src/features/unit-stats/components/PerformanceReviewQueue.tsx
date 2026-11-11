@@ -6,6 +6,8 @@ export type PendingReview = {
   case_code: string;
   unit_name: string;
   reasons: string[];
+  /** TF-28: ข้อมูลประกอบที่ไม่ใช่เหตุติดด่าน เช่น LOCATION_UNAVAILABLE */
+  notes: string[];
   created_at: string;
 };
 

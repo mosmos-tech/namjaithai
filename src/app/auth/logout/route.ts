@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
+  // TF-28: ออกจากระบบ = หยุดแชร์ตำแหน่ง (ลบแถว) ก่อน session หาย — ไม่ได้แชร์อยู่ก็ไม่มีผล
+  await supabase.rpc("stop_sharing_location");
   await supabase.auth.signOut();
   return NextResponse.redirect(new URL("/", request.nextUrl.origin), 303);
 }

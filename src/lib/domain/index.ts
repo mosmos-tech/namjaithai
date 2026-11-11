@@ -18,3 +18,4 @@ export * from "./realtime";
 export * from "./case-claim";
 export * from "./unit-stats";
 export * from "./unit-directory";
+export * from "./team-location";
