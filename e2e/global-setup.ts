@@ -6,7 +6,7 @@ import { adminDb } from "./helpers/db";
 // หน้าที่ต้องล็อกอินจะ redirect ไป /login แต่โค้ดฝั่งเซิร์ฟเวอร์ของหน้านั้นก็ compile แล้ว
 const WARM_UP_PATHS = [
   "/", "/login", "/request", "/sos", "/sos/sent", "/track", "/my-cases", "/survival", "/hotlines",
-  "/privacy", "/rescue", "/rescue/cases", "/rescue/map", "/rescue/my-tasks", "/unit",
+  "/privacy", "/units", "/rescue", "/rescue/cases", "/rescue/map", "/rescue/my-tasks", "/unit",
   "/unit/dashboard", "/admin", "/admin/cases", "/admin/audit",
 ];
 

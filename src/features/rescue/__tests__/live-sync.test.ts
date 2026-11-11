@@ -15,6 +15,7 @@ function setupController(overrides?: {
   pollIntervalMs?: number;
   debounceMs?: number;
   connectTimeoutMs?: number;
+  catchUpOnFirstSubscribe?: boolean;
 }) {
   let handlers: SubscribeChannelHandlers | null = null;
   const subscribeCount = { calls: 0, unsubscribes: 0 };
@@ -46,6 +47,7 @@ function setupController(overrides?: {
     pollIntervalMs: overrides?.pollIntervalMs ?? 15_000,
     debounceMs: overrides?.debounceMs ?? 250,
     connectTimeoutMs: overrides?.connectTimeoutMs ?? 15_000,
+    catchUpOnFirstSubscribe: overrides?.catchUpOnFirstSubscribe,
   });
 
   return {
@@ -73,6 +75,15 @@ describe("TF-27 createRescueLiveSyncController", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("TF-29 catch-up เมื่อ subscribe ครั้งแรก เพื่อไม่พลาดงานระหว่างโหลดหน้า", async () => {
+    const ctx = setupController({ catchUpOnFirstSubscribe: true });
+    ctx.controller.start();
+    ctx.emitStatus("SUBSCRIBED");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctx.onRefresh).toHaveBeenCalledTimes(1);
+    ctx.controller.dispose();
   });
 
   it("ผู้แจ้ง (USER) และผู้ไม่ล็อกอิน (null) ไม่เปิดการเชื่อมต่อ Realtime และไม่ poll เลย", () => {

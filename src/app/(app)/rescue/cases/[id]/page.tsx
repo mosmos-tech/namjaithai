@@ -9,6 +9,7 @@ import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { TriageTag } from "@/features/cases/components/TriageTag";
 import { TriageOverrideForm } from "@/features/cases/components/TriageOverrideForm";
 import { CaseClaimActions } from "@/features/rescue/components/CaseClaimActions";
+import { CaseAssignment, type AssignmentOption } from "@/features/rescue/components/CaseAssignment";
 import { CaseContact } from "@/features/rescue/components/CaseContact";
 import { CaseWait } from "@/features/rescue/components/CaseWait";
 import { LocationAccuracyBadge } from "@/features/rescue/components/LocationAccuracyBadge";
@@ -117,6 +118,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
     accept: boolean;
     release: boolean;
   };
+  const assignmentOptions = await supabase.rpc("case_assignment_options", { p_case_id: id });
   const incident = INCIDENT_REGISTRY[item.incident_type];
   const sensitive = sensitiveResult.data?.details ?? null;
   const answers =
@@ -178,6 +180,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
           canAccept={permissions.accept}
           canRelease={permissions.release}
         />
+        <CaseAssignment caseId={item.id} version={item.version} options={(assignmentOptions.data ?? []) as AssignmentOption[]} />
         <p className="break-words">
           {[item.subdistrict, item.district, item.province, item.landmark]
             .filter(Boolean)

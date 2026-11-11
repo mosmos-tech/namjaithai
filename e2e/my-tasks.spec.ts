@@ -111,6 +111,8 @@ test("จอ 375px: ปุ่มเดียวทีละขั้นจนช
   const viewport = { width: 375, height: 812 };
   const mine = await browser.newContext({ viewport });
   const theirs = await browser.newContext({ viewport });
+  await theirs.grantPermissions(["geolocation"]);
+  await theirs.setGeolocation({ latitude: area.lat, longitude: area.lng, accuracy: 20 });
   await applySession(mine, rescuer);
   await applySession(theirs, other);
   const page = await mine.newPage();
