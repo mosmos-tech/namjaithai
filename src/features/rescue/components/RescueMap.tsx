@@ -40,6 +40,7 @@ import { DutyModeToggle } from "./DutyModeToggle";
 import { useTeamMarkers, type TeamLocation } from "./TeamMarkers";
 import { useRescueCasesLive } from "../use-rescue-cases-live";
 import { fetchAllRescueCases, type RescueCase, type RescueCaseQuery } from "../rescue-cases";
+import { OSM_RASTER_STYLE } from "../../../lib/map/osm-style";
 
 type LocationState =
   { kind: "locating" } | { kind: "ready"; lat: number; lng: number } | { kind: "unavailable" };
@@ -54,27 +55,6 @@ type ScreenCluster = {
   count: number;
   coords: [number, number];
   pos: MapPoint;
-};
-
-const OSM_RASTER_STYLE = {
-  version: 8 as const,
-  sources: {
-    osm: {
-      type: "raster" as const,
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      attribution: "© OpenStreetMap contributors",
-    },
-  },
-  layers: [
-    {
-      id: "osm-tiles",
-      type: "raster" as const,
-      source: "osm",
-      minzoom: 0,
-      maxzoom: 19,
-    },
-  ],
 };
 
 const EMPTY_GEOJSON: GeoJSON.FeatureCollection<GeoJSON.Point> = {

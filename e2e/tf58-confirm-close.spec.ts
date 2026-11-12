@@ -130,7 +130,7 @@ test("โทเค็นติดตามยืนยันไม่ได้ �
   );
   await page.reload();
   await expect(actions).toBeVisible();
-  await actions.getByRole("button", { name: "ได้รับแล้ว" }).click();
+  await actions.getByRole("button", { name: "ฉันได้รับความช่วยเหลือแล้ว" }).click();
   await expect(actions).toHaveCount(0);
   const { data } = await adminDb()
     .from("cases")

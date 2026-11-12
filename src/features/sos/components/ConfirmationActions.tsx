@@ -57,7 +57,7 @@ export function ConfirmationActions({
           onClick={() => void respond("CONFIRM")}
           className="min-h-12 rounded-full bg-green-700 px-6 font-bold text-white disabled:opacity-50"
         >
-          ได้รับแล้ว
+          ฉันได้รับความช่วยเหลือแล้ว
         </button>
         <button
           disabled={busy}

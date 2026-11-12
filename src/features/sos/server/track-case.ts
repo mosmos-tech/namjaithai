@@ -1,5 +1,6 @@
 import {
   caseCodeSchema,
+  etaMinutes,
   phoneLast4Schema,
   trackingTokenSchema,
   type TrackedCase,
@@ -98,5 +99,12 @@ export async function handleTrackCase(params: {
     return { status: 404, body: { error: NOT_FOUND }, headers: NO_STORE };
   }
 
-  return { status: 200, body: data, headers: NO_STORE };
+  // TF-42: ETA คำนวณที่นี่จากระยะ PostGIS (ความเร็วเฉลี่ยอยู่ที่เดียวใน src/lib/domain)
+  const body: TrackedCase = data.teamLocation
+    ? {
+        ...data,
+        teamLocation: { ...data.teamLocation, etaMinutes: etaMinutes(data.teamLocation.distanceM) },
+      }
+    : data;
+  return { status: 200, body, headers: NO_STORE };
 }

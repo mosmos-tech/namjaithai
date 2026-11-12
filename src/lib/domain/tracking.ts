@@ -56,6 +56,9 @@ export type TrackedCase = {
   team: { unitName: string | null; contactPhone: string | null } | null;
   // TF-59: กำลังส่งต่อให้หน่วยที่มีอุปกรณ์ (ไม่มีชื่อหน่วยปลายทาง)
   transferPending?: boolean;
+  // TF-42: เฉพาะ EN_ROUTE / ON_SITE — จุดของผู้แจ้ง และตำแหน่งล่าสุดของคนที่รับเคส (ไม่มีข้อมูลส่วนตัวกู้ภัย)
+  scene?: { lat: number; lng: number } | null;
+  teamLocation?: ReporterTeamLocation | null;
   timeline: { type: CaseEventType; toStatus: CaseStatus | null; at: string }[];
 };
 
@@ -205,4 +208,63 @@ export function lineShareText(caseCode: string, trackUrl: string): string {
 // ลิงก์แชร์ของ LINE เปิดแอป LINE ให้เลือกคนส่งได้เลย (มือถือ) หรือเปิดหน้า LINE บนเว็บ (คอม)
 export function lineShareUrl(text: string): string {
   return `https://line.me/R/share?text=${encodeURIComponent(text)}`;
+}
+
+// ── TF-42 แผนที่สดของผู้แจ้ง (แบบติดตามพัสดุ) ──────────────────────────────────
+
+/** ความเร็วเฉลี่ยที่ใช้ประมาณเวลาถึง — ค่าเดียวในโปรเจกต์ (ไม่ใช้ API นำทางที่เสียเงิน) */
+export const REPORTER_ETA_SPEED_KMH = 30;
+
+/** ตำแหน่งทีมที่ผู้แจ้งเห็น: ระยะจาก PostGIS (เส้นตรง) และ ETA ที่เซิร์ฟเวอร์เติมให้ */
+export type ReporterTeamLocation = {
+  lat: number;
+  lng: number;
+  updatedAt: string;
+  distanceM: number;
+  etaMinutes?: number;
+};
+
+/** เวลาที่คาดว่าจะถึง (นาที ปัดขึ้น อย่างน้อย 1) = ระยะทาง ÷ ความเร็วเฉลี่ย */
+export function etaMinutes(distanceM: number): number {
+  const metersPerMinute = (REPORTER_ETA_SPEED_KMH * 1000) / 60;
+  return Math.max(1, Math.ceil(Math.max(0, distanceM) / metersPerMinute));
+}
+
+export function etaText(minutes: number): string {
+  if (minutes < 60) return `ประมาณ ${minutes} นาที`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `ประมาณ ${hours} ชม. ${rest} นาที` : `ประมาณ ${hours} ชม.`;
+}
+
+export function distanceText(distanceM: number): string {
+  return distanceM < 1000
+    ? `${Math.round(distanceM / 10) * 10} ม.`
+    : `${(distanceM / 1000).toFixed(distanceM < 10_000 ? 1 : 0)} กม.`;
+}
+
+/** หน้าจอ 3 แบบของการ์ด TF-42 (+ เคสปิดแล้ว) */
+export type TrackScreen = "waiting" | "en_route" | "arrived" | "closed";
+
+export function trackScreen(status: CaseStatus): TrackScreen {
+  switch (status) {
+    case CaseStatus.NEW:
+    case CaseStatus.ACCEPTED:
+      return "waiting";
+    case CaseStatus.EN_ROUTE:
+      return "en_route";
+    case CaseStatus.ON_SITE:
+    case CaseStatus.AWAITING_CONFIRMATION:
+      return "arrived";
+    default:
+      return "closed";
+  }
+}
+
+/** "อัปเดตล่าสุด x วินาทีที่แล้ว" */
+export function secondsAgoText(since: Date | string, now: number): string {
+  const seconds = Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
+  if (seconds < 5) return "เมื่อสักครู่";
+  if (seconds < 60) return `${seconds} วินาทีที่แล้ว`;
+  return `${Math.floor(seconds / 60)} นาทีที่แล้ว`;
 }

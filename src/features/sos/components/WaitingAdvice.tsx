@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import {
   INCIDENT_REGISTRY,
   IncidentType,
@@ -33,21 +34,23 @@ const HOTLINES: Record<Incident, readonly { number: string; label: string }[]> =
     { number: "1669", label: "แพทย์ฉุกเฉิน" },
   ],
 };
-export function WaitingAdvice({ incidentType }: { incidentType?: string }) {
+/**
+ * คำแนะนำระหว่างรอทีม + สายด่วนตามประเภทเหตุ
+ * collapsible (TF-42 ตอนทีมกำลังมา): พับได้ เปิดไว้เป็นค่าเริ่มต้น — ใช้ <details> จึงกดได้แม้ JS ยังโหลดไม่เสร็จ
+ */
+export function WaitingAdvice({
+  incidentType,
+  collapsible = false,
+}: {
+  incidentType?: string;
+  collapsible?: boolean;
+}) {
   const type = Object.values(IncidentType).find((code) => code === incidentType);
   const advice = type ? INCIDENT_REGISTRY[type].waitingAdvice : [];
   const hotlines = type ? HOTLINES[type] : HOTLINES.OTHER;
-  return (
-    <section
-      aria-labelledby="waiting-advice-heading"
-      className="border-border-default bg-bg-surface rounded-[14px] border p-5 sm:p-8"
-    >
-      <h2
-        id="waiting-advice-heading"
-        className="font-heading text-text-primary text-[22px] font-semibold"
-      >
-        ระหว่างรอทีม ควรทำอะไร
-      </h2>
+  const heading = "ระหว่างรอทีม ควรทำอะไร";
+  const body = (
+    <>
       {advice.length ? (
         <ul className="mt-4 list-disc space-y-2 pl-6 text-lg">
           {advice.map((item) => (
@@ -70,6 +73,39 @@ export function WaitingAdvice({ incidentType }: { incidentType?: string }) {
           </a>
         ))}
       </div>
+    </>
+  );
+  if (collapsible) {
+    return (
+      <details
+        open
+        data-testid="waiting-advice"
+        className="group border-border-default bg-bg-surface rounded-[14px] border p-5 sm:p-8"
+      >
+        <summary className="font-heading text-text-primary flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-[22px] font-semibold [&::-webkit-details-marker]:hidden">
+          {heading}
+          <ChevronDown
+            className="size-6 shrink-0 transition-transform group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </summary>
+        {body}
+      </details>
+    );
+  }
+  return (
+    <section
+      aria-labelledby="waiting-advice-heading"
+      data-testid="waiting-advice"
+      className="border-border-default bg-bg-surface rounded-[14px] border p-5 sm:p-8"
+    >
+      <h2
+        id="waiting-advice-heading"
+        className="font-heading text-text-primary text-[22px] font-semibold"
+      >
+        {heading}
+      </h2>
+      {body}
     </section>
   );
 }
