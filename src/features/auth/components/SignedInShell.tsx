@@ -1,3 +1,4 @@
+import { StaleCaseAlerts } from "@/features/notifications/components/StaleCaseAlerts";
 import { userRoleLabel } from "@/lib/domain";
 import { requireAccess } from "../server/require-role";
 
@@ -54,6 +55,7 @@ export async function SignedInShell({
           หน้านี้กำลังพัฒนา ({comingIn})
         </p>
       )}
+      {["ADMIN", "UNIT_LEAD", "RESCUER"].includes(user.role) && <StaleCaseAlerts />}
       {children}
     </div>
   );

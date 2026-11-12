@@ -242,15 +242,15 @@ begin
     and old.status in ('ACCEPTED', 'EN_ROUTE', 'ON_SITE') and new.status in ('ACCEPTED', 'NEW') then
     return new;
   end if;
-  if old.status = 'AWAITING_CONFIRMATION' and new.status = 'NEW'
-    and coalesce(current_setting('app.reporter_reopen', true), '') = 'on' then
-    return new;
-  end if;
-  if not public.case_status_transition_allowed(old.status, new.status,
-    coalesce(current_setting('app.case_release', true), '') = 'on',
-    coalesce(current_setting('app.case_cancel_by_reporter', true), '') = 'on',
-    coalesce(current_setting('app.case_close_by_lead', true), '') = 'on') then
-    raise exception 'invalid case status transition % -> %', old.status, new.status using errcode = '23514';
+  if old.status='AWAITING_CONFIRMATION' and new.status='NEW'
+    and coalesce(current_setting('app.reporter_reopen',true),'')='on' then return new; end if;
+  if old.status='ON_SITE' and new.status='NEW'
+    and coalesce(current_setting('app.tf35_stale_release',true),'')='on' then return new; end if;
+  if not public.case_status_transition_allowed(old.status,new.status,
+    coalesce(current_setting('app.case_release',true),'')='on',
+    coalesce(current_setting('app.case_cancel_by_reporter',true),'')='on',
+    coalesce(current_setting('app.case_close_by_lead',true),'')='on') then
+    raise exception 'invalid case status transition % -> %',old.status,new.status using errcode='23514';
   end if;
   return new;
 end $function$;
@@ -552,7 +552,7 @@ create trigger trg_case_cancel_stale_transfer
 -- ----------------------------------------------------------------------------
 alter table public.case_line_notifications drop constraint case_line_notifications_kind_check;
 alter table public.case_line_notifications add constraint case_line_notifications_kind_check
-  check (kind in ('CASE_STATUS', 'RED_ALERT', 'CLOSE_CONFIRM', 'TRANSFER_EXPIRED'));
+  check (kind in ('CASE_STATUS', 'RED_ALERT', 'CLOSE_CONFIRM', 'STALE_UNCLAIMED', 'STALE_TEAM', 'TRANSFER_EXPIRED'));
 
 create function rls.expire_case_transfers()
 returns integer
@@ -739,6 +739,11 @@ begin
       select 1 from public.users u where u.id = n.user_id and u.status = 'ACTIVE'
         and u.line_user_id ~ '^U[0-9a-fA-F]{32}$'
     );
+  -- Do not send obsolete alerts after a case was picked up or the team updated it.
+  update public.case_line_notifications n set state='SKIPPED', last_error='stale_alert_resolved'
+    where n.kind in ('STALE_UNCLAIMED','STALE_TEAM') and n.state in ('PENDING','SENDING')
+      and (n.locked_until is null or n.locked_until < now())
+      and (not public.tf35_alert_is_current(n.stale_alert_id) or not public.tf35_line_recipient_allowed(n.stale_alert_id,n.user_id));
   return query
   with picked as (
     select n.id from public.case_line_notifications n
