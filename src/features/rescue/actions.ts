@@ -4,13 +4,22 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import {
   acceptCaseMessage,
+  acceptTransferMessage,
   advanceCaseMessage,
+  cancelTransferMessage,
+  caseTransferRequestSchema,
   caseCompletionSchema,
   caseNoteSchema,
   caseReleaseReasonSchema,
   CaseStatus,
+  requestTransferMessage,
   RESCUER_NEXT_STATUS,
+  UnitCapability,
   type AcceptCaseResult,
+  type AcceptTransferResult,
+  type CancelTransferResult,
+  type RequestTransferResult,
+  type TransferOption,
   type AdvanceCaseResult,
   type ReleaseCaseResult,
 } from "@/lib/domain";
@@ -147,4 +156,85 @@ export async function addCaseNote(caseId: string, note: string) {
   const supabase = await createClient();
   const { error } = await supabase.rpc("add_case_note", { p_case_id: caseId, p_note: parsed.data });
   return error ? { error: "บันทึกโน้ตไม่สำเร็จ กรุณาลองใหม่" } : { ok: true };
+}
+
+// ── TF-59 ส่งต่อเคส: สิทธิ์ ความสามารถ ส่งต่อซ้อน และกดพร้อมกันตรวจใน RPC ทั้งหมด ──
+
+const capabilitiesSchema = z.array(z.enum(UnitCapability)).min(1).max(7);
+
+export async function listTransferOptions(caseId: string, capabilities: string[]) {
+  const parsed = capabilitiesSchema.safeParse(capabilities);
+  if (!z.uuid().safeParse(caseId).success || !parsed.success) {
+    return { error: "กรุณาเลือกอุปกรณ์หรือความสามารถที่ขาดอย่างน้อย 1 อย่าง" };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("case_transfer_options", {
+    p_case_id: caseId,
+    p_capabilities: parsed.data,
+  });
+  if (error) return { error: "ค้นหาหน่วยไม่สำเร็จ กรุณาลองใหม่" };
+  return { options: (data ?? []) as TransferOption[] };
+}
+
+export async function requestTransfer(
+  caseId: string,
+  version: number,
+  toUnitId: string,
+  input: { capabilities: string[]; reason: string },
+) {
+  if (
+    ![caseId, toUnitId].every((id) => z.uuid().safeParse(id).success) ||
+    !Number.isInteger(version)
+  ) {
+    return { error: "กรุณาเลือกหน่วยที่จะส่งต่อ" };
+  }
+  const parsed = caseTransferRequestSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("request_transfer", {
+    p_case_id: caseId,
+    p_expected_version: version,
+    p_to_unit_id: toUnitId,
+    p_capabilities: parsed.data.capabilities,
+    p_reason: parsed.data.reason,
+  });
+  if (error || !data) {
+    return {
+      error:
+        error?.code === "22023"
+          ? "หน่วยนี้รับส่งต่อไม่ได้แล้ว กรุณาค้นหาหน่วยใหม่"
+          : "ส่งคำขอไม่สำเร็จ กรุณาลองใหม่",
+    };
+  }
+  const result = data as RequestTransferResult;
+  return result.status === "REQUESTED"
+    ? { result, message: requestTransferMessage(result) }
+    : { result, error: requestTransferMessage(result) };
+}
+
+export async function acceptTransfer(transferId: string, version: number) {
+  if (!z.uuid().safeParse(transferId).success || !Number.isInteger(version)) {
+    return { error: "ไม่พบคำขอส่งต่อ" };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("accept_transfer", {
+    p_transfer_id: transferId,
+    p_expected_version: version,
+  });
+  if (error || !data) return { error: "รับเคสไม่สำเร็จ กรุณาลองใหม่" };
+  const result = data as AcceptTransferResult;
+  return result.status === "ACCEPTED"
+    ? { result, message: acceptTransferMessage(result) }
+    : { result, error: acceptTransferMessage(result) };
+}
+
+export async function cancelTransfer(transferId: string) {
+  if (!z.uuid().safeParse(transferId).success) return { error: "ไม่พบคำขอส่งต่อ" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("cancel_transfer", { p_transfer_id: transferId });
+  if (error || !data) return { error: "ยกเลิกไม่สำเร็จ กรุณาลองใหม่" };
+  const result = data as CancelTransferResult;
+  return result.status === "CANCELLED"
+    ? { result, message: cancelTransferMessage(result) }
+    : { result, error: cancelTransferMessage(result) };
 }

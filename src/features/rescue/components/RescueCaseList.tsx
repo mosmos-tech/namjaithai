@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LocationAccuracyBadge } from "./LocationAccuracyBadge";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  capabilityListText,
   CaseStatus,
   INCIDENT_REGISTRY,
   RESCUE_RADIUS_OPTIONS_M,
@@ -362,6 +363,14 @@ function RescueCaseCard({ item, now }: { item: RescueCase; now: number }) {
       <LocationAccuracyBadge source={item.locationSource} accuracyM={item.accuracyM} />
 
       <div className="flex flex-wrap gap-2 text-sm">
+        {item.requiredCapabilities.length > 0 && (
+          <span
+            data-testid="case-required-capabilities"
+            className="bg-primary-50 text-primary-700 rounded-full px-3 py-1 font-semibold"
+          >
+            ต้องใช้: {capabilityListText(item.requiredCapabilities)}
+          </span>
+        )}
         {people.bedridden > 0 && (
           <span className="rounded-full bg-red-50 px-3 py-1 font-semibold text-red-600">
             ผู้ป่วยติดเตียง {people.bedridden}

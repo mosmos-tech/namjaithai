@@ -103,7 +103,7 @@ select pg_temp.as_user(4);
 select is(pg_temp.stat(1, 'helped'), 1, 'ช่วยสำเร็จ U1 = 1 (นับแค่ H1: ไม่นับเคสที่ close_confirmation ว่าง และเคสติดด่าน)');
 select is(pg_temp.stat(1, 'lead_closed'), 1, 'ปิดโดยหัวหน้า U1 = 1 (L1)');
 select is(pg_temp.stat(1, 'released'), 1, 'ปล่อยเคส U1 = 1');
-select is(pg_temp.stat(1, 'referred'), 0, 'ส่งต่อ = 0 (TODO TF-59)');
+select is(pg_temp.stat(1, 'referred'), 0, 'ส่งต่อ = 0 (ไม่มีคำขอส่งต่อ — กรณีส่งต่ออยู่ใน tf59_case_transfer)');
 select is(pg_temp.stat(1, 'people_helped'), 5, 'จำนวนคนที่ช่วยได้ = H1 (3) + L1 (2) ไม่รวมเคสที่ไม่นับ');
 select is(pg_temp.stat(2, 'helped'), 1, 'หน่วยชื่อเดียวกันต่างเขต (U2) นับแยก');
 select is(pg_temp.stat(2, 'people_helped'), 6, 'จำนวนคนของ U2 แยกจาก U1');

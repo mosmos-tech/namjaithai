@@ -33,6 +33,7 @@ type RescueCaseRpcRow = {
   bedridden: number | null;
   children: number | null;
   pets: number | null;
+  required_capabilities?: string[] | null;
   distance_m: number | null;
   sort_k1: string;
   sort_k2: string;
@@ -58,6 +59,8 @@ export type RescueCase = {
   area: string;
   landmark: string;
   people: { adults: number; elderly: number; bedridden: number; children: number; pets: number };
+  // TF-59: แท็กความสามารถที่ต้องใช้ (คำขอส่งต่อหมดเวลา)
+  requiredCapabilities: string[];
   distanceM: number | null;
 };
 
@@ -225,6 +228,7 @@ function toRescueCase(row: RescueCaseRpcRow): RescueCase {
       children: row.children ?? 0,
       pets: row.pets ?? 0,
     },
+    requiredCapabilities: row.required_capabilities ?? [],
     distanceM: row.distance_m,
   };
 }

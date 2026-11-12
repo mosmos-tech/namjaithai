@@ -16,6 +16,7 @@ export * from "./line-messages";
 export * from "./sms-sos";
 export * from "./realtime";
 export * from "./case-claim";
+export * from "./case-transfer";
 export * from "./unit-stats";
 export * from "./unit-directory";
 export * from "./team-location";

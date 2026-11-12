@@ -4,6 +4,7 @@ import {
   formatCloseConfirmationLine,
   formatMemberLineNotification,
   formatRedAlertDigestLine,
+  formatTransferExpiredLine,
   type CaseStatus,
   type IncidentType,
   type MemberReviewDecision,
@@ -17,12 +18,13 @@ import { selectRedAlertRecipients, type RedAlertCandidate } from "./red-alert";
 
 type Job = {
   id: string;
+  case_id: string;
   lease_id: string;
   line_user_id: string;
   case_code: string;
   tracking_token: string;
   // แถวจากคิวรุ่นก่อน TF-34 ไม่มี kind = แจ้งสถานะ
-  kind?: "CASE_STATUS" | "CLOSE_CONFIRM" | "STALE_UNCLAIMED" | "STALE_TEAM";
+  kind?: "CASE_STATUS" | "CLOSE_CONFIRM" | "STALE_UNCLAIMED" | "STALE_TEAM" | "TRANSFER_EXPIRED";
   to_status: CaseStatus | null;
   incident_type?: string | null;
   district?: string | null;
@@ -177,7 +179,9 @@ export async function deliverLineNotifications(config: LineWorkerConfig): Promis
                 ].join("\n")
               : job.kind === "CLOSE_CONFIRM"
                 ? formatCloseConfirmationLine(ref)
-                : formatCaseStatusLine({ ...ref, toStatus: job.to_status!, at: job.created_at }),
+                : job.kind === "TRANSFER_EXPIRED"
+                  ? formatTransferExpiredLine({ ...ref, caseId: job.case_id })
+                  : formatCaseStatusLine({ ...ref, toStatus: job.to_status!, at: job.created_at }),
       };
     },
     (job, result, failure) =>
@@ -264,12 +268,18 @@ export async function fanOutRedCases(db: NotificationClient): Promise<number> {
   const { data, error } = await db.rpc("claim_red_case_fanouts");
   if (error) throw new Error("claim_red_case_fanouts");
   let queued = 0;
-  for (const item of (data ?? []) as { case_id: string; incident_type: IncidentType }[]) {
+  for (const item of (data ?? []) as {
+    case_id: string;
+    incident_type: IncidentType;
+    required_capabilities?: string[];
+  }[]) {
     const candidates = await db.rpc("list_red_alert_candidates", { p_case_id: item.case_id });
     if (candidates.error) throw new Error("list_red_alert_candidates");
     const userIds = selectRedAlertRecipients(
       item.incident_type,
       (candidates.data ?? []) as RedAlertCandidate[],
+      undefined,
+      item.required_capabilities ?? [],
     );
     const enqueued = await db.rpc("enqueue_red_alerts", {
       p_case_id: item.case_id,

@@ -48,16 +48,6 @@ export type PublicUnit = {
   helpedTotal: number;
 };
 
-export const UNIT_CAPABILITY_LABELS: Record<UnitCapability, string> = {
-  BOAT: "เรือ",
-  EMS: "การแพทย์ฉุกเฉิน",
-  FIRE_SUPPRESSION: "ดับเพลิง",
-  EXTRICATION: "ตัดถ่าง",
-  WATER_RESCUE: "กู้ภัยทางน้ำ",
-  ANIMAL_CAPTURE: "จับสัตว์",
-  EVACUATION: "อพยพ",
-};
-
 const isCapability = (value: unknown): value is UnitCapability =>
   typeof value === "string" && value in UnitCapability;
 
