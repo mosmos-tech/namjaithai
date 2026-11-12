@@ -1,7 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -15,9 +16,12 @@ import {
 import {
   TRACK_STEPS,
   caseCodeSchema,
+  distanceText,
+  etaText,
+  secondsAgoText,
+  trackScreen,
   formatThaiDateTime,
   formatThaiTime,
-  isClosedStatus,
   REPORTER_TRANSFER_TEXT,
   reporterStatusView,
   timelineLabel,
@@ -30,6 +34,26 @@ import { TrackLookupForm } from "./TrackLookupForm";
 import { ReporterCaseActions } from "./ReporterCaseActions";
 import { WaitingAdvice } from "./WaitingAdvice";
 import { ReporterAccountConfirmation } from "./ReporterAccountConfirmation";
+
+// TF-42: แผนที่โหลดแยก (MapLibre หนัก) — ระหว่างโหลด/โหลดไม่ขึ้น แผงล่างใช้ได้ครบ
+const LazyTrackMap = dynamic(() => import("./TrackMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-bg-subtle text-text-secondary flex h-64 items-center justify-center rounded-[14px] text-base sm:h-80">
+      กำลังโหลดแผนที่…
+    </div>
+  ),
+});
+
+/** นาฬิกาเดินทุก 5 วินาที สำหรับข้อความ "x วินาทีที่แล้ว" */
+function useNow(intervalMs = 5_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
 
 /**
  * หน้าติดตามเคส /track/รหัสเคส?t=token (TF-13)
@@ -109,7 +133,8 @@ function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string 
             />
           )}
           <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
-          {!isClosedStatus(state.data.status) && (
+          {/* TF-42: รอทีม = ที่เดิม · กำลังมา = ใต้แผงสถานะ (พับได้) · ถึงแล้วเป็นต้นไป ไม่ต้องแสดง */}
+          {trackScreen(state.data.status) === "waiting" && (
             <WaitingAdvice incidentType={state.data.incidentType} />
           )}
           <ReporterCaseActions
@@ -141,13 +166,26 @@ function TrackedCaseDetail({
   stale: boolean;
 }) {
   const view = reporterStatusView(data.status);
+  const screen = trackScreen(data.status);
+  const live = screen === "en_route" || screen === "arrived";
+  const now = useNow();
   const area = [data.area.subdistrict, data.area.district, data.area.province]
     .filter(Boolean)
     .join(" · ");
 
   return (
     <>
-      <section className="bg-bg-surface rounded-[14px] p-5 sm:p-8">
+      {live && data.scene && (
+        <section aria-label="แผนที่ติดตามทีม">
+          <LazyTrackMap
+            scene={data.scene}
+            team={
+              data.teamLocation ? { lat: data.teamLocation.lat, lng: data.teamLocation.lng } : null
+            }
+          />
+        </section>
+      )}
+      <section className="bg-bg-surface rounded-[14px] p-5 sm:p-8" data-testid="track-panel">
         <span
           className={`inline-block rounded-[8px] px-3 py-1 text-base font-semibold ${BADGE_TONE[view.tone]}`}
         >
@@ -179,14 +217,24 @@ function TrackedCaseDetail({
           </div>
         )}
 
+        {live && <TeamLiveInfo data={data} screen={screen} now={now} />}
+
         {data.team && <TeamCard team={data.team} />}
 
-        <p className="text-text-secondary mt-6 text-base" aria-live="polite">
+        {data.status === "ON_SITE" && (
+          <p className="text-text-secondary mt-4 text-base">
+            ปุ่ม &quot;ฉันได้รับความช่วยเหลือแล้ว&quot; จะขึ้นเมื่อทีมแจ้งว่าช่วยเหลือเสร็จ
+          </p>
+        )}
+
+        <p className="text-text-secondary mt-6 text-base" data-testid="track-last-updated">
           {stale
             ? "เชื่อมต่อไม่ได้ชั่วคราว กำลังลองใหม่อัตโนมัติ"
-            : `อัปเดตล่าสุด ${formatThaiTime(fetchedAt)}`}
+            : `อัปเดตล่าสุด ${secondsAgoText(fetchedAt, now)} (${formatThaiTime(fetchedAt)})`}
         </p>
       </section>
+
+      {screen === "en_route" && <WaitingAdvice incidentType={data.incidentType} collapsible />}
 
       <section className="bg-bg-surface rounded-[14px] p-5 sm:p-8">
         <details className="group">
@@ -282,6 +330,56 @@ function StatusStepper({
   );
 }
 
+/**
+ * TF-42: ตำแหน่งทีมเป็นตัวหนังสือ (ใช้ได้แม้แผนที่ไม่ขึ้น)
+ * ไม่มีตำแหน่ง/เก่าเกิน 2 นาที → "ไม่มีตำแหน่งล่าสุด" และไม่คำนวณเวลาจากตำแหน่งเก่า
+ */
+function TeamLiveInfo({
+  data,
+  screen,
+  now,
+}: {
+  data: TrackedCase;
+  screen: "en_route" | "arrived" | "waiting" | "closed";
+  now: number;
+}) {
+  const location = data.teamLocation;
+  if (!location) {
+    return (
+      <div
+        className="bg-bg-subtle text-text-primary mt-6 rounded-[12px] p-4 text-lg"
+        data-testid="team-location-missing"
+        role="status"
+      >
+        <p className="font-semibold">ไม่มีตำแหน่งล่าสุดของทีม</p>
+        <p className="text-text-secondary mt-1 text-base">
+          ทีมอาจปิดการแชร์ตำแหน่งหรือสัญญาณขาดหาย สถานะเคสยังอัปเดตตามปกติ
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="bg-primary-50 text-text-primary mt-6 rounded-[12px] p-4 text-lg"
+      data-testid="team-live-info"
+    >
+      {screen === "en_route" && location.etaMinutes !== undefined ? (
+        <p className="font-heading text-2xl font-bold" data-testid="team-eta">
+          ถึงใน{etaText(location.etaMinutes)}
+        </p>
+      ) : (
+        <p className="font-heading text-2xl font-bold">ทีมอยู่ใกล้คุณแล้ว</p>
+      )}
+      <p className="mt-1">
+        ห่างจากคุณ {distanceText(location.distanceM)} (วัดเป็นเส้นตรง ระยะจริงอาจมากกว่า)
+      </p>
+      <p className="text-text-secondary mt-1 text-base">
+        ตำแหน่งทีมเมื่อ {secondsAgoText(location.updatedAt, now)}
+      </p>
+    </div>
+  );
+}
+
 function TeamCard({ team }: { team: NonNullable<TrackedCase["team"]> }) {
   return (
     <div className="bg-bg-subtle mt-6 flex items-center gap-4 rounded-[12px] p-4">
@@ -294,15 +392,15 @@ function TeamCard({ team }: { team: NonNullable<TrackedCase["team"]> }) {
           {team.unitName ?? "ทีมกู้ภัย"}
         </p>
       </div>
-      {team.contactPhone && (
-        <a
-          href={`tel:${team.contactPhone}`}
-          aria-label={`โทรหา ${team.unitName ?? "ทีมกู้ภัย"}`}
-          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-green-700 text-white hover:brightness-110"
-        >
-          <Phone className="size-6" aria-hidden="true" />
-        </a>
-      )}
+      {/* TF-42: เบอร์หน่วย (ไม่ใช่เบอร์ส่วนตัวกู้ภัย) หน่วยไม่มีเบอร์ใช้ 1669 — ลิงก์ tel: กดได้เสมอ */}
+      <a
+        href={`tel:${team.contactPhone ?? "1669"}`}
+        aria-label={team.contactPhone ? `โทรหา ${team.unitName ?? "ทีมกู้ภัย"}` : "โทร 1669"}
+        data-testid="team-call"
+        className="flex size-14 shrink-0 items-center justify-center rounded-full bg-green-700 text-white hover:brightness-110"
+      >
+        <Phone className="size-6" aria-hidden="true" />
+      </a>
     </div>
   );
 }

@@ -62,7 +62,7 @@ test("ลิงก์ LINE ใช้บัญชีเจ้าของยื�
   await page.goto(path);
   const confirmation = page.getByRole("region", { name: "ยืนยันการช่วยเหลือ" });
   await expect(confirmation).toBeVisible();
-  await confirmation.getByRole("button", { name: "ได้รับแล้ว" }).click();
+  await confirmation.getByRole("button", { name: "ฉันได้รับความช่วยเหลือแล้ว" }).click();
   await expect(confirmation).toHaveCount(0);
   const { data: after } = await adminDb()
     .from("cases")

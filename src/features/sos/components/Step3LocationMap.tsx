@@ -8,6 +8,7 @@ import type {
   Marker as MapLibreMarker,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { OSM_RASTER_STYLE } from "../../../lib/map/osm-style";
 import type { AreaBounds } from "../../../lib/domain";
 import { DEFAULT_THAILAND_CENTER } from "../draft-storage";
 import { circleBounds, circlePolygon } from "../map-geometry";
@@ -50,30 +51,6 @@ function circleFeature(circle?: Step3LocationMapProps["accuracyCircle"]) {
       : [],
   };
 }
-
-/**
- * สไตล์แผนที่ OpenStreetMap สำหรับ MapLibre (ไม่ต้องใช้ API key)
- */
-export const OSM_RASTER_STYLE = {
-  version: 8 as const,
-  sources: {
-    osm: {
-      type: "raster" as const,
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      attribution: "© OpenStreetMap contributors",
-    },
-  },
-  layers: [
-    {
-      id: "osm-tiles",
-      type: "raster" as const,
-      source: "osm",
-      minzoom: 0,
-      maxzoom: 19,
-    },
-  ],
-};
 
 /**
  * แผนที่ปักหมุดจุดเกิดเหตุด้วย MapLibre GL + OpenStreetMap (TF-09)
