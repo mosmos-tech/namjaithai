@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(78);
+select plan(79);
 
 insert into public.units(id, name, province)
 values ('c4400000-0000-0000-0000-000000000001', 'TF44 unit', 'กรุงเทพมหานคร');
@@ -71,7 +71,9 @@ values ('f4400000-0000-0000-0000-000000000001','d4400000-0000-0000-0000-00000000
        ('f4400000-0000-0000-0000-000000000003','d4400000-0000-0000-0000-000000000002',
         'd4400000-0000-0000-0000-00000000000a/photo.jpg','image/jpeg',10),
        ('f4400000-0000-0000-0000-000000000004','d4400000-0000-0000-0000-000000000003',
-        'd4400000-0000-0000-0000-00000000000b/photo.jpg','image/jpeg',10);
+        'd4400000-0000-0000-0000-00000000000b/photo.jpg','image/jpeg',10),
+       ('f4400000-0000-0000-0000-000000000005','d4400000-0000-0000-0000-000000000003',
+        'd4400000-0000-0000-0000-000000000003/photo.jpg','image/jpeg',10);
 
 select has_function('public', 'purge_closed_case_pii', array[]::text[], 'มีฟังก์ชันลบข้อมูลส่วนตัว');
 select ok(not has_function_privilege('anon', 'public.purge_closed_case_pii()', 'execute'), 'ผู้ไม่ล็อกอินเรียกไม่ได้');
@@ -86,7 +88,7 @@ select is((select count(*)::int from public.case_contacts where case_id='d440000
 select is((select count(*)::int from public.case_sensitive_details where case_id in ('d4400000-0000-0000-0000-000000000001','d4400000-0000-0000-0000-000000000006')), 0, 'ลบข้อมูลสุขภาพของเคสเก่า');
 select ok((select name is null and phone is null and phone_last4 is null and line_id is null and detailed_address is null and redacted_at is not null from public.case_contacts where id='e4400000-0000-0000-0000-000000000001'), 'ล้างผู้ติดต่อของเคสเก่าที่ถูกย้ายไปรวมกับเคสหลักที่ปิดครบกำหนดแล้ว');
 select is((select count(*)::int from public.case_contacts where case_id in ('d4400000-0000-0000-0000-000000000002','d4400000-0000-0000-0000-000000000003','d4400000-0000-0000-0000-000000000004','d4400000-0000-0000-0000-000000000005') and name='TF44 name' and phone='0812345678' and redacted_at is null), 4, 'ไม่ล้างเคสใหม่ เคสเปิด เคสครบ 90 วันพอดี หรือเคสไม่มีเวลาปิด');
-select is((select count(*)::int from public.case_contacts where id in ('e4400000-0000-0000-0000-000000000002','e4400000-0000-0000-0000-000000000003') and name is not null and redacted_at is null), 2, 'ยังไม่ล้างผู้ติดต่อที่ย้ายจากเคสซ้ำหากเคสหลักยังเปิดหรือปิดไม่เกิน 90 วัน');
+select is((select count(*)::int from public.case_contacts where id in ('e4400000-0000-0000-0000-000000000002','e4400000-0000-0000-0000-000000000003') and name is null and phone is null and phone_last4 is null and line_id is null and detailed_address is null and redacted_at is not null), 2, 'ล้างผู้ติดต่อจากเคสซ้ำที่ครบกำหนด แม้เคสหลักยังเปิดหรือเพิ่งปิด');
 select is((select count(*)::int from public.case_sensitive_details where case_id='d4400000-0000-0000-0000-000000000002'), 1, 'ไม่ลบข้อมูลสุขภาพของเคสใหม่');
 select ok((select lat is null and lng is null and location is null and accuracy_m is null from public.cases where id='d4400000-0000-0000-0000-000000000001'), 'ล้างพิกัดละเอียดของเคสเก่า');
 select ok((select landmark='[ลบข้อมูลส่วนบุคคลแล้ว]' and notes is null and resolution_note is null and urgency_override_reason is null and details='{}'::jsonb and reporter_user_id is null and cardinality(triage_reasons)=0 from public.cases where id='d4400000-0000-0000-0000-000000000001'), 'ล้างข้อความอิสระและข้อมูลเชื่อมผู้แจ้ง');
@@ -102,14 +104,15 @@ select ok((select metadata='{}'::jsonb from public.audit_logs where action='TF44
 select throws_ok($$update public.audit_logs set action='tampered' where action='TF44_PRIVATE'$$, '42501', null, 'ยังห้ามแก้ audit ทั่วไป');
 select throws_ok($$update public.case_events set note='tampered' where case_id='d4400000-0000-0000-0000-000000000001'$$, '42501', null, 'ยังห้ามแก้ประวัติเคสทั่วไป');
 select is((select count(*)::int from public.case_media where id in ('f4400000-0000-0000-0000-000000000001','f4400000-0000-0000-0000-000000000002')), 0, 'ซ่อนรูปเคสเก่ารวมรูปที่ถูกย้ายจากเคสซ้ำ');
-select is((select count(*)::int from public.case_media where id in ('f4400000-0000-0000-0000-000000000003','f4400000-0000-0000-0000-000000000004')), 2, 'ยังไม่ซ่อนหรือลบรูปจากเคสซ้ำถ้าเคสหลักยังเปิดหรือปิดไม่เกิน 90 วัน');
+select is((select count(*)::int from rls.case_media_deletion_queue where id in ('f4400000-0000-0000-0000-000000000003','f4400000-0000-0000-0000-000000000004')), 2, 'นำรูปจากเคสซ้ำที่ครบกำหนดเข้าคิวลบ แม้เคสหลักยังเปิดหรือเพิ่งปิด');
+select ok(exists(select 1 from public.case_media where id='f4400000-0000-0000-0000-000000000005') and not exists(select 1 from rls.case_media_deletion_queue where id='f4400000-0000-0000-0000-000000000005'), 'เก็บรูปเดิมของเคสหลักที่ยังเปิด');
 select is((select count(*)::int from rls.case_media_deletion_queue where case_id in ('d4400000-0000-0000-0000-000000000001','d4400000-0000-0000-0000-000000000007')), 2, 'คิวลบรูปจริงจาก Storage มีครบและลองซ้ำได้');
 select ok(not has_table_privilege('authenticated','rls.case_media_deletion_queue','select'), 'ผู้ใช้ทั่วไปอ่านคิวลบรูปไม่ได้');
 select ok(not has_table_privilege('authenticated','rls.case_pii_redaction_scope','insert'), 'ผู้ใช้ทั่วไปอนุญาตแก้ audit เองไม่ได้');
 select throws_ok($$select public.run_case_media_retention_worker()$$, 'P0001', 'retention media worker is not configured', 'มีคิวค้างแต่ไม่ได้ตั้งค่า worker ต้องแจ้งข้อผิดพลาด');
 select ok(not has_function_privilege('authenticated','public.claim_case_media_deletions(integer)','execute'), 'ผู้ใช้ทั่วไปเรียกงานลบรูปไม่ได้');
 create temporary table tf44_claimed as select * from public.claim_case_media_deletions(10);
-select is((select count(*)::int from tf44_claimed), 2, 'worker รับคิวลบรูปทั้งสองรายการ');
+select is((select count(*)::int from tf44_claimed), 4, 'worker รับคิวลบรูปทั้งสี่รายการ');
 select is((select count(*)::int from public.claim_case_media_deletions(10)), 0, 'worker อื่นรับคิวที่ติด lease ซ้ำไม่ได้');
 select is(public.finish_case_media_deletion((select id from tf44_claimed limit 1), '00000000-0000-0000-0000-000000000001', true), false, 'lease ผิดยืนยันลบรูปไม่ได้');
 select is(public.finish_case_media_deletion((select id from tf44_claimed order by id limit 1), (select lease_id from tf44_claimed order by id limit 1), false), true, 'เมื่อ Storage ล้มเหลวปล่อยคิวไว้ให้ลองใหม่');
@@ -117,8 +120,13 @@ create temporary table tf44_reclaimed as select * from public.claim_case_media_d
 select is((select count(*)::int from tf44_reclaimed), 1, 'คิวที่ล้มเหลวถูกรับซ้ำได้');
 select is(public.finish_case_media_deletion((select id from tf44_reclaimed), (select lease_id from tf44_reclaimed), true), true, 'ยืนยันหลังลบไฟล์สำเร็จ');
 select is(public.finish_case_media_deletion((select id from tf44_claimed order by id desc limit 1), (select lease_id from tf44_claimed order by id desc limit 1), true), true, 'ยืนยันอีกรายการหลังลบไฟล์สำเร็จ');
+do $$ declare v_claim record; begin
+  for v_claim in select * from tf44_claimed order by id offset 1 limit 2 loop
+    perform public.finish_case_media_deletion(v_claim.id, v_claim.lease_id, true);
+  end loop;
+end $$;
 select is((select count(*)::int from rls.case_media_deletion_queue), 0, 'คิวหมดเมื่อ Storage ยืนยันลบครบ');
-select is((select count(*)::int from public.audit_logs where action='CASE_MEDIA_PURGED'), 2, 'บันทึก audit หลัง Storage ยืนยันลบไฟล์จริง');
+select is((select count(*)::int from public.audit_logs where action='CASE_MEDIA_PURGED'), 4, 'บันทึก audit หลัง Storage ยืนยันลบไฟล์จริง');
 select is(public.get_case_tracking('TF44-OLD', '5678', null, null), null::jsonb, 'เคสเก่าติดตามด้วยเลขท้ายที่ล้างแล้วไม่ได้');
 select is(public.get_case_tracking('TF44-OLD', null, (select tracking_token from tf44_original), null), null::jsonb, 'ลิงก์ติดตามเดิมใช้ไม่ได้หลังล้าง');
 select is(public.get_case_tracking('TF44-MERGED', '2222', null, null), null::jsonb, 'เคสถูกรวมติดตามด้วยเลขท้ายที่ล้างแล้วไม่ได้');
@@ -129,7 +137,7 @@ select is((select count(*)::int from public.cases where id::text like 'd4400000-
 select is((select count(*)::int from public.cases where id::text like 'd4400000-0000-0000-0000-%' and urgency='GREEN'), 4, 'ระดับความเร่งด่วนไม่เปลี่ยน');
 select is((select count(*)::int from public.audit_logs where action='CASE_PII_PURGED'), 1, 'บันทึก audit หนึ่งรายการต่อรอบที่ล้าง');
 select is((select (metadata->>'cases')::int from public.audit_logs where action='CASE_PII_PURGED'), 6, 'audit บันทึกจำนวนเคส');
-select is((select (metadata->>'contacts')::int from public.audit_logs where action='CASE_PII_PURGED'), 3, 'audit บันทึกจำนวนผู้ติดต่อ');
+select is((select (metadata->>'contacts')::int from public.audit_logs where action='CASE_PII_PURGED'), 5, 'audit บันทึกจำนวนผู้ติดต่อ');
 select ok(not exists(select 1 from public.audit_logs where action='CASE_PII_PURGED' and metadata::text like '%0812345678%'), 'audit ไม่มีเบอร์โทร');
 select is(public.purge_closed_case_pii(), 0, 'รันซ้ำไม่ล้างซ้ำ');
 select is((select count(*)::int from public.audit_logs where action='CASE_PII_PURGED'), 1, 'รอบที่ไม่ล้างไม่สร้าง audit ซ้ำ');
@@ -137,13 +145,15 @@ select is((select count(*)::int from cron.job where jobname='tf44-case-pii-reten
 select is((select count(*)::int from cron.job where jobname='tf44-case-pii-retention-backlog' and schedule='*/5 19-22 * * *'), 1, 'มีงานเก็บเคสตกค้างในช่วงกลางคืน');
 select is((select command from cron.job where jobname='tf44-case-pii-retention'), 'select public.run_case_retention_scheduled()', 'cron ตรวจการตั้งค่า worker ก่อนล้าง');
 
--- เมื่อเคสหลักปิดเกิน 90 วันภายหลัง ข้อมูลติดต่อและรูปที่ย้ายมาจากเคสซ้ำต้องถูกล้างตาม
+-- เมื่อเคสหลักปิดเกิน 90 วันภายหลัง ให้ล้างข้อมูลของเคสหลักเอง
 update public.cases set closed_at = now() - interval '91 days' where id = 'd4400000-0000-0000-0000-000000000002';
-select is(public.purge_closed_case_pii(), 1, 'เมื่อเคสหลักปิดเกิน 90 วันภายหลัง จึงล้างเคสหลักและสิ่งที่ย้ายมาจากเคสซ้ำ');
-select ok((select name is null and redacted_at is not null from public.case_contacts where id='e4400000-0000-0000-0000-000000000002'), 'ล้างผู้ติดต่อที่ย้ายจากเคสซ้ำเมื่อเคสหลักครบกำหนด');
-select ok((select not exists(select 1 from public.case_media where id='f4400000-0000-0000-0000-000000000003') and exists(select 1 from rls.case_media_deletion_queue where id='f4400000-0000-0000-0000-000000000003')), 'ย้ายรูปจากเคสซ้ำเข้าคิวลบเมื่อเคสหลักครบกำหนด');
+select is(public.purge_closed_case_pii(), 1, 'ล้างเคสหลักเมื่อปิดครบกำหนด');
+select ok((select name is null and redacted_at is not null from public.case_contacts where id='e4400000-0000-0000-0000-000000000002'), 'ผู้ติดต่อจากเคสซ้ำยังถูกล้างอยู่');
+select ok(not exists(select 1 from public.case_media where id='f4400000-0000-0000-0000-000000000003'), 'รูปจากเคสซ้ำถูกล้างไปแล้ว');
 
 -- ทดสอบเพดาน retry ของคิวลบรูป (สูงสุด 10 ครั้ง)
+insert into rls.case_media_deletion_queue(id, case_id, storage_path)
+values ('f4400000-0000-0000-0000-000000000003', 'd4400000-0000-0000-0000-000000000002', 'retry/test.jpg');
 do $$
 declare
   v_claim record;

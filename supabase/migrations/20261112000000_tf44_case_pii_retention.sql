@@ -88,7 +88,10 @@ begin
       and (c.pii_redacted_at is null or
         exists (
           select 1 from public.case_contacts cc
-          where cc.case_id = c.id
+          where (cc.case_id = c.id or exists (
+            select 1 from rls.case_merged_contacts mc
+            where mc.original_case_id = c.id and mc.contact_id = cc.id
+          ))
             and (cc.redacted_at is null or cc.name is not null or cc.phone is not null
               or cc.phone_last4 is not null or cc.line_id is not null or cc.detailed_address is not null)
         )
@@ -118,27 +121,9 @@ begin
       detailed_address = null, redacted_at = coalesce(cc.redacted_at, pg_catalog.now())
   where (
       cc.case_id = any(v_case_ids)
-      or (
-        exists (
-          select 1 from rls.case_merged_contacts mc
-          join public.cases orig on orig.id = mc.original_case_id
-          where mc.original_case_id = any(v_case_ids)
-            and mc.contact_id = cc.id
-            and (orig.duplicate_of_case_id is null or exists (
-              select 1 from public.cases p
-              where p.id = orig.duplicate_of_case_id
-                and not p.is_demo
-                and p.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
-                and p.closed_at < pg_catalog.now() - interval '90 days'
-            ))
-        )
-        and exists (
-          select 1 from public.cases owner
-          where owner.id = cc.case_id
-            and not owner.is_demo
-            and owner.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
-            and owner.closed_at < pg_catalog.now() - interval '90 days'
-        )
+      or exists (
+        select 1 from rls.case_merged_contacts mc
+        where mc.original_case_id = any(v_case_ids) and mc.contact_id = cc.id
       )
     )
     and (cc.redacted_at is null or cc.name is not null or cc.phone is not null
@@ -173,31 +158,11 @@ begin
   delete from rls.case_confirmation_secrets where case_id = any(v_case_ids);
 
   -- รูปของเคสซ้ำอาจถูกย้ายไปเคสหลัก แต่ prefix ของ path ยังคงเป็น id เคสเดิม
-  -- รอให้เคสหลักปิดเกิน 90 วันด้วย เพื่อไม่ให้ลบรูปของเคสหลักที่ยังใช้งานอยู่
   with detached as (
     delete from public.case_media m
     where m.case_id = any(v_case_ids)
-       or (
-         exists (
-           select 1 from public.cases orig
-           where orig.id = any(v_case_ids)
-             and orig.id::text = pg_catalog.split_part(m.storage_path, '/', 1)
-             and (orig.duplicate_of_case_id is null or exists (
-               select 1 from public.cases p
-               where p.id = orig.duplicate_of_case_id
-                 and not p.is_demo
-                 and p.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
-                 and p.closed_at < pg_catalog.now() - interval '90 days'
-             ))
-         )
-         and exists (
-           select 1 from public.cases owner
-           where owner.id = m.case_id
-             and not owner.is_demo
-             and owner.status in ('RESOLVED', 'CANCELLED', 'DUPLICATE', 'UNREACHABLE')
-             and owner.closed_at < pg_catalog.now() - interval '90 days'
-         )
-       )
+       or pg_catalog.split_part(m.storage_path, '/', 1) = any(
+         array(select id::text from pg_catalog.unnest(v_case_ids) id))
     returning m.id, m.case_id, m.storage_path
   )
   insert into rls.case_media_deletion_queue(id, case_id, storage_path)
