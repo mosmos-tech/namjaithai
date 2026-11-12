@@ -4,7 +4,7 @@ import { applySession, createAccount } from "./helpers/accounts";
 
 test("TF-33 แอดมินดูสรุปและกรองสถิติตามจังหวัดและช่วงวัน", async ({ page, context }, info) => {
   const admin = await createAccount({ displayName: "TF33 admin", role: "ADMIN" });
-  const year = 1800 + Math.floor(Math.random() * 100);
+  const year = 2200 + Math.floor(Math.random() * 100);
   const month = String(1 + Math.floor(Math.random() * 12)).padStart(2, "0");
   const day = String(1 + Math.floor(Math.random() * 28)).padStart(2, "0");
   const date = `${year}-${month}-${day}`;
@@ -16,7 +16,7 @@ test("TF-33 แอดมินดูสรุปและกรองสถิ�
       {
         case_code: `TF33-${tag}-1`,
         urgency: "RED",
-        status: "NEW",
+        status: "RESOLVED",
         lat: 12.6,
         lng: 102.1,
         landmark: "TF33",
@@ -27,7 +27,7 @@ test("TF-33 แอดมินดูสรุปและกรองสถิ�
       {
         case_code: `TF33-${tag}-2`,
         urgency: "GREEN",
-        status: "NEW",
+        status: "RESOLVED",
         lat: 12.6,
         lng: 102.1,
         landmark: "TF33",
@@ -38,7 +38,7 @@ test("TF-33 แอดมินดูสรุปและกรองสถิ�
       {
         case_code: `TF33-${tag}-3`,
         urgency: "RED",
-        status: "NEW",
+        status: "RESOLVED",
         lat: 12.6,
         lng: 102.1,
         landmark: "TF33",
@@ -56,7 +56,9 @@ test("TF-33 แอดมินดูสรุปและกรองสถิ�
   await expect(region.getByText("วิกฤตรอคนรับ")).toBeVisible();
   await expect(region.getByText("กำลังช่วยเหลือ")).toBeVisible();
   await expect(region.getByText("ปิดแล้ววันนี้")).toBeVisible();
-  await region.getByRole("combobox", { name: "จังหวัด", exact: true }).selectOption("จันทบุรี");
+  await region
+    .getByRole("combobox", { name: "จังหวัดของสถิติ", exact: true })
+    .selectOption("จันทบุรี");
   await region.getByLabel("ตั้งแต่วันที่").fill(date);
   await region.getByLabel("ถึงวันที่").fill(date);
   await region.getByRole("button", { name: "แสดงสถิติ" }).click();

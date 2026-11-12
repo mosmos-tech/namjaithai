@@ -60,7 +60,7 @@ export async function AdminStats({
     <section aria-label="สถิติห้องสั่งการ" className="flex min-w-0 flex-col gap-5">
       <form method="get" className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 font-semibold">
-          จังหวัด
+          จังหวัดของสถิติ
           <select
             name="province"
             defaultValue={filters.province}
