@@ -28,6 +28,15 @@ const incidentTypeValues = Object.values(IncidentType) as [
 // เบอร์โทรไทย: มือถือ 06x-09x (10 หลัก) หรือบ้าน/สำนักงาน 02x-05x (9-10 หลัก)
 export const THAI_PHONE_REGEX = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
 
+/**
+ * เบอร์ที่ผู้แจ้งพิมพ์ → รูปแบบที่ตรวจและเก็บ: ตัดช่องว่าง/ขีด แล้วแปลงรหัสประเทศ +66 เป็น 0
+ * "+66 81 234 5678" → "0812345678" · ไม่ใช่รูปแบบ +66 คืนค่าที่ตัดช่องว่างแล้ว (ให้ THAI_PHONE_REGEX ตัดสิน)
+ */
+export function normalizePhoneInput(raw: string): string {
+  const compact = raw.replace(/[\s\-]/g, "");
+  return compact.startsWith("+66") ? `0${compact.slice(3)}` : compact;
+}
+
 // สัญญาณอันตรายทั้งหมดจากทะเบียนประเภทเหตุ (TF-49 / TF-50 / TF-55)
 const allDangerSignKeys = Array.from(
   new Set([
@@ -123,10 +132,10 @@ export const step5Schema = z.object({
     .string({ error: "กรุณาระบุชื่อ" })
     .transform((s) => s.trim())
     .pipe(z.string().min(1, "กรุณาระบุชื่อ")),
-  // ตัดช่องว่างและขีดก่อนตรวจและเก็บ เพื่อรับ 081-234-5678 และเก็บเป็น 0812345678
+  // ตัดช่องว่างและขีด และแปลง +66 เป็น 0 ก่อนตรวจและเก็บ (TF-63) — รับ 081-234-5678 / +66 81 234 5678 เก็บเป็น 0812345678
   phone: z
     .string({ error: "กรุณาระบุเบอร์โทรศัพท์" })
-    .transform((s) => s.replace(/[\s\-]/g, ""))
+    .transform(normalizePhoneInput)
     .pipe(
       z.string().regex(THAI_PHONE_REGEX, "กรุณาระบุเบอร์โทรศัพท์ไทยที่ถูกต้อง (เช่น 0812345678)"),
     ),

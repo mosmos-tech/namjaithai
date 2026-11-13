@@ -16,6 +16,7 @@ import {
   isInaccurateGps,
   isQuestionVisible,
   locationSourceSchema,
+  normalizePhoneInput,
   type LocatedArea,
   type IncidentDetailValue,
   type WebLocationSource,
@@ -1451,7 +1452,7 @@ export async function submitSosDraft(
       };
     }
 
-    const normalizedPhone = check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
+    const normalizedPhone = check5.normalizedPhone ?? normalizePhoneInput(draft.phone);
     const idempotencyKey =
       draft.idempotencyKey && draft.idempotencyKey.trim().length > 0
         ? draft.idempotencyKey.trim()
