@@ -2,7 +2,10 @@
 import { useEffect, useState } from "react";
 import { forgetDeviceCase, readDeviceCases, type DeviceCaseRef } from "../device-cases";
 import { ConfirmationActions } from "./ConfirmationActions";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { format } from "../../../lib/i18n/locale";
 export function DeviceConfirmationBanner() {
+  const { t } = useI18n();
   const [pending, setPending] = useState<DeviceCaseRef | null>(null);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -48,7 +51,9 @@ export function DeviceConfirmationBanner() {
   if (!pending) return null;
   return (
     <div className="relative z-[60] mx-auto w-full max-w-2xl px-4 py-3">
-      <p className="mb-2 font-semibold">เคส {pending.caseCode}</p>
+      <p className="mb-2 font-semibold">
+        {format(t.confirm.deviceCase, { code: pending.caseCode })}
+      </p>
       <ConfirmationActions
         caseCode={pending.caseCode}
         token={pending.confirmationToken}

@@ -20,6 +20,8 @@ import {
 } from "../draft-storage";
 import { isIosDevice, startGpsRefine, type GpsFix } from "../gps-refine";
 import { SosStepActions } from "./SosStepActions";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { format } from "../../../lib/i18n/locale";
 
 /**
  * โหลดแผนที่ MapLibre เฉพาะตอนที่ผู้ใช้เปิดขั้นที่ 3 เท่านั้น (เกณฑ์ผ่านข้อ 4 ของ TF-09)
@@ -27,15 +29,20 @@ import { SosStepActions } from "./SosStepActions";
  */
 const LazyStep3LocationMap = dynamic(() => import("./Step3LocationMap"), {
   ssr: false,
-  loading: () => (
+  loading: () => <MapLoading />,
+});
+
+function MapLoading() {
+  const { t } = useI18n();
+  return (
     <div
       data-testid="step3-map-loading"
       className="border-border-default bg-primary-50 lg:bg-bg-subtle text-text-secondary flex h-[200px] w-full items-center justify-center rounded-[14px] border text-base lg:h-[300px]"
     >
-      กำลังโหลดแผนที่...
+      {t.step3.mapLoading}
     </div>
-  ),
-});
+  );
+}
 
 // ค่าที่ไม่เปลี่ยนระหว่างใช้งาน (เช่น เป็น iPhone ไหม) — อ่านในเบราว์เซอร์ ฝั่งเซิร์ฟเวอร์ได้ false
 const subscribeNever = () => () => {};
@@ -85,6 +92,7 @@ export function Step3Location({
   onNext,
 }: Step3LocationProps) {
   const online = useSyncExternalStore(subscribeConnection, () => navigator.onLine, () => false);
+  const { t, locale } = useI18n();
   const [isLocating, setIsLocating] = useState(false);
   // TF-67: ค่าที่แม่นที่สุดระหว่างรอ GPS แม่นขึ้น (ยังไม่ปักหมุด)
   const [refineBest, setRefineBest] = useState<GpsFix | null>(null);
@@ -276,7 +284,7 @@ export function Step3Location({
         error?: string;
       };
       if (!res.ok || typeof data.lat !== "number" || typeof data.lng !== "number") {
-        setGmapsError(data.error ?? "ไม่สามารถแปลงลิงก์ Google Maps นี้ได้");
+        setGmapsError((locale === "th" ? data.error : undefined) ?? t.step3.gmapsConvertFailed);
         return;
       }
       stopRefiningGps();
@@ -284,9 +292,7 @@ export function Step3Location({
       onManualPin({ lat: data.lat, lng: data.lng }, LocationSource.GMAPS_LINK);
       void reverseGeocodeCoordinates(data.lat, data.lng);
     } catch {
-      setGmapsError(
-        "ไม่สามารถเปิดลิงก์ย่อ Google Maps ได้ในขณะนี้ กรุณาใช้ปุ่มดึงพิกัด GPS หรือปักหมุดบนแผนที่แทน",
-      );
+      setGmapsError(t.step3.gmapsShortLinkFailed);
     } finally {
       setIsResolvingGmaps(false);
     }
@@ -337,12 +343,15 @@ export function Step3Location({
     }
   }
 
-  const statusBanner = getGpsStatusMessage({
-    lat: draft.lat,
-    lng: draft.lng,
-    accuracyM: draft.accuracyM,
-    gpsError,
-  });
+  const statusBanner = getGpsStatusMessage(
+    {
+      lat: draft.lat,
+      lng: draft.lng,
+      accuracyM: draft.accuracyM,
+      gpsError,
+    },
+    t.sos,
+  );
 
   const hasCoordinates = typeof draft.lat === "number" && typeof draft.lng === "number";
   // TF-65: GPS ไม่แม่น = มีพิกัดแต่ไม่ถือเป็นหมุด แสดงแค่วงความคลาดเคลื่อน
@@ -401,12 +410,12 @@ export function Step3Location({
             id="location-heading"
             className="font-heading text-text-primary text-[30px] leading-[1.25] font-bold tracking-[-0.3px] lg:text-[22px] lg:leading-[1.3] lg:font-semibold lg:tracking-[-0.11px]"
           >
-            คุณอยู่ที่ไหน?
+            {t.step3.heading}
           </h2>
           <p className="text-text-secondary text-lg leading-[1.65]">
-            <span className="lg:hidden">กดปุ่มด้านล่างเพื่อดึงตำแหน่งอัตโนมัติ</span>
+            <span className="lg:hidden">{t.step3.hintMobile}</span>
             <span className="hidden lg:inline">
-              กดปุ่มด้านล่างเพื่อใช้ตำแหน่งปัจจุบัน แม่นยำที่สุดและเร็วที่สุด
+              {t.step3.hintDesktop}
             </span>
           </p>
           {errors.location && (
@@ -427,10 +436,10 @@ export function Step3Location({
           {/* โฉมมือถือ (Figma MB2) */}
           <span className="font-heading text-[19px] leading-[1.2] font-semibold lg:hidden">
             {isLocating
-              ? "กำลังดึงพิกัด GPS..."
+              ? t.step3.locating
               : hasCoordinates
-                ? "ดึงพิกัด GPS อีกครั้ง"
-                : "ดึงพิกัด GPS อัตโนมัติ"}
+                ? t.step3.locateAgain
+                : t.step3.locate}
           </span>
 
           {/* โฉมจอคอม (Figma B2) */}
@@ -445,10 +454,10 @@ export function Step3Location({
           </span>
           <span className="hidden min-w-0 flex-1 flex-col gap-0.5 lg:flex">
             <span className="font-heading text-[22px] leading-[1.3] font-semibold tracking-[-0.11px]">
-              {isLocating ? "กำลังดึงพิกัด GPS..." : "ดึงพิกัด GPS อัตโนมัติ"}
+              {isLocating ? t.step3.locating : t.step3.locate}
             </span>
             <span className="text-lg leading-[1.65]">
-              {`ระบบจะขออนุญาตใช้ตำแหน่ง ให้กด "อนุญาต"`}
+              {t.step3.permissionHint}
             </span>
           </span>
           <img
@@ -469,15 +478,19 @@ export function Step3Location({
           >
             <p className="text-lg leading-[1.55] font-semibold">
               {refineBest
-                ? `กำลังหาตำแหน่งที่แม่นขึ้น... ±${Math.round(refineBest.accuracy).toLocaleString("th-TH")} ม.`
-                : "กำลังหาตำแหน่ง..."}
+                ? format(t.step3.refining, {
+                    meters: Math.round(refineBest.accuracy).toLocaleString(
+                      locale === "en" ? "en-US" : "th-TH",
+                    ),
+                  })
+                : t.step3.searching}
             </p>
             <button
               type="button"
               onClick={stopRefiningGps}
               className="border-primary-600 bg-bg-surface text-primary-700 font-heading min-h-12 shrink-0 rounded-full border px-5 text-base font-semibold"
             >
-              ปักหมุดเองบนแผนที่
+              {t.step3.pinManually}
             </button>
           </div>
         )}
@@ -518,8 +531,7 @@ export function Step3Location({
             data-testid="ios-precise-location-hint"
             className="text-text-primary order-2 rounded-[12px] bg-amber-50 px-4 py-3 text-base leading-[1.55] lg:order-2"
           >
-            ถ้าใช้ iPhone ให้เปิด ตั้งค่า &gt; ความเป็นส่วนตัว &gt; บริการหาตำแหน่ง &gt; Safari &gt;
-            ตำแหน่งที่แม่นยำ
+            {t.step3.iosPreciseHint}
           </p>
         )}
 
@@ -534,7 +546,7 @@ export function Step3Location({
             />
           ) : (
             <p className="text-text-secondary rounded-[14px] border p-4">
-              แผนที่ต้องใช้อินเทอร์เน็ต คุณยังพิมพ์จุดสังเกตและเก็บร่างได้
+              {t.step3.mapNeedsInternet}
             </p>
           )}
         </div>
@@ -547,8 +559,7 @@ export function Step3Location({
                 data-testid="address-fallback-notice"
                 className="text-text-primary rounded-[12px] border border-amber-500/40 bg-amber-50 px-4 py-3 text-base leading-[1.55] font-medium"
               >
-                จะส่งพร้อมที่อยู่แทนหมุด กรุณากรอกที่อยู่และจุดสังเกตด้านล่างให้ละเอียด
-                (ยังแตะปักหมุดบนแผนที่ได้ถ้าทำได้)
+                {t.step3.addressFallbackNotice}
               </p>
             ) : (
               <button
@@ -556,7 +567,7 @@ export function Step3Location({
                 onClick={() => onUpdateField({ addressFallback: true })}
                 className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle font-heading min-h-12 w-full rounded-full border px-5 py-3 text-base font-semibold"
               >
-                ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน
+                {t.step3.addressFallbackButton}
               </button>
             )}
           </div>
@@ -568,7 +579,7 @@ export function Step3Location({
             htmlFor="sos-gmaps-url"
             className="text-text-primary text-base leading-[1.4] font-medium"
           >
-            หรือวางลิงก์ Google Maps (ถ้ามี)
+            {t.step3.gmapsLabel}
           </label>
           <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface flex min-h-[60px] w-full items-center gap-3 rounded-[12px] border px-5 py-4 transition-shadow focus-within:shadow-[0px_0px_0px_5px_rgba(31,112,209,0.18)]">
             <img
@@ -609,7 +620,7 @@ export function Step3Location({
             </p>
           ) : (
             <p className="text-text-secondary text-base leading-[1.55]">
-              เปิด Google Maps › กดค้างที่บ้าน › แชร์ › คัดลอกลิงก์
+              {t.step3.gmapsHint}
             </p>
           )}
         </div>
@@ -622,10 +633,10 @@ export function Step3Location({
             id="address-heading"
             className="font-heading text-text-primary text-[22px] leading-[1.3] font-semibold tracking-[-0.11px]"
           >
-            ที่อยู่และจุดสังเกต
+            {t.step3.addressHeading}
           </h2>
           <p className="text-text-secondary text-lg leading-[1.65]">
-            ระบบกรอกจังหวัดและอำเภอให้จากพิกัด ตรวจดูอีกครั้งได้
+            {t.step3.addressHint}
           </p>
         </div>
 
@@ -636,7 +647,7 @@ export function Step3Location({
               htmlFor="sos-province"
               className="text-text-primary text-base leading-[1.4] font-medium"
             >
-              จังหวัด
+              {t.step3.province}
             </label>
             <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface relative flex min-h-[60px] w-full items-center rounded-[12px] border">
               <select
@@ -645,10 +656,10 @@ export function Step3Location({
                 onChange={handleSelectProvince}
                 className="text-text-primary min-h-[60px] w-full appearance-none bg-transparent py-4 pr-12 pl-5 text-lg leading-[1.65] outline-none"
               >
-                <option value="">เลือกจังหวัด</option>
+                <option value="">{t.step3.provinceSelect}</option>
                 {provinceOptions.map((item) => (
                   <option key={item.code} value={String(item.code)}>
-                    {item.nameTh}
+                    {locale === "en" && item.nameEn ? item.nameEn : item.nameTh}
                   </option>
                 ))}
               </select>
@@ -667,7 +678,7 @@ export function Step3Location({
               htmlFor="sos-district"
               className="text-text-primary text-base leading-[1.4] font-medium"
             >
-              อำเภอ
+              {t.step3.district}
             </label>
             <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface relative flex min-h-[60px] w-full items-center rounded-[12px] border">
               <select
@@ -677,10 +688,10 @@ export function Step3Location({
                 disabled={!draft.provinceCode && districtOptions.length === 0}
                 className="text-text-primary min-h-[60px] w-full appearance-none bg-transparent py-4 pr-12 pl-5 text-lg leading-[1.65] outline-none disabled:opacity-60"
               >
-                <option value="">เลือกอำเภอ / เขต</option>
+                <option value="">{t.step3.districtSelect}</option>
                 {districtOptions.map((item) => (
                   <option key={item.code} value={String(item.code)}>
-                    {item.nameTh}
+                    {locale === "en" && item.nameEn ? item.nameEn : item.nameTh}
                   </option>
                 ))}
               </select>
@@ -702,7 +713,7 @@ export function Step3Location({
               htmlFor="sos-subdistrict"
               className="text-text-primary text-base leading-[1.4] font-medium"
             >
-              ตำบล / แขวง
+              {t.step3.subdistrict}
             </label>
             <div className="border-border-default bg-bg-page focus-within:border-primary-600 focus-within:bg-bg-surface relative flex min-h-[60px] w-full items-center rounded-[12px] border">
               <select
@@ -712,10 +723,10 @@ export function Step3Location({
                 disabled={!draft.districtCode && subdistrictOptions.length === 0}
                 className="text-text-primary min-h-[60px] w-full appearance-none bg-transparent py-4 pr-12 pl-5 text-lg leading-[1.65] outline-none disabled:opacity-60"
               >
-                <option value="">เลือกตำบล / แขวง</option>
+                <option value="">{t.step3.subdistrictSelect}</option>
                 {subdistrictOptions.map((item) => (
                   <option key={item.code} value={String(item.code)}>
-                    {item.nameTh}
+                    {locale === "en" && item.nameEn ? item.nameEn : item.nameTh}
                   </option>
                 ))}
               </select>
@@ -734,7 +745,7 @@ export function Step3Location({
               htmlFor="sos-address-line"
               className="text-text-primary text-base leading-[1.4] font-medium"
             >
-              บ้านเลขที่ / หมู่ / ซอย
+              {t.step3.addressLine}
               {addressRequired && <span className="text-red-600"> *</span>}
             </label>
             <div
@@ -754,7 +765,7 @@ export function Step3Location({
                 type="text"
                 value={draft.addressLine ?? ""}
                 onChange={(event) => onUpdateField({ addressLine: event.target.value })}
-                placeholder="เช่น 99/1 หมู่ 3 ซอยวัดไร่ขิง"
+                placeholder={t.step3.addressLinePlaceholder}
                 aria-required={addressRequired}
                 aria-invalid={Boolean(errors.addressLine)}
                 className="text-text-primary placeholder:text-text-secondary min-w-0 flex-1 bg-transparent text-lg leading-[1.65] outline-none"
@@ -774,9 +785,9 @@ export function Step3Location({
             htmlFor="sos-landmark"
             className="text-text-primary text-base leading-[1.4] font-medium"
           >
-            <span className="lg:hidden">จุดสังเกต (ช่วยให้ทีมหาเจอเร็วขึ้น)</span>
+            <span className="lg:hidden">{t.step3.landmarkMobile}</span>
             <span className="hidden lg:inline">
-              จุดสังเกต (สำคัญมากเมื่อป้ายบ้านจมน้ำ)
+              {t.step3.landmarkDesktop}
             </span>
           </label>
           <div
@@ -798,7 +809,7 @@ export function Step3Location({
               rows={2}
               value={draft.landmark}
               onChange={(event) => onUpdateField({ landmark: event.target.value })}
-              placeholder="เช่น บ้านหลังคาสีแดง 2 ชั้น ตรงข้ามศาลาวัด"
+              placeholder={t.step3.landmarkPlaceholder}
               className="text-text-primary placeholder:text-text-secondary min-w-0 flex-1 resize-none bg-transparent text-lg leading-[1.65] outline-none"
             />
           </div>
@@ -808,7 +819,7 @@ export function Step3Location({
             </p>
           ) : (
             <p className="text-text-secondary text-base leading-[1.55]">
-              บอกสิ่งที่มองเห็นได้จากเรือ เช่น สีหลังคา ต้นไม้ใหญ่ วัด
+              {t.step3.landmarkHint}
             </p>
           )}
         </div>
@@ -820,10 +831,10 @@ export function Step3Location({
           data-testid="step3-missing-alert"
           className="rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
         >
-          <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
+          <p className="font-heading font-bold">{t.step3.cannotContinue}</p>
           <ul className="mt-1 list-disc pl-5 font-medium">
             {errors.missingSummary.map((item) => (
-              <li key={item}>กรุณาระบุ{item}</li>
+              <li key={item}>{format(t.step3.pleaseProvide, { item })}</li>
             ))}
           </ul>
         </div>
@@ -832,8 +843,8 @@ export function Step3Location({
       <SosStepActions
         onPrev={onPrev}
         onNext={onNext}
-        mobileLabel="ถัดไป"
-        desktopLabel="ถัดไป: ผู้ติดค้าง"
+        mobileLabel={t.common.next}
+        desktopLabel={t.step3.nextDesktop}
       />
     </>
   );

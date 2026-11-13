@@ -10,6 +10,8 @@ import {
   MAX_SOS_PHOTOS,
 } from "../image-compression";
 import type { SosDraftPhoto, Step5ValidationErrors } from "../draft-storage";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { format } from "../../../lib/i18n/locale";
 
 interface Step5ContactProps {
   name: string;
@@ -64,6 +66,7 @@ export function Step5Contact({
   onPrev,
   onSubmit,
 }: Step5ContactProps) {
+  const { t } = useI18n();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -79,7 +82,7 @@ export function Step5Contact({
     const files = Array.from(fileList);
     if (photos.length + files.length > MAX_SOS_PHOTOS) {
       setPhotoError(
-        `แนบรูปถ่ายได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป (เลือกเพิ่มได้อีก ${remainingSlots} รูป)`,
+        format(t.step5.photosTooMany, { max: MAX_SOS_PHOTOS, remaining: remainingSlots }),
       );
       event.target.value = "";
       return;
@@ -105,7 +108,7 @@ export function Step5Contact({
       }
     } catch (err) {
       setPhotoError(
-        err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการบีบอัดรูปภาพ กรุณาลองใหม่อีกครั้ง",
+        err instanceof Error && t.sos.locale === "th" ? err.message : t.step5.compressFailed,
       );
     } finally {
       setIsCompressing(false);
@@ -124,19 +127,16 @@ export function Step5Contact({
             id="step5-contact-heading"
             className="font-heading text-text-primary text-xl font-bold sm:text-[22px]"
           >
-            5. ข้อมูลติดต่อผู้แจ้งและรูปหน้างาน
+            {t.step5.heading}
           </h2>
-          <p className="text-text-secondary mt-1 text-base">
-            ระบุชื่อและเบอร์โทรศัพท์เพื่อให้ทีมกู้ภัยติดต่อกลับเมื่อรับเคสแล้ว
-          </p>
+          <p className="text-text-secondary mt-1 text-base">{t.step5.hint}</p>
         </div>
 
         {/* ป้ายแจ้งความเป็นส่วนตัวตาม CLAUDE.md */}
         <div className="border-primary-500/30 bg-bg-subtle text-text-primary flex items-start gap-3 rounded-[12px] border p-3.5 text-sm">
           <ShieldCheck className="text-primary-700 mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <p>
-            <strong>คุ้มครองข้อมูลส่วนบุคคล:</strong> ชื่อ เบอร์โทร และ LINE ID
-            จะเปิดให้เห็นเฉพาะทีมกู้ภัยที่กดรับเคสของคุณและแอดมินเท่านั้น
+            <strong>{t.step5.privacyTitle}</strong> {t.step5.privacyBody}
           </p>
         </div>
 
@@ -146,7 +146,7 @@ export function Step5Contact({
             htmlFor="sos-contact-name"
             className="font-heading text-text-primary block text-base font-bold"
           >
-            ชื่อผู้แจ้ง หรือชื่อผู้ติดต่อ <span className="text-red-600">*</span>
+            {t.step5.nameLabel} <span className="text-red-600">*</span>
           </label>
           <input
             id="sos-contact-name"
@@ -155,7 +155,7 @@ export function Step5Contact({
             autoComplete="name"
             value={name}
             onChange={(e) => onChangeField("name", e.target.value)}
-            placeholder="เช่น สมชาย ใจดี (หรือชื่อเล่น)"
+            placeholder={t.step5.namePlaceholder}
             className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border px-4 text-base focus:outline-none"
           />
           {errors.name && (
@@ -175,11 +175,32 @@ export function Step5Contact({
             htmlFor="sos-contact-phone"
             className="font-heading text-text-primary block text-base font-bold"
           >
-            เบอร์โทรศัพท์ติดต่อกลับ <span className="text-red-600">*</span>
+            {t.step5.phoneLabel} <span className="text-red-600">*</span>
           </label>
-          <p className="text-text-secondary mt-0.5 text-sm">
-            รองรับเบอร์มือถือไทย 10 หลัก (06x–09x) หรือเบอร์บ้าน (02x–05x)
-          </p>
+          <p className="text-text-secondary mt-0.5 text-sm">{t.step5.phoneHint}</p>
+          {/* TF-63: นักท่องเที่ยวที่ไม่มีเบอร์ไทยส่งฟอร์มไม่ได้ — ให้โทรสายด่วนทันที (ลิงก์ tel: ธรรมดา ไม่ต้องใช้ JS) */}
+          {t.sos.locale === "en" && (
+            <p
+              data-testid="no-thai-phone-help"
+              className="text-text-primary mt-1 text-base font-medium"
+            >
+              {t.step5.noThaiPhoneBefore}{" "}
+              <a
+                href="tel:1155"
+                className="text-primary-700 inline-flex min-h-12 items-center font-semibold underline"
+              >
+                {t.step5.noThaiPhoneTouristPolice}
+              </a>{" "}
+              {t.step5.noThaiPhoneOr}{" "}
+              <a
+                href="tel:191"
+                className="text-primary-700 inline-flex min-h-12 items-center font-semibold underline"
+              >
+                {t.step5.noThaiPhonePolice}
+              </a>{" "}
+              {t.step5.noThaiPhoneAfter}
+            </p>
+          )}
           <input
             id="sos-contact-phone"
             data-testid="input-contact-phone"
@@ -188,7 +209,7 @@ export function Step5Contact({
             autoComplete="tel"
             value={phone}
             onChange={(e) => onChangeField("phone", e.target.value)}
-            placeholder="เช่น 0812345678 หรือ 081-234-5678"
+            placeholder={t.step5.phonePlaceholder}
             className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border px-4 font-mono text-base placeholder:font-sans focus:outline-none"
           />
           {errors.phone && (
@@ -208,7 +229,8 @@ export function Step5Contact({
             htmlFor="sos-contact-line-id"
             className="font-heading text-text-primary block text-base font-bold"
           >
-            LINE ID <span className="text-text-secondary text-sm font-normal">(ไม่บังคับ)</span>
+            LINE ID{" "}
+            <span className="text-text-secondary text-sm font-normal">{t.step5.optional}</span>
           </label>
           <input
             id="sos-contact-line-id"
@@ -216,7 +238,7 @@ export function Step5Contact({
             type="text"
             value={lineId}
             onChange={(e) => onChangeField("lineId", e.target.value)}
-            placeholder="ระบุ LINE ID เผื่อสัญญาณโทรศัพท์ขัดข้อง"
+            placeholder={t.step5.lineIdPlaceholder}
             className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 h-12 min-h-[48px] w-full rounded-[10px] border px-4 text-base focus:outline-none"
           />
         </div>
@@ -228,11 +250,11 @@ export function Step5Contact({
               htmlFor="sos-contact-notes"
               className="font-heading text-text-primary text-base font-bold"
             >
-              รายละเอียดเพิ่มเติม{" "}
-              <span className="text-text-secondary text-sm font-normal">(ไม่บังคับ)</span>
+              {t.step5.notesLabel}{" "}
+              <span className="text-text-secondary text-sm font-normal">{t.step5.optional}</span>
             </label>
             <span className="text-text-secondary font-mono text-xs font-semibold">
-              {notes.length}/500 ตัวอักษร
+              {format(t.step5.notesCount, { count: notes.length })}
             </span>
           </div>
           <textarea
@@ -242,7 +264,7 @@ export function Step5Contact({
             maxLength={500}
             value={notes}
             onChange={(e) => onChangeField("notes", e.target.value.slice(0, 500))}
-            placeholder="เช่น อยู่ชั้น 2 เสื้อสีเหลือง, แบตมือถือเหลือ 15%, มีผู้ป่วยโรคหัวใจ..."
+            placeholder={t.step5.notesPlaceholder}
             className="border-border-strong bg-bg-surface text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 mt-1.5 w-full rounded-[10px] border p-3 text-base focus:outline-none"
           />
           {errors.notes && (
@@ -261,20 +283,18 @@ export function Step5Contact({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="font-heading text-text-primary text-base font-bold">
-                รูปถ่ายหน้างาน{" "}
+                {t.step5.photosLabel}{" "}
                 <span className="text-text-secondary text-sm font-normal">
-                  (ไม่เกิน {MAX_SOS_PHOTOS} รูป · ระบบบีบอัดให้ไม่เกิน 500 KB อัตโนมัติ)
+                  {format(t.step5.photosLimit, { max: MAX_SOS_PHOTOS })}
                 </span>
               </h3>
-              <p className="text-text-secondary mt-0.5 text-sm">
-                ถ่ายภาพจุดเกิดเหตุหรือตัวบ้านเพื่อให้ทีมกู้ภัยประเมินการเข้าช่วยเหลือได้เร็วขึ้น
-              </p>
+              <p className="text-text-secondary mt-0.5 text-sm">{t.step5.photosHint}</p>
             </div>
             <span
               data-testid="photo-count-badge"
               className="bg-bg-subtle text-primary-700 rounded-full px-3 py-1 font-mono text-xs font-bold"
             >
-              {photos.length}/{MAX_SOS_PHOTOS} รูป
+              {format(t.step5.photosCount, { count: photos.length, max: MAX_SOS_PHOTOS })}
             </span>
           </div>
 
@@ -302,12 +322,12 @@ export function Step5Contact({
                 {isCompressing ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-                    <span>กำลังบีบอัดรูปภาพให้ไม่เกิน 500 KB...</span>
+                    <span>{t.step5.compressing}</span>
                   </>
                 ) : (
                   <>
                     <Camera className="h-5 w-5" aria-hidden="true" />
-                    <span>แตะเพื่อถ่ายรูปหรือเลือกรูป ({remainingSlots} รูปที่เหลือ)</span>
+                    <span>{format(t.step5.pickPhoto, { remaining: remainingSlots })}</span>
                   </>
                 )}
               </button>
@@ -345,8 +365,10 @@ export function Step5Contact({
                         {photo.name}
                       </p>
                       <p className="font-mono text-xs text-green-700">
-                        ขนาดหลังบีบอัด: {formatFileSizeKb(photo.compressedBytes)} (จาก{" "}
-                        {formatFileSizeKb(photo.originalBytes)})
+                        {format(t.step5.compressedSize, {
+                          size: formatFileSizeKb(photo.compressedBytes),
+                          original: formatFileSizeKb(photo.originalBytes),
+                        })}
                       </p>
                     </div>
                   </div>
@@ -354,7 +376,7 @@ export function Step5Contact({
                   <button
                     type="button"
                     data-testid={`remove-photo-${photo.id}`}
-                    aria-label={`ลบรูป ${photo.name}`}
+                    aria-label={format(t.step5.removePhoto, { name: photo.name })}
                     onClick={() => onRemovePhoto(photo.id)}
                     className="border-border-strong bg-bg-surface flex h-12 min-h-[48px] w-12 min-w-[48px] shrink-0 items-center justify-center rounded-full border text-red-600 transition-colors hover:bg-red-50"
                   >
@@ -375,9 +397,9 @@ export function Step5Contact({
               onChange={(e) => onConsentChange("consent", e.target.checked)}
             />
             <span>
-              ยินยอมให้ใช้ข้อมูลเพื่อช่วยเหลือ ตาม
+              {t.step5.consentBefore}{" "}
               <Link href="/privacy" className="text-primary-700 underline">
-                นโยบายความเป็นส่วนตัว
+                {t.step5.privacyPolicy}
               </Link>
             </span>
           </label>
@@ -388,7 +410,7 @@ export function Step5Contact({
               checked={healthConsent}
               onChange={(e) => onConsentChange("healthConsent", e.target.checked)}
             />
-            <span>ยินยอมให้ใช้ข้อมูลสุขภาพเพื่อช่วยเหลือ</span>
+            <span>{t.step5.healthConsent}</span>
           </label>
         </div>
 
@@ -399,8 +421,10 @@ export function Step5Contact({
             data-testid="step5-missing-alert"
             className="rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
           >
-            <p className="font-heading font-bold">ยังส่งคำขอไม่ได้ กรุณาตรวจสอบข้อมูล:</p>
-            <p className="mt-1 font-medium">ต้องแก้ไข: {errors.missingSummary.join(", ")}</p>
+            <p className="font-heading font-bold">{t.step5.cannotSubmit}</p>
+            <p className="mt-1 font-medium">
+              {format(t.step5.mustFix, { items: errors.missingSummary.join(t.sos.listComma) })}
+            </p>
           </div>
         )}
 
@@ -422,7 +446,7 @@ export function Step5Contact({
           >
             <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
             <div>
-              <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
+              <p className="font-heading font-bold">{t.step5.successTitle}</p>
               <p className="mt-0.5">{submitSuccessMessage}</p>
             </div>
           </div>
@@ -437,36 +461,32 @@ export function Step5Contact({
           data-testid="step5-slow-submit-fallback"
           className="rounded-[12px] border-2 border-amber-600 bg-amber-50 p-4 text-base text-amber-950"
         >
-          <p className="font-heading font-bold">
-            สัญญาณช้ากว่าปกติ ระบบกำลังส่งคำขออยู่ — หากเร่งด่วนกดโทรหรือส่ง SMS ได้เลย
-          </p>
+          <p className="font-heading font-bold">{t.step5.slowTitle}</p>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
             <a
               href="tel:1669"
               data-testid="step5-slow-call-1669"
               className="flex min-h-[48px] items-center justify-center rounded-xl bg-red-600 px-4 py-3 text-center text-base font-bold text-white transition-colors hover:bg-red-700"
             >
-              โทร 1669
+              {t.common.call1669}
             </a>
             <a
               href="tel:1784"
               data-testid="step5-slow-call-1784"
               className="flex min-h-[48px] items-center justify-center rounded-xl bg-red-700 px-4 py-3 text-center text-base font-bold text-white transition-colors hover:bg-red-800"
             >
-              โทร 1784
+              {t.step5.call1784}
             </a>
             <a
               href={slowSmsHref}
               data-testid="step5-slow-sms"
               className="flex min-h-[48px] items-center justify-center rounded-xl border-2 border-amber-700 bg-white px-4 py-3 text-center text-base font-bold text-amber-950 transition-colors hover:bg-amber-100"
             >
-              ส่งทาง SMS
+              {t.step5.sendBySms}
             </a>
           </div>
           <p className="mt-2 text-xs text-amber-900">
-            {slowSmsToSystem
-              ? "ส่ง SMS ได้แม้เน็ตช้า ระบบจะตอบรหัสเคสกลับอัตโนมัติ"
-              : "เปิดแอปข้อความพร้อมพิกัด เลือกส่งให้ญาติหรือผู้ช่วยเหลือได้ทันที"}
+            {slowSmsToSystem ? t.step5.smsToSystemHint : t.step5.smsToContactHint}
           </p>
         </div>
       )}
@@ -480,7 +500,7 @@ export function Step5Contact({
           onClick={onPrev}
           className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle flex h-14 min-h-[48px] w-full items-center justify-center rounded-full border px-6 text-[19px] font-semibold transition-colors disabled:opacity-50 sm:w-auto sm:min-w-[160px]"
         >
-          ← ย้อนกลับ
+          {t.step5.prev}
         </button>
 
         <button
@@ -493,10 +513,10 @@ export function Step5Contact({
           {isSubmitting ? (
             <>
               <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              <span>กำลังส่งคำขอ...</span>
+              <span>{t.step5.submitting}</span>
             </>
           ) : (
-            <span>แจ้งขอความช่วยเหลือทันที</span>
+            <span>{t.step5.submit}</span>
           )}
         </button>
       </div>

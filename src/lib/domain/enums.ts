@@ -29,6 +29,15 @@ export const waterLevelLabel: Record<WaterLevel, string> = {
   SURROUNDED: "ถูกน้ำล้อม / ตัดขาด",
 };
 
+/** TF-63: ฟอร์มภาษาอังกฤษ — key ชุดเดียวกับ waterLevelLabel (ขาด key แล้ว typecheck ล้ม) */
+export const waterLevelLabelEn: Record<WaterLevel, string> = {
+  ROOF: "On the roof / rooftop",
+  FIRST_FLOOR: "Ground floor flooded (I'm upstairs)",
+  WAIST_CHEST: "Waist to chest deep",
+  ANKLE_KNEE: "Ankle to knee deep",
+  SURROUNDED: "Surrounded by water / cut off",
+};
+
 // ลำดับที่แสดงบนหน้าจอ (ตาม Figma)
 export const WATER_LEVEL_DISPLAY_ORDER: WaterLevel[] = [
   WaterLevel.ROOF,
@@ -76,4 +85,19 @@ export const needLabel: Record<Need, string> = {
   PET_FOOD: "อาหารสัตว์เลี้ยง",
   CUT_POWER: "ตัดไฟด่วน (ไฟรั่ว)",
   OTHER: "อื่นๆ (พิมพ์เอง)",
+};
+
+/** TF-63: ฟอร์มภาษาอังกฤษ — key ชุดเดียวกับ needLabel */
+export const needLabelEn: Record<Need, string> = {
+  EVACUATION_BOAT: "Urgent evacuation boat",
+  EVACUATE_BEDRIDDEN: "Evacuate bedridden / elderly people",
+  DRINKING_WATER: "Clean drinking water",
+  FOOD: "Food / meal boxes",
+  MEDICINE: "Medicine / first aid",
+  BABY_SUPPLIES: "Diapers / baby formula",
+  FLASHLIGHT_POWER: "Flashlight / power bank",
+  LIFE_JACKET: "Life jacket / rope",
+  PET_FOOD: "Pet food",
+  CUT_POWER: "Cut the power urgently (electric leak)",
+  OTHER: "Other (type it in)",
 };

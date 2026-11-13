@@ -11,7 +11,7 @@ const WATER_RESCUE_OFFICIAL_SOURCE =
 
 export const waterRescue: IncidentDefinition = {
   code: IncidentType.WATER_RESCUE,
-  label: { th: "ตกน้ำ / จมน้ำ" },
+  label: { th: "ตกน้ำ / จมน้ำ", en: "Fell into water / drowning" },
   // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
   peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "LifeBuoy",
@@ -61,7 +61,7 @@ export const waterRescue: IncidentDefinition = {
     ...UNIVERSAL_DANGER_SIGNS,
     {
       key: "PERSON_IN_WATER",
-      label: { th: "มีคนอยู่ในน้ำหรือจมหายไป" },
+      label: { th: "มีคนอยู่ในน้ำหรือจมหายไป", en: "Someone is in the water or has gone under" },
       source: WATER_RESCUE_OFFICIAL_SOURCE,
     },
   ],
@@ -74,19 +74,19 @@ export const waterRescue: IncidentDefinition = {
   waitingAdvice: [
     {
       text: {
-        th: "ใช้หลัก ตะโกน โยน ยื่น — ตะโกนขอความช่วยเหลือ โยนสิ่งของที่ลอยน้ำได้ หรือยื่นไม้ยาว/เชือกให้เกาะ",
+        th: "ใช้หลัก ตะโกน โยน ยื่น — ตะโกนขอความช่วยเหลือ โยนสิ่งของที่ลอยน้ำได้ หรือยื่นไม้ยาว/เชือกให้เกาะ", en: "Follow \"Shout, Throw, Reach\": shout for help, throw something that floats, or reach out a long pole or rope for them to hold.",
       },
       source: WATER_RESCUE_OFFICIAL_SOURCE,
     },
     {
       text: {
-        th: "ห้ามกระโดดลงน้ำไปช่วยเองโดยเด็ดขาด หากไม่ได้รับการฝึกฝน เพราะอาจถูกกอดจมน้ำไปด้วยกัน",
+        th: "ห้ามกระโดดลงน้ำไปช่วยเองโดยเด็ดขาด หากไม่ได้รับการฝึกฝน เพราะอาจถูกกอดจมน้ำไปด้วยกัน", en: "Never jump into the water to rescue someone unless you are trained, because they may grab you and pull you under too.",
       },
       source: WATER_RESCUE_OFFICIAL_SOURCE,
     },
     {
       text: {
-        th: "เมื่อช่วยขึ้นมาได้และหมดสติไม่หายใจ ให้รีบทำ CPR กดหน้าอกทันทีพร้อมโทร 1669",
+        th: "เมื่อช่วยขึ้นมาได้และหมดสติไม่หายใจ ให้รีบทำ CPR กดหน้าอกทันทีพร้อมโทร 1669", en: "Once the person is out of the water, if they are unconscious and not breathing, start CPR chest compressions immediately and call 1669.",
       },
       source: WATER_RESCUE_OFFICIAL_SOURCE,
     },

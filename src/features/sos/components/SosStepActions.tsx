@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+
 /**
  * ปุ่มท้ายแต่ละขั้นของฟอร์ม SOS ตาม Figma
  * - มือถือ (MB1): แถบขาวติดล่างจอ ปุ่มเต็มความกว้าง
@@ -16,6 +18,7 @@ export function SosStepActions({
   mobileLabel: string;
   desktopLabel: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="border-border-default bg-bg-surface sticky bottom-0 z-10 -mx-6 -mb-10 border-t px-6 pt-4 pb-7 lg:static lg:mx-0 lg:mb-0 lg:flex lg:flex-col lg:gap-[14px] lg:border-t-0 lg:bg-transparent lg:p-0 lg:pt-2">
       <div className="bg-border-default hidden h-px lg:block" />
@@ -26,7 +29,7 @@ export function SosStepActions({
             onClick={onPrev}
             className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle hidden rounded-full border-[1.5px] px-8 py-[18px] text-[19px] leading-[1.2] font-semibold lg:block"
           >
-            ย้อนกลับ
+            {t.common.back}
           </button>
         )}
         <span className="hidden flex-1 lg:block" />

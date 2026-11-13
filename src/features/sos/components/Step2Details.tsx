@@ -12,6 +12,8 @@ import {
   type WaterLevel,
 } from "../../../lib/domain";
 import { getTotalPeopleCount, type Step2ValidationErrors } from "../draft-storage";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { format, pickText } from "../../../lib/i18n/locale";
 
 const headingClass =
   "font-heading text-text-primary text-[22px] leading-[1.3] font-semibold tracking-[-0.11px]";
@@ -130,6 +132,7 @@ export function Step2Details({
   onPrev,
   onNext,
 }: Step2DetailsProps) {
+  const { t, locale } = useI18n();
   const incident = INCIDENT_REGISTRY[incidentType];
   // ออกเองได้ไหมถามในส่วนอันตรายด้านบนแล้ว ไม่ถามซ้ำ (เดิมน้ำท่วมถาม 2 รอบ)
   const questions = incident.questions.filter((q) => q.key !== "canSelfEvacuate");
@@ -212,11 +215,9 @@ export function Step2Details({
             id="danger-heading"
             className="font-heading text-text-primary text-[30px] leading-[1.25] font-bold tracking-[-0.3px] lg:text-[22px] lg:leading-[1.3] lg:font-semibold lg:tracking-[-0.11px]"
           >
-            ตอนนี้มีข้อใดต่อไปนี้ไหม?
+            {t.step2.dangerHeading}
           </h2>
-          <p className="text-text-secondary text-lg leading-[1.65]">
-            เลือกได้หลายข้อ ถ้าไม่มีให้กด &quot;ไม่มีข้อใดเลย&quot;
-          </p>
+          <p className="text-text-secondary text-lg leading-[1.65]">{t.step2.dangerHint}</p>
           {errors.dangerSigns && (
             <p role="alert" className="text-base font-medium text-red-600">
               {errors.dangerSigns}
@@ -236,7 +237,9 @@ export function Step2Details({
                 onClick={() => toggleSign(sign.key)}
                 className={optionClass(selected)}
               >
-                <span className="text-text-primary min-w-0 flex-1">{sign.label.th}</span>
+                <span className="text-text-primary min-w-0 flex-1">
+                  {pickText(sign.label, locale)}
+                </span>
                 <span
                   aria-hidden="true"
                   className={`flex size-7 shrink-0 items-center justify-center rounded-md border-2 ${
@@ -257,7 +260,7 @@ export function Step2Details({
             onClick={() => onChangeDangerSigns([])}
             className={optionClass(noneSelected)}
           >
-            <span className="text-text-primary min-w-0 flex-1">ไม่มีข้อใดเลย</span>
+            <span className="text-text-primary min-w-0 flex-1">{t.step2.noneOfThese}</span>
             <img
               src={noneSelected ? "/brand/radio-on.svg" : "/brand/radio-off.svg"}
               alt=""
@@ -269,7 +272,7 @@ export function Step2Details({
 
       <section aria-labelledby="evacuate-heading" className="flex flex-col gap-4">
         <h2 id="evacuate-heading" className={headingClass}>
-          ออกจากที่นั่นเองได้ไหม?
+          {t.step2.selfEvacHeading}
         </h2>
         {errors.canSelfEvacuate && (
           <p role="alert" className="text-base font-medium text-red-600">
@@ -282,8 +285,8 @@ export function Step2Details({
           className="grid grid-cols-1 gap-3 sm:grid-cols-2"
         >
           {[
-            { value: true, label: "ได้ ออกเองได้" },
-            { value: false, label: "ไม่ได้ ติดอยู่" },
+            { value: true, label: t.step2.selfEvacYes },
+            { value: false, label: t.step2.selfEvacNo },
           ].map((option) => {
             const selected = canSelfEvacuate === option.value;
             return (
@@ -319,11 +322,9 @@ export function Step2Details({
               id="step2-questions-heading"
               className="font-heading text-text-primary text-xl font-bold sm:text-[22px]"
             >
-              รายละเอียดเหตุ{incident.label.th}
+              {format(t.step2.detailsHeading, { incident: pickText(incident.label, locale) })}
             </h2>
-            <p className="text-text-secondary mt-1 text-base">
-              ตอบคำถามสั้นๆ เพื่อให้ทีมกู้ภัยเตรียมอุปกรณ์ช่วยเหลือได้ตรงกับสถานการณ์
-            </p>
+            <p className="text-text-secondary mt-1 text-base">{t.step2.detailsHint}</p>
           </div>
 
           <div className="space-y-5">
@@ -338,18 +339,20 @@ export function Step2Details({
                   className="border-border-default bg-bg-subtle/30 rounded-[12px] border p-4"
                 >
                   <p className="font-heading text-text-primary text-base font-bold sm:text-lg">
-                    {q.label.th}{" "}
+                    {pickText(q.label, locale)}{" "}
                     {q.required ? (
                       <span className="text-red-600">*</span>
                     ) : (
-                      <span className="text-text-secondary text-sm font-normal">(ไม่บังคับ)</span>
+                      <span className="text-text-secondary text-sm font-normal">
+                        {t.step2.optional}
+                      </span>
                     )}
                   </p>
 
                   {q.kind === "choice" && !q.multiple && (
                     <div
                       role="radiogroup"
-                      aria-label={q.label.th}
+                      aria-label={pickText(q.label, locale)}
                       className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2"
                     >
                       {q.options.map((opt) => {
@@ -370,7 +373,7 @@ export function Step2Details({
                                 : "border-border-default bg-bg-surface text-text-primary hover:border-border-strong border"
                             }`}
                           >
-                            <span>{opt.label.th}</span>
+                            <span>{pickText(opt.label, locale)}</span>
                             <span
                               aria-hidden="true"
                               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
@@ -390,7 +393,7 @@ export function Step2Details({
                   {q.kind === "choice" && q.multiple && (
                     <div
                       role="group"
-                      aria-label={q.label.th}
+                      aria-label={pickText(q.label, locale)}
                       className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2"
                     >
                       {q.options.map((opt) => {
@@ -416,7 +419,7 @@ export function Step2Details({
                                 : "border-border-default bg-bg-surface text-text-primary hover:border-border-strong border"
                             }`}
                           >
-                            <span>{opt.label.th}</span>
+                            <span>{pickText(opt.label, locale)}</span>
                             <span
                               aria-hidden="true"
                               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 ${
@@ -438,10 +441,11 @@ export function Step2Details({
                       <textarea
                         rows={3}
                         maxLength={q.maxLength}
-                        aria-label={q.label.th}
+                        aria-label={pickText(q.label, locale)}
                         data-testid={`question-${q.key}-input`}
                         placeholder={
-                          q.placeholder?.th ?? `ระบุข้อมูลไม่เกิน ${q.maxLength} ตัวอักษร`
+                          (q.placeholder ? pickText(q.placeholder, locale) : undefined) ??
+                          format(t.step2.textPlaceholder, { max: q.maxLength })
                         }
                         value={typeof currentValue === "string" ? currentValue : ""}
                         onChange={(e) => {
@@ -452,8 +456,10 @@ export function Step2Details({
                       />
                       <div className="text-text-secondary mt-1 flex justify-end text-xs">
                         <span data-testid={`question-${q.key}-counter`}>
-                          {typeof currentValue === "string" ? currentValue.length : 0} /{" "}
-                          {q.maxLength} ตัวอักษร
+                          {format(t.step2.charCount, {
+                            count: typeof currentValue === "string" ? currentValue.length : 0,
+                            max: q.maxLength,
+                          })}
                         </span>
                       </div>
                     </div>
@@ -464,7 +470,7 @@ export function Step2Details({
                       <button
                         type="button"
                         data-testid={`question-${q.key}-decrease`}
-                        aria-label={`ลด${q.label.th}`}
+                        aria-label={format(t.step2.decrease, { label: pickText(q.label, locale) })}
                         disabled={typeof currentValue === "number" && currentValue <= q.min}
                         onClick={() => {
                           const next =
@@ -483,7 +489,7 @@ export function Step2Details({
                         inputMode="numeric"
                         min={q.min}
                         max={q.max}
-                        aria-label={q.label.th}
+                        aria-label={pickText(q.label, locale)}
                         data-testid={`question-${q.key}-input`}
                         value={typeof currentValue === "number" ? String(currentValue) : ""}
                         placeholder={`${q.min}–${q.max}`}
@@ -504,7 +510,7 @@ export function Step2Details({
                       <button
                         type="button"
                         data-testid={`question-${q.key}-increase`}
-                        aria-label={`เพิ่ม${q.label.th}`}
+                        aria-label={format(t.step2.increase, { label: pickText(q.label, locale) })}
                         disabled={typeof currentValue === "number" && currentValue >= q.max}
                         onClick={() => {
                           const next =
@@ -523,12 +529,12 @@ export function Step2Details({
                   {q.kind === "boolean" && (
                     <div
                       role="radiogroup"
-                      aria-label={q.label.th}
+                      aria-label={pickText(q.label, locale)}
                       className="mt-3 grid grid-cols-2 gap-3"
                     >
                       {[
-                        { value: true, text: "ใช่", testId: `question-${q.key}-yes` },
-                        { value: false, text: "ไม่ใช่", testId: `question-${q.key}-no` },
+                        { value: true, text: t.step2.yes, testId: `question-${q.key}-yes` },
+                        { value: false, text: t.step2.no, testId: `question-${q.key}-no` },
                       ].map((opt) => {
                         const selected = currentValue === opt.value;
                         return (
@@ -578,11 +584,9 @@ export function Step2Details({
               id="step2-people-heading"
               className="font-heading text-text-primary text-xl font-bold sm:text-[22px]"
             >
-              {incident.peopleLabel.th} <span className="text-red-600">*</span>
+              {pickText(incident.peopleLabel, locale)} <span className="text-red-600">*</span>
             </h2>
-            <p className="text-text-secondary mt-1 text-base">
-              กดปุ่ม + หรือ − เพื่อระบุจำนวนคนในแต่ละกลุ่ม (ต้องมีอย่างน้อย 1 คน)
-            </p>
+            <p className="text-text-secondary mt-1 text-base">{t.step2.peopleHint}</p>
           </div>
 
           {/* แถบสรุปจำนวนคนรวม */}
@@ -594,13 +598,14 @@ export function Step2Details({
                 : "border-red-600/40 bg-red-50 text-red-600"
             }`}
           >
-            <p className="text-text-secondary text-sm font-medium">รวม</p>
+            <p className="text-text-secondary text-sm font-medium">{t.step2.total}</p>
             <p className="font-mono text-2xl font-bold">
-              {totalPeople} <span className="font-heading text-base font-semibold">คน</span>
+              {totalPeople}{" "}
+              <span className="font-heading text-base font-semibold">{t.step2.peopleUnit}</span>
             </p>
             {pets > 0 && (
               <p className="font-mono text-xs font-semibold text-green-700">
-                + สัตว์เลี้ยง {pets} ตัว
+                {format(t.step2.petsSummary, { count: pets })}
               </p>
             )}
           </div>
@@ -608,7 +613,8 @@ export function Step2Details({
 
         {/* รายการตัวนับ 5 กลุ่ม */}
         <div className="space-y-3.5">
-          {PEOPLE_GROUPS.map((group) => {
+          {PEOPLE_GROUPS.map((config) => {
+            const group = { ...config, ...t.step2.groups[config.key] };
             const value = counts[group.key];
             const isMinusDisabled = value <= 0;
             const isPlusDisabled = value >= 99;
@@ -636,7 +642,7 @@ export function Step2Details({
                       <span className="font-heading text-text-primary text-lg font-bold">
                         {group.label}
                       </span>
-                      {group.badgeText && (
+                      {group.badge && (
                         <span
                           className={`font-heading rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                             group.key === "bedridden"
@@ -644,7 +650,7 @@ export function Step2Details({
                               : "bg-amber-50 text-amber-700"
                           }`}
                         >
-                          {group.badgeText}
+                          {group.badge}
                         </span>
                       )}
                     </div>
@@ -659,7 +665,7 @@ export function Step2Details({
                   <button
                     type="button"
                     data-testid={`decrease-${group.key}`}
-                    aria-label={`ลดจำนวน${group.label}`}
+                    aria-label={format(t.step2.decreaseGroup, { label: group.label })}
                     disabled={isMinusDisabled}
                     onClick={() => handleStep(group.key, -1)}
                     className="border-border-strong bg-bg-surface text-text-primary hover:bg-bg-subtle active:bg-primary-100 flex size-14 shrink-0 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-40"
@@ -680,7 +686,7 @@ export function Step2Details({
                   <button
                     type="button"
                     data-testid={`increase-${group.key}`}
-                    aria-label={`เพิ่มจำนวน${group.label}`}
+                    aria-label={format(t.step2.increaseGroup, { label: group.label })}
                     disabled={isPlusDisabled}
                     onClick={() => handleStep(group.key, 1)}
                     className="bg-primary-600 text-text-on-primary hover:bg-primary-700 active:bg-primary-700 flex size-14 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
@@ -700,7 +706,7 @@ export function Step2Details({
             data-testid="step2-missing-alert"
             className="mt-5 rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
           >
-            <p className="font-heading font-bold">ยังไปขั้นถัดไปไม่ได้:</p>
+            <p className="font-heading font-bold">{t.step2.cannotContinue}</p>
             {errors.dangerSigns && <p className="mt-1 font-medium">• {errors.dangerSigns}</p>}
             {errors.canSelfEvacuate && (
               <p className="mt-1 font-medium">• {errors.canSelfEvacuate}</p>
@@ -724,7 +730,7 @@ export function Step2Details({
           onClick={onPrev}
           className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle flex min-h-14 w-full items-center justify-center rounded-full border px-6 text-[19px] font-semibold transition-colors sm:w-auto sm:min-w-[160px]"
         >
-          ← ย้อนกลับ
+          {t.step2.prev}
         </button>
 
         <button
@@ -733,7 +739,7 @@ export function Step2Details({
           onClick={onNext}
           className="bg-primary-600 font-heading text-text-on-primary hover:bg-primary-700 active:bg-primary-700 flex min-h-14 w-full items-center justify-center rounded-full px-8 text-[19px] font-semibold transition-colors sm:w-auto sm:min-w-[220px]"
         >
-          ถัดไป: ตำแหน่ง →
+          {t.step2.nextDesktop}
         </button>
       </div>
     </div>

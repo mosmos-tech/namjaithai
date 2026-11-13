@@ -10,7 +10,7 @@ const FIRE_OFFICIAL_SOURCE = "https://www.disaster.go.th/apiv1/clickdownload/dow
 
 export const fire: IncidentDefinition = {
   code: IncidentType.FIRE,
-  label: { th: "ไฟไหม้" },
+  label: { th: "ไฟไหม้", en: "Fire" },
   // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
   peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "Flame",
@@ -56,7 +56,7 @@ export const fire: IncidentDefinition = {
     ...UNIVERSAL_DANGER_SIGNS,
     {
       key: "TRAPPED_IN_FIRE",
-      label: { th: "มีคนติดอยู่ในกองไฟหรือควันหนาแน่น" },
+      label: { th: "มีคนติดอยู่ในกองไฟหรือควันหนาแน่น", en: "Someone is trapped in the fire or thick smoke" },
       source: FIRE_OFFICIAL_SOURCE,
     },
   ],
@@ -69,16 +69,16 @@ export const fire: IncidentDefinition = {
   ],
   waitingAdvice: [
     {
-      text: { th: "หมอบคลานต่ำใต้กลุ่มควัน และใช้ผ้าชุบน้ำปิดจมูกและปาก" },
+      text: { th: "หมอบคลานต่ำใต้กลุ่มควัน และใช้ผ้าชุบน้ำปิดจมูกและปาก", en: "Crawl low beneath the smoke and cover your nose and mouth with a wet cloth." },
       source: FIRE_OFFICIAL_SOURCE,
     },
     {
-      text: { th: "ห้ามใช้ลิฟต์โดยเด็ดขาด ให้ใช้บันไดหนีไฟเพื่อออกจากอาคาร" },
+      text: { th: "ห้ามใช้ลิฟต์โดยเด็ดขาด ให้ใช้บันไดหนีไฟเพื่อออกจากอาคาร", en: "Never use the elevator. Use the fire escape stairs to leave the building." },
       source: FIRE_OFFICIAL_SOURCE,
     },
     {
       text: {
-        th: "หากติดอยู่ในห้อง ให้ปิดประตู ใช้ผ้าชุบน้ำอุดตามช่องว่าง และส่งสัญญาณขอความช่วยเหลือที่หน้าต่าง",
+        th: "หากติดอยู่ในห้อง ให้ปิดประตู ใช้ผ้าชุบน้ำอุดตามช่องว่าง และส่งสัญญาณขอความช่วยเหลือที่หน้าต่าง", en: "If you are trapped in a room, close the door, seal the gaps with wet cloth, and signal for help at the window.",
       },
       source: FIRE_OFFICIAL_SOURCE,
     },

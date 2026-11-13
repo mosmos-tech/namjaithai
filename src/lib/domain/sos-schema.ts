@@ -144,6 +144,8 @@ export const sosSchema = step1Schema
   .extend({
     consent: z.literal(true, { error: "กรุณายินยอมก่อนส่งคำขอ" }),
     healthConsent: z.literal(true, { error: "กรุณายินยอมให้ใช้ข้อมูลสุขภาพ" }),
+    // TF-63: ภาษาของฟอร์มที่ผู้แจ้งใช้ — คำตอบยังเป็นรหัสเดิม ค่านี้ใช้ทำป้ายฝั่งกู้ภัยและลิงก์ติดตาม
+    reporterLocale: z.enum(["th", "en"]).optional(),
   })
   .refine((d) => d.adults + d.elderly + d.bedridden + d.children > 0, {
     message: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน",

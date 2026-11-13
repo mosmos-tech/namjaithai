@@ -1,4 +1,5 @@
 import { cacheLife } from "next/cache";
+import type { ReporterText } from "@/lib/i18n/reporter-text";
 import { FooterContent } from "./FooterContent";
 
 /**
@@ -11,6 +12,7 @@ async function getBuddhistYear(): Promise<number> {
   return new Date().getFullYear() + 543;
 }
 
-export async function Footer() {
-  return <FooterContent yearBE={await getBuddhistYear()} />;
+/** text: footer ภาษาอังกฤษของหน้า /en (TF-63) — ไม่ส่งมา = ภาษาไทย */
+export async function Footer({ text }: { text?: ReporterText["chrome"] }) {
+  return <FooterContent yearBE={await getBuddhistYear()} text={text} />;
 }

@@ -9,6 +9,7 @@ import type {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { OSM_RASTER_STYLE } from "../../../lib/map/osm-style";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
 import type { AreaBounds } from "../../../lib/domain";
 import { DEFAULT_THAILAND_CENTER } from "../draft-storage";
 import { circleBounds, circlePolygon } from "../map-geometry";
@@ -65,6 +66,7 @@ export default function Step3LocationMap({
   focusBounds,
   onPinChange,
 }: Step3LocationMapProps) {
+  const { t } = useI18n();
   const lat = pin?.lat;
   const lng = pin?.lng;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -269,7 +271,7 @@ export default function Step3LocationMap({
         <button
           type="button"
           onClick={handleFallbackMapClick}
-          aria-label="แตะบนแผนที่เพื่อปักหมุดตำแหน่งของคุณ"
+          aria-label={t.step3.mapTapLabel}
           className="absolute inset-0 flex size-full cursor-crosshair items-center justify-center overflow-hidden text-left"
         >
           {/* ลายเส้นถนนจำลองตาม Figma เมื่อแผนที่จริงยังไม่พร้อม */}

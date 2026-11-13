@@ -46,7 +46,7 @@
   3. `injuredCount` (number, 0–99, `sensitive: true`): จำนวนผู้บาดเจ็บ [บังคับ]
 - **สัญญาณอันตราย:**
   - สัญญาณอันตรายสากล
-  - `TRAPPED_IN_VEHICLE`: มีผู้ติดค้างอัดก๊อปปี้ในยานพาหนะ (ที่มา: สคร.7 https://ddc.moph.go.th/odpc7/news.php?deptcode=odpc7&news=23085)
+  - `TRAPPED_IN_VEHICLE`: มีผู้ติดค้างอยู่ในยานพาหนะ (ที่มา: สคร.7 https://ddc.moph.go.th/odpc7/news.php?deptcode=odpc7&news=23085)
 - **คำแนะนำระหว่างรอทีม:**
   1. ห้ามเคลื่อนย้ายผู้บาดเจ็บเองโดยไม่จำเป็น เพราะอาจทำให้กระดูกคอหรือไขสันหลังบาดเจ็บรุนแรงขึ้น (ที่มา: สคร.7 https://ddc.moph.go.th/odpc7/news.php?deptcode=odpc7&news=23085)
   2. เปิดไฟฉุกเฉินหรือวางสิ่งกีดขวางเตือนระยะไกล ป้องกันการเกิดอุบัติเหตุซ้ำซ้อน (ที่มา: สคร.7 https://ddc.moph.go.th/odpc7/news.php?deptcode=odpc7&news=23085)

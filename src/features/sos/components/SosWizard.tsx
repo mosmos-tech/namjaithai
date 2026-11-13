@@ -48,6 +48,9 @@ import { Step2Details, type PeopleGroupKey } from "./Step2Details";
 import { Step3Location } from "./Step3Location";
 import { Step4Needs } from "./Step4Needs";
 import { Step5Contact } from "./Step5Contact";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { LanguageSwitch } from "../../../components/public/LanguageSwitch";
+import { format, localePath } from "../../../lib/i18n/locale";
 
 /**
  * โครงฟอร์มขอความช่วยเหลือ SOS 5 ขั้น (เรียงใหม่ใน TF-66):
@@ -71,6 +74,7 @@ export function SosWizard() {
   const enabledIncidents = useEnabledIncidentTypes();
   // TF-68: ก่อน hydrate เสร็จ ปุ่มในฟอร์มกดแล้วการกดหายเงียบ จึงยังไม่แสดงฟอร์ม (แถบบนที่มีปุ่มโทร 1669 แสดงตลอด)
   const hydrated = useHydrated();
+  const { t, locale } = useI18n();
   // ตรวจว่าประเภทที่เลือกยังเปิดรับแจ้งอยู่ เฉพาะเมื่อรู้รายการจริงแล้ว (ตอนออฟไลน์ให้เซิร์ฟเวอร์ตรวจตอนส่ง)
   const knownEnabledTypes =
     enabledIncidents.source === "network" || enabledIncidents.source === "cache"
@@ -150,13 +154,13 @@ export function SosWizard() {
       return patch.atScene === undefined ? withType : { ...withType, atScene: patch.atScene };
     });
     if (step1Attempted) {
-      setStep1Errors(validateStep1Draft(next, knownEnabledTypes).errors);
+      setStep1Errors(validateStep1Draft(next, knownEnabledTypes, t.sos).errors);
     }
   }
 
   function handleStep1Next() {
     setStep1Attempted(true);
-    const check = validateStep1Draft(draft, knownEnabledTypes);
+    const check = validateStep1Draft(draft, knownEnabledTypes, t.sos);
     setStep1Errors(check.errors);
 
     if (!check.valid) {
@@ -186,7 +190,7 @@ export function SosWizard() {
       return merged;
     });
     if (step2Attempted) {
-      setStep2Errors(validateStep2Draft(next).errors);
+      setStep2Errors(validateStep2Draft(next, t.sos).errors);
     }
   }
 
@@ -219,7 +223,7 @@ export function SosWizard() {
     });
 
     if (step2Attempted) {
-      setStep2Errors(validateStep2Draft(next).errors);
+      setStep2Errors(validateStep2Draft(next, t.sos).errors);
     }
   }
 
@@ -229,13 +233,13 @@ export function SosWizard() {
       [group]: nextValue,
     }));
     if (step2Attempted) {
-      setStep2Errors(validateStep2Draft(next).errors);
+      setStep2Errors(validateStep2Draft(next, t.sos).errors);
     }
   }
 
   function handleStep2Next() {
     setStep2Attempted(true);
-    const check = validateStep2Draft(draft);
+    const check = validateStep2Draft(draft, t.sos);
     setStep2Errors(check.errors);
 
     if (!check.valid) {
@@ -252,34 +256,34 @@ export function SosWizard() {
   function handleGpsPosition(coords: { latitude: number; longitude: number; accuracy?: number }) {
     const next = updateDraft((prev) => applyGpsPositionToDraft(prev, coords));
     if (step3Attempted) {
-      setStep3Errors(validateStep3Draft(next).errors);
+      setStep3Errors(validateStep3Draft(next, t.sos).errors);
     }
   }
 
   function handleManualPin(coords: { lat: number; lng: number }, source?: ManualLocationSource) {
     const next = updateDraft((prev) => applyManualPinToDraft(prev, coords, source));
     if (step3Attempted) {
-      setStep3Errors(validateStep3Draft(next).errors);
+      setStep3Errors(validateStep3Draft(next, t.sos).errors);
     }
   }
 
   function handleAutoFillArea(area: LocatedArea) {
     const next = updateDraft((prev) => applyLocatedAreaToDraft(prev, area));
     if (step3Attempted) {
-      setStep3Errors(validateStep3Draft(next).errors);
+      setStep3Errors(validateStep3Draft(next, t.sos).errors);
     }
   }
 
   function handleUpdateStep3Field(patch: Partial<SosDraft>) {
     const next = updateDraft((prev) => ({ ...prev, ...patch }));
     if (step3Attempted) {
-      setStep3Errors(validateStep3Draft(next).errors);
+      setStep3Errors(validateStep3Draft(next, t.sos).errors);
     }
   }
 
   function handleStep3Next() {
     setStep3Attempted(true);
-    const check = validateStep3Draft(draft);
+    const check = validateStep3Draft(draft, t.sos);
     setStep3Errors(check.errors);
 
     if (!check.valid) {
@@ -303,7 +307,7 @@ export function SosWizard() {
     }));
 
     if (step4Attempted) {
-      setStep4Errors(validateStep4Draft(next).errors);
+      setStep4Errors(validateStep4Draft(next, t.sos).errors);
     }
   }
 
@@ -314,13 +318,13 @@ export function SosWizard() {
     }));
 
     if (step4Attempted) {
-      setStep4Errors(validateStep4Draft(next).errors);
+      setStep4Errors(validateStep4Draft(next, t.sos).errors);
     }
   }
 
   function handleStep4Next() {
     setStep4Attempted(true);
-    const check = validateStep4Draft(draft);
+    const check = validateStep4Draft(draft, t.sos);
     setStep4Errors(check.errors);
 
     if (!check.valid) {
@@ -344,7 +348,7 @@ export function SosWizard() {
     }));
 
     if (step5Attempted) {
-      setStep5Errors(validateStep5Draft(next).errors);
+      setStep5Errors(validateStep5Draft(next, t.sos).errors);
     }
   }
 
@@ -358,7 +362,7 @@ export function SosWizard() {
     }));
 
     if (step5Attempted) {
-      setStep5Errors(validateStep5Draft(next).errors);
+      setStep5Errors(validateStep5Draft(next, t.sos).errors);
     }
   }
 
@@ -372,7 +376,7 @@ export function SosWizard() {
     }));
 
     if (step5Attempted) {
-      setStep5Errors(validateStep5Draft(next).errors);
+      setStep5Errors(validateStep5Draft(next, t.sos).errors);
     }
   }
 
@@ -393,6 +397,7 @@ export function SosWizard() {
 
     try {
       const result = await submitSosDraft({
+        text: t.sos,
         draft,
         inFlightRef: isSubmittingRef,
       });
@@ -462,8 +467,8 @@ export function SosWizard() {
         } catch {
           setSubmitError(
             result.status === "photo_pending"
-              ? `คำขอ ${result.caseCode} ถึงระบบแล้ว แต่ยังส่งรูปไม่ได้ กรุณากดส่งอีกครั้งหรือติดต่อ 1669 / 1784`
-              : "บันทึกคำขอรอส่งไม่สำเร็จ กรุณาเปิดพื้นที่เก็บข้อมูลหรือติดต่อ 1669 / 1784",
+              ? format(t.wizard.photoPendingError, { code: result.caseCode })
+              : t.wizard.offlineSaveFailed,
           );
         }
         return;
@@ -511,7 +516,7 @@ export function SosWizard() {
   function handleGoToStep(targetStep: SosStepNumber) {
     // ตรวจความครบถ้วนของขั้นก่อนหน้าเมื่อผู้ใช้กดข้ามไปขั้นถัดไป
     if (targetStep > 1) {
-      const check1 = validateStep1Draft(draft, knownEnabledTypes);
+      const check1 = validateStep1Draft(draft, knownEnabledTypes, t.sos);
       if (!check1.valid) {
         setStep1Attempted(true);
         setStep1Errors(check1.errors);
@@ -524,7 +529,7 @@ export function SosWizard() {
 
     // ถ้าจะข้ามไปขั้นที่ 3–5 ต้องตอบรายละเอียดเหตุในขั้นที่ 2 ก่อน
     if (targetStep > 2) {
-      const check2 = validateStep2Draft(draft);
+      const check2 = validateStep2Draft(draft, t.sos);
       if (!check2.valid) {
         setStep2Attempted(true);
         setStep2Errors(check2.errors);
@@ -537,7 +542,7 @@ export function SosWizard() {
 
     // ถ้าจะข้ามไปขั้นที่ 4–5 ต้องมีตำแหน่งในขั้นที่ 3 ก่อน
     if (targetStep > 3) {
-      const check3 = validateStep3Draft(draft);
+      const check3 = validateStep3Draft(draft, t.sos);
       if (!check3.valid) {
         setStep3Attempted(true);
         setStep3Errors(check3.errors);
@@ -549,7 +554,7 @@ export function SosWizard() {
     }
 
     if (targetStep > 4 && draft.currentStep === 4) {
-      const check4 = validateStep4Draft(draft);
+      const check4 = validateStep4Draft(draft, t.sos);
       if (!check4.valid) {
         setStep4Attempted(true);
         setStep4Errors(check4.errors);
@@ -584,7 +589,11 @@ export function SosWizard() {
 
         {/* การ์ดฟอร์ม: มือถือเต็มจอ จอคอมเป็นการ์ดขาวมีขอบ */}
         <div className="lg:border-border-default lg:bg-bg-surface flex flex-col gap-6 px-6 pt-7 pb-10 lg:gap-10 lg:rounded-[14px] lg:border lg:px-14 lg:py-12">
-          <SosProgressBar currentStep={draft.currentStep} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SosProgressBar currentStep={draft.currentStep} />
+            {/* TF-63: ลิงก์ธรรมดา กดได้ก่อน hydrate */}
+            <LanguageSwitch locale={locale} path="/request" label={t.common.languageSwitchLabel} />
+          </div>
           {!hydrated && <HydrationPending emergencyHelp />}
 
           {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
@@ -596,14 +605,14 @@ export function SosWizard() {
             >
               <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
               <div>
-                <p className="font-heading font-bold">ส่งคำขอความช่วยเหลือสำเร็จ</p>
+                <p className="font-heading font-bold">{t.wizard.successTitle}</p>
                 <p className="mt-0.5">{submitSuccessMessage}</p>
                 {hasSentDetails && (
                   <Link
-                    href="/sos/sent"
+                    href={localePath("/sos/sent", locale)}
                     className="mt-2 inline-flex min-h-12 items-center font-semibold underline"
                   >
-                    ดูรายละเอียดการแจ้งและติดตามเคส
+                    {t.wizard.successTrackLink}
                   </Link>
                 )}
               </div>
@@ -700,7 +709,7 @@ export function SosWizard() {
                 healthConsent={draft.healthConsent}
                 onConsentChange={(field, value) => {
                   const next = updateDraft((prev) => ({ ...prev, [field]: value }));
-                  if (step5Attempted) setStep5Errors(validateStep5Draft(next).errors);
+                  if (step5Attempted) setStep5Errors(validateStep5Draft(next, t.sos).errors);
                 }}
                 errors={step5Errors}
                 isSubmitting={isSubmitting}

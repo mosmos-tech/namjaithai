@@ -11,6 +11,8 @@ import {
 import { rememberSentCase } from "../sent-case";
 import type { IncidentType } from "@/lib/domain/incidents/types";
 import { buildSosSmsLinkFromJson } from "@/lib/domain/sms-format";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { format, localePath } from "../../../lib/i18n/locale";
 
 // TF-36: เบอร์ซิมในเครื่อง SMS gateway — ไม่ได้ตั้ง = ปุ่มเปิดแอปข้อความแบบไม่มีเบอร์ (ส่งให้ญาติเอง)
 const SMS_GATEWAY_NUMBER = process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER?.trim() ?? "";
@@ -26,6 +28,10 @@ async function registerBackgroundSync() {
 }
 
 export function OfflineSosSupport() {
+  const { t, locale } = useI18n();
+  const o = t.offline;
+  // ข้อความ error จากเซิร์ฟเวอร์เป็นภาษาไทย — หน้าอังกฤษใช้ข้อความกลาง
+  const serverText = (text: string | undefined) => (locale === "th" ? text : undefined);
   const [item, setItem] = useState<OfflineSos | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -181,11 +187,7 @@ export function OfflineSosSupport() {
           onClick={() => setOpen(true)}
           className={`w-full px-4 py-3 text-center text-lg font-bold text-white ${blocked ? "bg-red-700" : "bg-orange-600"}`}
         >
-          {blocked
-            ? "ส่งคำขอไม่สำเร็จ — กดดูวิธีขอความช่วยเหลือ"
-            : item.caseReceived
-              ? "ส่งคำขอแล้ว กำลังส่งรูป — กดดูรายละเอียด"
-              : "มี 1 คำขอรอส่ง — กดดูรายละเอียด"}
+          {blocked ? o.barBlocked : item.caseReceived ? o.barPhotos : o.barPending}
         </button>
       )}
       {open && (
@@ -195,40 +197,34 @@ export function OfflineSosSupport() {
           <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center gap-5 px-5 py-8 text-center">
             {blocked ? (
               <>
-                <h1 className="text-3xl font-bold text-red-800">
-                  ส่งคำขอไม่สำเร็จ — ยังไม่ถึงทีมกู้ภัย
-                </h1>
+                <h1 className="text-3xl font-bold text-red-800">{o.blockedTitle}</h1>
                 <p role="alert" className="text-lg font-bold text-red-900">
-                  {item.error ?? "ระบบรับคำขอนี้ไม่ได้"}
+                  {serverText(item.error) ?? o.blockedDefaultError}
                 </p>
-                <p className="text-lg text-red-950">
-                  กรุณาโทรสายด่วนหรือส่ง SMS ขอความช่วยเหลือทันที
-                </p>
+                <p className="text-lg text-red-950">{o.blockedHelp}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <a className={`${button} bg-red-700 text-white`} href="tel:1669">
-                    โทร 1669
+                    {t.common.call1669}
                   </a>
                   <a className={`${button} bg-red-700 text-white`} href="tel:1784">
-                    โทร 1784
+                    {o.call1784}
                   </a>
                 </div>
                 <a
                   className={`${button} border-2 border-red-700 bg-white text-red-900`}
                   href={sms.href}
                 >
-                  ส่งทาง SMS
+                  {o.sendBySms}
                 </a>
                 <p className="-mt-3 text-sm text-red-950">
-                  {sms.toSystem
-                    ? "ใช้ได้แม้ไม่มีเน็ต กดส่งข้อความโดยไม่ต้องแก้ ระบบจะตอบรหัสเคสกลับ"
-                    : "เปิดแอปข้อความพร้อมพิกัด เลือกส่งให้ญาติหรือคนที่ช่วยได้"}
+                  {sms.toSystem ? o.smsToSystemHint : o.smsToContactHint}
                 </p>
                 <button
                   className={`${button} border-2 border-red-700 bg-white text-red-900 disabled:opacity-60`}
                   disabled={busy}
                   onClick={() => void send(true)}
                 >
-                  {busy ? "กำลังลองส่ง…" : "ลองส่งอีกครั้ง"}
+                  {busy ? o.retrying : o.retry}
                 </button>
                 <button
                   className="min-h-14 underline"
@@ -239,36 +235,35 @@ export function OfflineSosSupport() {
                     });
                   }}
                 >
-                  ลบคำขอนี้แล้วกรอกใหม่
+                  {o.discard}
                 </button>
                 <button className="min-h-14 underline" onClick={() => setOpen(false)}>
-                  กลับไปหน้าเว็บ
+                  {o.backToSite}
                 </button>
               </>
             ) : pending ? (
               <>
                 <h1 className="text-3xl font-bold text-orange-900">
-                  {item.caseReceived
-                    ? "ส่งคำขอถึงระบบแล้ว — กำลังส่งรูป"
-                    : "บันทึกไว้ในเครื่องแล้ว — ยังไม่ถึงทีมกู้ภัย"}
+                  {item.caseReceived ? o.pendingPhotosTitle : o.pendingTitle}
                 </h1>
-                <p className="text-lg text-orange-950">
-                  ระบบจะลองส่งเมื่อกลับมาออนไลน์ หากต้องการความช่วยเหลือด่วนกรุณาโทรสายด่วน
-                </p>
-                {item.caseReceived && <p className="font-semibold">รหัสเคส: {item.caseCode}</p>}
-                {ios && (
-                  <p className="font-bold text-orange-950">เปิดหน้านี้ค้างไว้จนกว่าจะส่งสำเร็จ</p>
+                <p className="text-lg text-orange-950">{o.pendingHelp}</p>
+                {item.caseReceived && (
+                  <p className="font-semibold">
+                    {format(o.caseCode, { code: item.caseCode ?? "" })}
+                  </p>
                 )}
+                {ios && <p className="font-bold text-orange-950">{o.keepOpen}</p>}
                 <p className="text-orange-950">
-                  ลองส่งล่าสุด:{" "}
-                  {new Date(item.lastAttempt).toLocaleString("th-TH", {
-                    dateStyle: "short",
-                    timeStyle: "short",
+                  {format(o.lastAttempt, {
+                    time: new Date(item.lastAttempt).toLocaleString(
+                      locale === "en" ? "en-GB" : "th-TH",
+                      { dateStyle: "short", timeStyle: "short" },
+                    ),
                   })}
                 </p>
                 {item.error && (
                   <p role="alert" className="font-bold text-red-800">
-                    {item.error} กรุณาโทรสายด่วนหากยังส่งไม่ได้
+                    {format(o.errorSuffix, { error: serverText(item.error) ?? o.genericError })}
                   </p>
                 )}
                 <button
@@ -276,44 +271,40 @@ export function OfflineSosSupport() {
                   disabled={busy}
                   onClick={() => void send(true)}
                 >
-                  {busy ? "กำลังลองส่ง…" : "ลองส่งอีกครั้ง"}
+                  {busy ? o.retrying : o.retry}
                 </button>
                 <a
                   className={`${button} border-2 border-orange-700 bg-white text-orange-900`}
                   href={sms.href}
                 >
-                  ส่งทาง SMS
+                  {o.sendBySms}
                 </a>
                 <p className="-mt-3 text-sm text-orange-950">
-                  {sms.toSystem
-                    ? "ใช้ได้แม้ไม่มีเน็ต กดส่งข้อความโดยไม่ต้องแก้ ระบบจะตอบรหัสเคสกลับ"
-                    : "เปิดแอปข้อความพร้อมพิกัด เลือกส่งให้ญาติหรือคนที่ช่วยได้"}
+                  {sms.toSystem ? o.smsToSystemHint : o.smsToContactHint}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <a className={`${button} bg-red-700 text-white`} href="tel:1669">
-                    โทร 1669
+                    {t.common.call1669}
                   </a>
                   <a className={`${button} bg-red-700 text-white`} href="tel:1784">
-                    โทร 1784
+                    {o.call1784}
                   </a>
                 </div>
                 <button className="min-h-12 underline" onClick={() => setOpen(false)}>
-                  กลับไปหน้าเว็บ
+                  {o.backToSite}
                 </button>
               </>
             ) : (
               <>
-                <h1 className="text-3xl font-bold text-green-900">
-                  ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส
-                </h1>
-                <p className="text-lg">รหัสเคสของคุณ</p>
+                <h1 className="text-3xl font-bold text-green-900">{o.sentTitle}</h1>
+                <p className="text-lg">{o.yourCaseCode}</p>
                 <p className="font-mono text-4xl font-bold" aria-live="polite">
                   {item.caseCode}
                 </p>
-                <p>โปรดจดรหัสเคสและเปิดเสียงโทรศัพท์ไว้</p>
+                <p>{o.noteCaseCode}</p>
                 {item.photoWarning && (
                   <p role="alert" className="font-semibold text-amber-900">
-                    {item.photoWarning}
+                    {serverText(item.photoWarning) ?? t.sos.submit.photoFailed}
                   </p>
                 )}
                 <button
@@ -325,21 +316,20 @@ export function OfflineSosSupport() {
                     });
                   }}
                 >
-                  รับทราบ
+                  {o.acknowledge}
                 </button>
                 <a
-                  href="/sos/sent"
+                  href={localePath("/sos/sent", locale)}
                   className={`${button} border-2 border-green-700 bg-white text-green-900`}
                   onClick={(event) => {
                     event.preventDefault();
                     void clearSentOfflineSos(item.id).then(() => {
                       // The same component runs in both the Pages Router and the App Router.
-                      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-                      window.location.assign("/sos/sent");
+                      window.location.assign(localePath("/sos/sent", locale));
                     });
                   }}
                 >
-                  ดูรายละเอียดและติดตามเคส
+                  {o.viewAndTrack}
                 </a>
               </>
             )}
