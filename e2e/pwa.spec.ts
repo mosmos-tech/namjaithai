@@ -1,7 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
+import { saveEvidence } from "./helpers/evidence";
 import { gzipSync } from "node:zlib";
 import { goToStep5 } from "./helpers/sos";
-import { adminDb, randomPhone } from "./helpers/db";
+import { adminDb, closeTestCases, randomPhone } from "./helpers/db";
 
 async function offlineReady(page: Page) {
   await page.goto("/");
@@ -583,7 +584,9 @@ test("TF-15 ส่งคิวที่ยินยอมแล้วเข้�
   await page.getByRole("radio", { name: "อยู่ที่จุดเกิดเหตุ", exact: true }).click();
   await goToStep5(page);
   await page.evaluate(() => {
-    const key = "namjaithai-sos-draft-v1";
+    // TF-39: ต้องเป็น key ปัจจุบัน (v2) — เดิมเขียนลง v1 ที่ฟอร์มไม่อ่านแล้ว พิกัดสุ่มจึงไม่ถูกใช้
+    // ทุกรอบส่งที่จุดเดิม รอบที่สองชนการตรวจเคสซ้ำ ("พบเคสที่ยังเปิดอยู่ใกล้ตำแหน่งของคุณ") รันซ้ำไม่ได้
+    const key = "namjaithai-sos-draft-v2";
     const draft = JSON.parse(localStorage.getItem(key) ?? "{}");
     draft.lat = 14 + Math.random() * 0.4;
     draft.lng = 100 + Math.random() * 0.4;
@@ -628,6 +631,7 @@ test("TF-15 ส่งคิวที่ยินยอมแล้วเข้�
   await expect(page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" })).toBeVisible(
     { timeout: 30000 },
   );
+  await saveEvidence(page, "5-offline-queue-sent", test.info());
   const result = await db
     .from("cases")
     .select("id,case_code,consent_version,consented_at,health_consented_at")
@@ -645,4 +649,5 @@ test("TF-15 ส่งคิวที่ยินยอมแล้วเข้�
   const stored = await db.storage.from("case-media").download(media.data![0].storage_path);
   expect(stored.error).toBeNull();
   await expect(page.getByText(result.data![0].case_code)).toBeVisible();
+  await closeTestCases([result.data![0].id]);
 });

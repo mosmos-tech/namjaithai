@@ -7,6 +7,7 @@ import {
 } from "@playwright/test";
 import { applySession, createAccount, deleteAccount, type TestAccount } from "./helpers/accounts";
 import { adminDb, closeTestCases, createCaseViaApi, randomPhone, stepTestCase } from "./helpers/db";
+import { saveEvidence } from "./helpers/evidence";
 import { goToStep5, openFreshSosForm } from "./helpers/sos";
 
 /**
@@ -54,12 +55,15 @@ test.beforeAll(async ({}, testInfo) => {
   const prefix = `TF27${testInfo.project.name === "desktop" ? "D" : "M"}`;
   tag = `${prefix}${crypto.randomUUID().slice(0, 4)}`;
 
-  // ปิดเคสค้างของรอบก่อนในจังหวัดทดสอบ (case_events เป็น append-only จึงปิดแทนลบ — TF-26 ปิดผ่าน RPC ของระบบ)
+  // ปิดเคสที่ยังเปิดอยู่ทั้งหมดในจังหวัดทดสอบ (case_events เป็น append-only จึงปิดแทนลบ — TF-26 ปิดผ่าน RPC ของระบบ)
+  // TF-39: เดิมปิดเฉพาะเคสที่ขึ้นต้นด้วย prefix — เคสเปิดค้างอื่นใกล้ mapPoint (รอบที่ถูกหยุดกลางคัน/ทดสอบมือ)
+  // ถูกรวมกลุ่มกับเคสใหม่บนแผนที่ (cluster) จนไม่มีหมุดเดี่ยวให้เห็น test ล้มทั้งที่ระบบทำงานถูก
+  // จังหวัดนี้ใช้เฉพาะไฟล์นี้ (desktop/mobile แยกกัน) จึงปิดทั้งจังหวัดได้ไม่กระทบ test อื่น
   const { data: leftovers } = await db
     .from("cases")
     .select("id")
     .eq("province", province)
-    .like("landmark", `${prefix}%`)
+    .eq("is_demo", false)
     .in("status", ["NEW", "ACCEPTED", "EN_ROUTE", "ON_SITE", "AWAITING_CONFIRMATION"])
     .throwOnError();
   await closeTestCases((leftovers ?? []).map((row) => row.id));
@@ -128,13 +132,21 @@ test.describe("TF-27 อัปเดตแบบเรียลไทม์", ()
 
     // 1) แผนที่กู้ภัย (/rescue/map)
     await openAsRescuer(page, context, testInfo.project.name, "/rescue/map");
-    await expect(page.getByTestId("rescue-map-container")).toBeVisible();
+    // หน้าจอกู้ภัยพร้อมจริงก่อนเริ่มนับ: แผนที่สร้าง source/layer หมุดเสร็จ และ Realtime เชื่อมแล้ว
+    // (TF-39: เดิมรอแค่กล่องแผนที่ขึ้น บางครั้งเริ่มนับ 3 วิทั้งที่แผนที่ยังโหลดไม่เสร็จ)
+    await expect(page.getByTestId("rescue-map-container")).toHaveAttribute(
+      "data-map-ready",
+      "true",
+      { timeout: 15_000 },
+    );
     await expect(page.getByTestId("rescue-live-status")).toHaveAttribute(
       "data-live-mode",
       "realtime",
       { timeout: 15_000 },
     );
 
+    // TF-39 เกณฑ์ขอบเขตข้อ 1: วัดเวลาจริงตั้งแต่ส่ง SOS จนหมุดขึ้นบนแผนที่ ต้องไม่เกิน 3 วินาที
+    const submittedAt = Date.now();
     const mapCase = await createCaseViaApi(baseURL!, {
       lat: mapPoint.lat,
       lng: mapPoint.lng,
@@ -146,6 +158,11 @@ test.describe("TF-27 อัปเดตแบบเรียลไทม์", ()
 
     const pin = page.getByTestId(`map-pin-${mapCase.caseCode}`);
     await expect(pin).toBeVisible({ timeout: 3_000 });
+    const pinMs = Date.now() - submittedAt;
+    testInfo.annotations.push({ type: "SOS → หมุดบนแผนที่", description: `${pinMs} ms` });
+    console.log(`[TF-39] ${testInfo.project.name} SOS → หมุดบนแผนที่ ${pinMs} ms`);
+    expect(pinMs, "ส่ง SOS จนหมุดขึ้นบนแผนที่กู้ภัย (ms)").toBeLessThanOrEqual(3_000);
+    await saveEvidence(page, "1-sos-pin-on-rescue-map", testInfo);
 
     // เปลี่ยนสถานะและความเร่งด่วนใน DB → สีและสถานะหมุดอัปเดตใน 3 วินาทีโดยไม่รีโหลดหน้า
     const { error: mapUpdateError } = await db

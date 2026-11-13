@@ -21,6 +21,11 @@ process.env.RETENTION_WORKER_SECRET ||= "tf44-local-e2e-secret-not-for-productio
 
 const PORT = 3000;
 
+// TF-39: CI และ npm run e2e:prod รันกับ production build (next start) — ไม่มีการ compile ตอนเปิดหน้าครั้งแรก
+// (dev server บน CI compile หน้า /track/[code] ครั้งแรก ~9 วิ ทำให้ test ที่เปิดหน้านั้นก่อนล้มเป็นบางครั้ง)
+// ต้อง npm run build ก่อน ด้วย .env.local ชุดเดียวกับที่ E2E ใช้ (global-setup ตรวจให้)
+const E2E_PRODUCTION = process.env.E2E_SERVER === "production";
+
 // TF-68: ห้ามรัน E2E ตอนเปิด npm run dev ค้างไว้ — server ที่เปิดเองไม่มีค่าทดสอบของ SMS (TF-36)
 // และอาจใช้ .env.local คนละชุด ทำให้ test ล้มแบบไม่เกี่ยวกับโค้ด จึงหยุดตั้งแต่แรกพร้อมบอกวิธีแก้
 // เช็กครั้งเดียวในโปรเซสหลัก (worker โหลด config ซ้ำตอนที่ server ของ test เปิดอยู่แล้ว)
@@ -66,6 +71,8 @@ export default defineConfig({
     video: "retain-on-failure",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
+    // production build ลงทะเบียน service worker (TF-41) ซึ่งทดสอบแยกในชุด e2e:pwa — ชุดนี้ปิดไว้ไม่ให้แคชปนผล
+    serviceWorkers: "block",
   },
 
   projects: [
@@ -81,7 +88,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "npm run dev",
+    command: E2E_PRODUCTION ? "npm run start" : "npm run dev",
     url: `http://localhost:${PORT}`,
     // TF-68: ไม่ใช้ server ที่เปิดค้างไว้ (เช็กพอร์ตด้านบนแล้ว) — ทุกรอบใช้ server ที่มีค่าทดสอบครบ
     reuseExistingServer: false,

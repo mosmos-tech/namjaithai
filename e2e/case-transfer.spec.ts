@@ -118,8 +118,6 @@ test.afterAll(async () => {
 });
 
 test("ส่งต่อ → ผู้แจ้งเห็นข้อความกลาง → หน่วยปลายทางกดรับ เคสย้ายหน่วย", async ({ browser }) => {
-  // เปิด 3 หน้าจอ (หน่วยเดิม ผู้แจ้ง หน่วยปลายทาง) ใน test เดียว ค่าเริ่มต้น 30 วิไม่พอบน CI
-  test.setTimeout(90_000);
   // รหัสรูปแบบจริง (FL-ปปดด-ลำดับ) หน้าติดตามของผู้แจ้งจึงเปิดได้
   const code = `FL-2611-59${String(Math.floor(Math.random() * 1e6)).padStart(6, "0")}`;
   const item = await acceptedCase(code);
@@ -168,8 +166,6 @@ test("ส่งต่อ → ผู้แจ้งเห็นข้อควา
   // ผู้แจ้ง: บอกว่ากำลังส่งต่อ แต่ไม่บอกชื่อหน่วยปลายทาง
   const reporter = await browser.newPage();
   await reporter.goto(`/track/${code}?t=${item.token}`);
-  // เปิดหน้าติดตามครั้งแรกของชุด: เครื่อง CI ที่ทำงานหนักโหลดสถานะเกิน 7 วิได้ — รอโหลดเสร็จก่อน
-  await expect(reporter.getByText("กำลังโหลดสถานะเคส…")).toHaveCount(0, { timeout: 30_000 });
   await expect(reporter.getByTestId("transfer-pending")).toContainText(
     "กำลังส่งต่อให้ทีมที่มีอุปกรณ์",
   );

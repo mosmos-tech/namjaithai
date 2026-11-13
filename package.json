@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:db": "supabase test db",
     "e2e": "playwright test",
+    "e2e:prod": "npm run build && E2E_SERVER=production playwright test",
     "e2e:pwa": "playwright test --config playwright.pwa.config.ts",
     "e2e:headed": "playwright test --headed --workers=1",
     "e2e:ui": "playwright test --ui",

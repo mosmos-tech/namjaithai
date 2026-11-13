@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { saveEvidence } from "./helpers/evidence";
 import { adminDb, randomPhone } from "./helpers/db";
 import {
   answerDangerQuestions,
@@ -84,6 +85,7 @@ test("TF-66: ส่ง SOS ไฟไหม้ครบ 5 ขั้น — คำ
   expect(response.status()).toBe(201);
   const { caseCode } = (await response.json()) as { caseCode: string };
   await expect(page.getByText(`รหัสเคสของคุณคือ ${caseCode}`)).toBeVisible({ timeout: 15_000 });
+  await saveEvidence(page, "6-non-flood-fire-sent", test.info());
 
   const { data: created } = await adminDb()
     .from("cases")

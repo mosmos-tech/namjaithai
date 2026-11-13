@@ -84,8 +84,10 @@ test("แอดมินเห็นการเปิดข้อมูลต�
   await page.getByLabel("ถึงวันที่").fill("2026-04-10");
   await page.getByRole("button", { name: "ค้นหา" }).click();
   const region = page.getByRole("region", { name: "รายการบันทึกการตรวจสอบ" });
-  await expect(region.getByText("เปิดดูข้อมูลติดต่อ")).toBeVisible();
+  // TF-39: รอผลที่กรองแล้วก่อน (แถวของเคสนี้ไม่ซ้ำกับใคร) — ระหว่างโหลด หน้ายังแสดงรายการเดิมที่ยังไม่กรอง
+  // ซึ่งมี "เปิดดูข้อมูลติดต่อ" ของ test อื่นที่รันพร้อมกันหลายแถว จน getByText เจอหลายตัวแล้วล้มทันที
   await expect(region.getByText(`เคส: ${caseCode}`, { exact: true })).toBeVisible();
+  await expect(region.getByText("เปิดดูข้อมูลติดต่อ")).toBeVisible();
   await expect(region.getByText("ระงับผู้ใช้")).toBeVisible();
   await expect(region.getByText("อนุมัติสมาชิก")).toBeVisible();
   await expect(region.getByText(ordinary.displayName, { exact: false })).toHaveCount(2);

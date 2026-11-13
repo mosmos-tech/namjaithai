@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { chromium, type FullConfig } from "@playwright/test";
 import { adminDb } from "./helpers/db";
 
@@ -41,11 +43,36 @@ function checkLocalEnv() {
 }
 
 /**
+ * TF-39: production build ฝังค่า NEXT_PUBLIC_* ไว้ตอน build — ถ้า build ด้วย URL/key คนละชุดกับ Supabase ที่ E2E ใช้
+ * เบราว์เซอร์จะส่ง key เก่าไป Realtime แล้วโดน MalformedJWT (TF-68) จึงตรวจว่า JS ที่ build แล้วมี URL และ key ชุดปัจจุบัน
+ */
+function checkProductionBuild() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const chunks = join(".next", "static", "chunks");
+  if (!existsSync(join(".next", "BUILD_ID")) || !existsSync(chunks)) {
+    throw new Error("E2E_SERVER=production แต่ยังไม่มี production build — รัน npm run build ก่อน (หรือใช้ npm run e2e:prod)");
+  }
+  const files = readdirSync(chunks, { recursive: true }).filter((f) => String(f).endsWith(".js"));
+  const embedded = files.some((file) => {
+    const js = readFileSync(join(chunks, String(file)), "utf8");
+    return js.includes(url!) && js.includes(key!);
+  });
+  if (!embedded) {
+    throw new Error(
+      "production build ใช้ Supabase URL/key คนละชุดกับ .env.local ตอนนี้ — รัน npm run build ใหม่ (หรือ npm run e2e:prod)",
+    );
+  }
+}
+
+/**
  * ก่อนรัน E2E ทุกครั้ง: ล้างตัวนับ rate limit ของการส่ง SOS/ติดตามเคส ในฐานข้อมูลในเครื่อง
  * ไม่งั้นรัน test ซ้ำหลายรอบใน 1 ชม. จะชนเพดาน IP ละ 20 เคส (TF-12) แล้วล้มแบบไม่เกี่ยวกับโค้ด
  */
 export default async function globalSetup(config: FullConfig) {
   checkLocalEnv();
+  const production = process.env.E2E_SERVER === "production";
+  if (production) checkProductionBuild();
   // จุดเริ่มของตารางพิกัด test รอบนี้ (ดู uniqueTestPoint) — worker ทุกตัวได้ค่าเดียวกันผ่าน env
   process.env.E2E_LOCATION_SEED ??= String(Math.floor(Math.random() * 1800 * 1800));
 
@@ -74,6 +101,8 @@ export default async function globalSetup(config: FullConfig) {
     throw new Error(`เตรียมประเภทเหตุทดสอบไม่สำเร็จ: ${enableError.message}`);
   }
 
+  // production build ไม่ต้อง compile ตอนเปิดหน้า จึงไม่ต้องเปิดหน้ารอไว้ก่อน
+  if (production) return restore;
   try {
     await warmUpPages(config.projects[0]?.use.baseURL ?? "http://localhost:3000");
   } catch (error) {

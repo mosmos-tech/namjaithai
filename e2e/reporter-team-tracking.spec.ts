@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { adminDb, closeTestCases, stepTestCase } from "./helpers/db";
+import { saveEvidence } from "./helpers/evidence";
 import { createAccount, type TestAccount } from "./helpers/accounts";
 
 /**
@@ -127,6 +128,18 @@ test("กำลังมา: เห็นหมุดทีมและเวล
   await expect(page.getByTestId("team-live-info")).toContainText("ห่างจากคุณ 1.8 กม.");
   await expect(page.getByTestId("team-call")).toHaveAttribute("href", `tel:${UNIT_PHONE}`);
   await expect(page.getByTestId("track-last-updated")).toContainText("อัปเดตล่าสุด");
+  // TF-39 เกณฑ์ขอบเขตข้อ 3: ชื่อหน่วยที่รับเคส และแถบ 5 ขั้น (กำลังมา = ผ่าน 2 ขั้น ขั้นที่ 3 กำลังดำเนินการ)
+  await expect(page.getByTestId("track-panel")).toContainText(`${tag} หน่วยกู้ภัย`);
+  await expect(
+    page.getByRole("list", { name: "ขั้นตอนการช่วยเหลือ" }).getByRole("listitem"),
+  ).toHaveText([
+    "รับแจ้ง (ผ่านแล้ว)",
+    "ทีมรับเคส (ผ่านแล้ว)",
+    "กำลังมา (กำลังดำเนินการ)",
+    "ถึงแล้ว (ยังไม่ถึง)",
+    "สำเร็จ (ยังไม่ถึง)",
+  ]);
+  await saveEvidence(page, "3-track-team-en-route", test.info());
   // คำแนะนำระหว่างรอ: อยู่ใต้แผงสถานะ/ETA (ไม่บังแผนที่) เปิดเป็นค่าเริ่มต้น และพับได้
   const advice = page.getByTestId("waiting-advice");
   await expect(advice).toHaveAttribute("open", "");

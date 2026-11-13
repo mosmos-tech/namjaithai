@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { saveEvidence } from "./helpers/evidence";
 import { adminDb, closeTestCases, randomPhone, uniqueTestPoint } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
 
@@ -202,6 +203,7 @@ test("ส่ง SOS น้ำท่วมภาษาอังกฤษสำเ
   const rescuer = await rescuerContext.newPage();
   await rescuer.goto(`/rescue/cases/${row!.id}`);
   await expect(rescuer.getByTestId("reporter-locale-badge")).toHaveText("ผู้แจ้งใช้ภาษาอังกฤษ");
+  await saveEvidence(rescuer, "9-english-reporter-badge", test.info());
   await expect(rescuer.getByText("ระดับน้ำรอบตัวคุณ")).toBeVisible();
   await rescuerContext.close();
 });

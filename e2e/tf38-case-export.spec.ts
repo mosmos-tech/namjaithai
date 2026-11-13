@@ -28,13 +28,14 @@ test("TF-38 แอดมินดาวน์โหลด CSV ตามตัว
     .select("id")
     .single()
     .throwOnError();
+  // TF-39: เคสทดสอบเป็นเคสที่ปิดแล้ว ไม่ไปโผล่ในรายการ/แผนที่ของกู้ภัยที่ test อื่นนับจำนวนอยู่
   const { data: cases } = await db
     .from("cases")
     .insert([
       {
         case_code: `TF38-${tag}-1`,
         urgency: "RED",
-        status: "NEW",
+        status: "RESOLVED",
         lat: 12.6111,
         lng: 102.1111,
         landmark: `TF38 จุดลับ ${tag}`,
@@ -48,7 +49,7 @@ test("TF-38 แอดมินดาวน์โหลด CSV ตามตัว
       {
         case_code: `TF38-${tag}-2`,
         urgency: "GREEN",
-        status: "NEW",
+        status: "RESOLVED",
         lat: 12.6,
         lng: 102.1,
         landmark: "TF38",
@@ -60,7 +61,7 @@ test("TF-38 แอดมินดาวน์โหลด CSV ตามตัว
       {
         case_code: `TF38-${tag}-DEMO`,
         urgency: "RED",
-        status: "NEW",
+        status: "RESOLVED",
         lat: 12.6,
         lng: 102.1,
         landmark: "TF38",
@@ -107,7 +108,7 @@ test("TF-38 แอดมินดาวน์โหลด CSV ตามตัว
   // เฉพาะน้ำท่วมของจังหวัดที่เลือก ไม่รวมเคสตัวอย่าง
   expect(lines).toEqual([
     HEADER,
-    `TF38-${tag}-1,${date} 09:00,น้ำท่วม,แดง,รอรับเคส,จันทบุรี,เมืองจันทบุรี,,,,,ไทย`,
+    `TF38-${tag}-1,${date} 09:00,น้ำท่วม,แดง,ช่วยเหลือสำเร็จ,จันทบุรี,เมืองจันทบุรี,,,,,ไทย`,
   ]);
   const text = lines.join("\n");
   for (const secret of [
