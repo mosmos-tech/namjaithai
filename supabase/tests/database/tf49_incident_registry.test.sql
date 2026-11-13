@@ -23,15 +23,16 @@ select is(
   'incident_types มีครบ 8 ประเภทตามลำดับในโค้ด'
 );
 select is(
-  (select string_agg(code, ',') from public.incident_types where is_enabled),
+  (select string_agg(code, ',' order by sort_order) from public.incident_types where is_enabled),
   'FLOOD',
-  'เปิดให้เลือกได้แค่ FLOOD จนกว่าเนื้อหาประเภทอื่นจะผ่าน TF-54'
+  'เปิดเฉพาะน้ำท่วมจนกว่าจะตรวจสอบประเภทเหตุอื่นครบ'
 );
 
 -- ---------- cases ----------
 select hasnt_column('public', 'cases', 'water_level', 'ลบคอลัมน์ water_level แล้ว ระดับน้ำอยู่ที่ details ที่เดียว');
 select is(
-  (select count(*)::int from public.cases where incident_type <> 'FLOOD'),
+  -- ไม่นับเคสตัวอย่างใน seed (TF-57 หน่วยโชว์มีหลายประเภทเหตุ)
+  (select count(*)::int from public.cases where incident_type <> 'FLOOD' and not is_demo),
   0,
   'เคสเดิมทั้งหมดเป็น FLOOD'
 );
@@ -68,6 +69,7 @@ select throws_ok(
 -- ---------- create_sos_case() ----------
 create function pg_temp.sos_payload(extra jsonb) returns jsonb language sql as $$
   select jsonb_build_object(
+    'consent', true, 'healthConsent', true, 'consentVersion', '2026-11-06',
     'urgency', 'YELLOW', 'triageReasons', '["CANNOT_SELF_EVACUATE"]'::jsonb, 'lat', 14.5, 'lng', 100.9, 'landmark', 'หน้าวัด',
     'phone', '0899990049', 'name', 'ทดสอบ TF-49', 'adults', 1, 'needs', '[]'::jsonb
   ) || extra

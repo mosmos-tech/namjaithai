@@ -1,11 +1,21 @@
 import { z } from "zod";
 import "./zod-locale";
 import { WaterLevel, Need } from "./enums";
-import { latSchema, lngSchema } from "./geo";
 import {
+  accuracyForLocationSource,
+  accuracyMSchema,
+  ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE,
+  isInaccurateGps,
+  latSchema,
+  lngSchema,
+  locationSourceSchema,
+} from "./geo";
+import {
+  FORBIDDEN_DETAIL_KEYS,
   INCIDENT_REGISTRY,
   IncidentType,
   UNIVERSAL_DANGER_SIGNS,
+  isQuestionVisible,
 } from "./incidents";
 
 const waterLevelValues = Object.values(WaterLevel) as [WaterLevel, ...WaterLevel[]];
@@ -16,7 +26,16 @@ const incidentTypeValues = Object.values(IncidentType) as [
 ];
 
 // เบอร์โทรไทย: มือถือ 06x-09x (10 หลัก) หรือบ้าน/สำนักงาน 02x-05x (9-10 หลัก)
-const thaiPhoneRegex = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
+export const THAI_PHONE_REGEX = /^(0[6-9]\d{8}|0[2-5]\d{7,8})$/;
+
+/**
+ * เบอร์ที่ผู้แจ้งพิมพ์ → รูปแบบที่ตรวจและเก็บ: ตัดช่องว่าง/ขีด แล้วแปลงรหัสประเทศ +66 เป็น 0
+ * "+66 81 234 5678" → "0812345678" · ไม่ใช่รูปแบบ +66 คืนค่าที่ตัดช่องว่างแล้ว (ให้ THAI_PHONE_REGEX ตัดสิน)
+ */
+export function normalizePhoneInput(raw: string): string {
+  const compact = raw.replace(/[\s\-]/g, "");
+  return compact.startsWith("+66") ? `0${compact.slice(3)}` : compact;
+}
 
 // สัญญาณอันตรายทั้งหมดจากทะเบียนประเภทเหตุ (TF-49 / TF-50 / TF-55)
 const allDangerSignKeys = Array.from(
@@ -52,7 +71,12 @@ export const step1Schema = z.object({
 export const step2Schema = z.object({
   lat: latSchema,
   lng: lngSchema,
-  accuracyM: z.number().optional(),
+  accuracyM: accuracyMSchema.optional(),
+  // TF-65: ไม่บังคับ เพราะร่างที่บันทึกก่อน TF-65 ไม่มีค่านี้ เคสจะเก็บเป็น null (ไม่ทราบ)
+  locationSource: locationSourceSchema.optional(),
+  // ที่อยู่ละเอียด (เก็บใน case_contacts เห็นเฉพาะทีมที่รับเคสและแอดมิน)
+  // บังคับเมื่อ GPS คลาดเคลื่อนเกิน 1000 ม. — ดู refine ท้าย sosSchema
+  addressLine: z.string().trim().max(300, "ที่อยู่ต้องไม่เกิน 300 ตัวอักษร").optional(),
   province: z.string().optional(),
   district: z.string().optional(),
   subdistrict: z.string().optional(),
@@ -108,14 +132,12 @@ export const step5Schema = z.object({
     .string({ error: "กรุณาระบุชื่อ" })
     .transform((s) => s.trim())
     .pipe(z.string().min(1, "กรุณาระบุชื่อ")),
-  // ตัดช่องว่างและขีดก่อนตรวจและเก็บ เพื่อรับ 081-234-5678 และเก็บเป็น 0812345678
+  // ตัดช่องว่างและขีด และแปลง +66 เป็น 0 ก่อนตรวจและเก็บ (TF-63) — รับ 081-234-5678 / +66 81 234 5678 เก็บเป็น 0812345678
   phone: z
     .string({ error: "กรุณาระบุเบอร์โทรศัพท์" })
-    .transform((s) => s.replace(/[\s\-]/g, ""))
+    .transform(normalizePhoneInput)
     .pipe(
-      z
-        .string()
-        .regex(thaiPhoneRegex, "กรุณาระบุเบอร์โทรศัพท์ไทยที่ถูกต้อง (เช่น 0812345678)"),
+      z.string().regex(THAI_PHONE_REGEX, "กรุณาระบุเบอร์โทรศัพท์ไทยที่ถูกต้อง (เช่น 0812345678)"),
     ),
   lineId: z.string().optional(),
   notes: z.string().max(500, "รายละเอียดเพิ่มเติมต้องไม่เกิน 500 ตัวอักษร").optional(),
@@ -128,19 +150,26 @@ export const sosSchema = step1Schema
   .merge(step3BaseSchema)
   .merge(step4BaseSchema)
   .merge(step5Schema)
+  .extend({
+    consent: z.literal(true, { error: "กรุณายินยอมก่อนส่งคำขอ" }),
+    healthConsent: z.literal(true, { error: "กรุณายินยอมให้ใช้ข้อมูลสุขภาพ" }),
+    // TF-63: ภาษาของฟอร์มที่ผู้แจ้งใช้ — คำตอบยังเป็นรหัสเดิม ค่านี้ใช้ทำป้ายฝั่งกู้ภัยและลิงก์ติดตาม
+    reporterLocale: z.enum(["th", "en"]).optional(),
+  })
   .refine((d) => d.adults + d.elderly + d.bedridden + d.children > 0, {
     message: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน",
     path: ["adults"],
   })
   .refine(
     (d) =>
-      !d.needs.includes(Need.OTHER) ||
-      (d.otherDetail?.trim().length ?? 0) > 0,
-    {
-      message: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ",
-      path: ["otherDetail"],
-    },
-  );
+      !isInaccurateGps(accuracyForLocationSource(d.locationSource, d.accuracyM)) ||
+      (d.addressLine?.length ?? 0) > 0,
+    { message: ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE, path: ["addressLine"] },
+  )
+  .refine((d) => !d.needs.includes(Need.OTHER) || (d.otherDetail?.trim().length ?? 0) > 0, {
+    message: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ",
+    path: ["otherDetail"],
+  });
 
 export type SosFormData = z.infer<typeof sosSchema>;
 export type Step1Data = z.infer<typeof step1Schema>;
@@ -148,3 +177,225 @@ export type Step2Data = z.infer<typeof step2Schema>;
 export type Step3Data = z.infer<typeof step3Schema>;
 export type Step4Data = z.infer<typeof step4Schema>;
 export type Step5Data = z.infer<typeof step5Schema>;
+
+// ── TF-51 / TF-54: ตรวจ details ตามประเภทเหตุด้วย Zod และแยกข้อมูลสุขภาพ ──────────────
+export function incidentDetailsSchema(incidentType: IncidentType) {
+  const def = INCIDENT_REGISTRY[incidentType];
+  const shape: Record<string, z.ZodTypeAny> = {};
+
+  for (const q of def.questions) {
+    let fieldSchema: z.ZodTypeAny;
+    if (q.kind === "choice") {
+      const optionValues = q.options.map((o) => o.value) as [string, ...string[]];
+      const baseEnum = z.enum(optionValues, {
+        error: `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`,
+      });
+      if (q.multiple) {
+        fieldSchema = z
+          .array(baseEnum, { error: `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง` })
+          .min(1, `กรุณาเลือกอย่างน้อย 1 ตัวเลือกสำหรับ "${q.label.th}"`);
+      } else {
+        fieldSchema = baseEnum;
+      }
+    } else if (q.kind === "number") {
+      fieldSchema = z
+        .number({ error: `กรุณาระบุ "${q.label.th}" เป็นตัวเลข` })
+        .int(`"${q.label.th}" ต้องเป็นจำนวนเต็ม`)
+        .min(q.min, `"${q.label.th}" ต้องไม่น้อยกว่า ${q.min}`)
+        .max(q.max, `"${q.label.th}" ต้องไม่เกิน ${q.max}`);
+    } else if (q.kind === "boolean") {
+      fieldSchema = z.boolean({ error: `กรุณาตอบคำถาม "${q.label.th}"` });
+    } else {
+      fieldSchema = z
+        .string({ error: `กรุณาระบุ "${q.label.th}"` })
+        .trim()
+        .max(q.maxLength, `"${q.label.th}" ต้องไม่เกิน ${q.maxLength} ตัวอักษร`);
+    }
+
+    // คำถามที่มี dependsOn จะไม่บังคับที่ระดับ object โดยตรง แต่จะตรวจผ่าน superRefine เมื่อเงื่อนไขตรง
+    const isAlwaysRequired = q.required && !q.dependsOn;
+    shape[q.key] = isAlwaysRequired ? fieldSchema : fieldSchema.optional();
+  }
+
+  // รองรับ legacy vehicleType เดี่ยวสำหรับ ROAD_ACCIDENT เพื่อความเข้ากันได้ย้อนหลัง
+  if (def.questions.some((q) => q.key === "vehicleTypes")) {
+    shape.vehicleType = z.string().optional();
+  }
+
+  return z
+    .strictObject(shape, {
+      error: `ข้อมูล details ไม่ตรงกับประเภทเหตุ ${def.label.th}`,
+    })
+    .superRefine((data, ctx) => {
+      const record = data as Record<string, unknown>;
+      for (const q of def.questions) {
+        if (q.dependsOn && q.required) {
+          if (isQuestionVisible(q, record)) {
+            const val = record[q.key];
+            if (
+              val === undefined ||
+              val === null ||
+              val === "" ||
+              (Array.isArray(val) && val.length === 0)
+            ) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `กรุณาตอบคำถาม "${q.label.th}"`,
+                path: [q.key],
+              });
+            }
+          }
+        }
+      }
+    });
+}
+
+export type IncidentDetailValue = string | number | boolean | string[];
+
+export interface ValidatedIncidentDetailsSuccess {
+  ok: true;
+  publicDetails: Record<string, IncidentDetailValue>;
+  sensitiveDetails: Record<string, IncidentDetailValue>;
+}
+
+export interface ValidatedIncidentDetailsError {
+  ok: false;
+  error: string;
+  fieldErrors: Record<string, string[]>;
+  fields: string[];
+}
+
+export type ValidatedIncidentDetailsResult =
+  | ValidatedIncidentDetailsSuccess
+  | ValidatedIncidentDetailsError;
+
+export function validateAndSplitIncidentDetails(
+  incidentType: IncidentType,
+  rawDetails: unknown,
+  topLevel?: {
+    waterLevel?: WaterLevel;
+    canSelfEvacuate?: boolean;
+    hasInjured?: boolean;
+  },
+): ValidatedIncidentDetailsResult {
+  if (
+    rawDetails !== undefined &&
+    (typeof rawDetails !== "object" || rawDetails === null || Array.isArray(rawDetails))
+  ) {
+    return {
+      ok: false,
+      error: "ข้อมูล details ต้องเป็น JSON Object",
+      fieldErrors: { details: ["ข้อมูล details ต้องเป็น JSON Object"] },
+      fields: ["details"],
+    };
+  }
+
+  const candidate: Record<string, unknown> = {
+    ...(rawDetails as Record<string, unknown> | undefined),
+  };
+
+  if (incidentType === IncidentType.FLOOD) {
+    if (candidate.canSelfEvacuate === undefined && topLevel?.canSelfEvacuate !== undefined) {
+      candidate.canSelfEvacuate = topLevel.canSelfEvacuate;
+    }
+    if (candidate.waterLevel === undefined && topLevel?.waterLevel !== undefined) {
+      candidate.waterLevel = topLevel.waterLevel;
+    }
+    if (candidate.hasInjured === undefined && topLevel?.hasInjured === true) {
+      candidate.hasInjured = true;
+    }
+  } else {
+    // ถ้าส่ง waterLevel มาที่ระดับบนสุดแต่ประเภทเหตุไม่ใช่ FLOOD ให้นำมาตรวจด้วยเพื่อตีกลับ 400
+    if (candidate.waterLevel === undefined && topLevel?.waterLevel !== undefined) {
+      candidate.waterLevel = topLevel.waterLevel;
+    }
+  }
+
+  // ความเข้ากันได้ย้อนหลังสำหรับ vehicleType -> vehicleTypes
+  const hadLegacyVehicleType = candidate.vehicleType !== undefined;
+  const hadVehicleTypes = candidate.vehicleTypes !== undefined;
+  if (hadLegacyVehicleType && !hadVehicleTypes) {
+    candidate.vehicleTypes = Array.isArray(candidate.vehicleType)
+      ? candidate.vehicleType
+      : [candidate.vehicleType];
+  }
+
+  // ล้างคำตอบของคำถามย่อยที่เงื่อนไข dependsOn ไม่เป็นจริงก่อนตรวจ schema
+  for (const q of INCIDENT_REGISTRY[incidentType].questions) {
+    if (q.dependsOn && !isQuestionVisible(q, candidate)) {
+      delete candidate[q.key];
+    }
+  }
+
+  const schema = incidentDetailsSchema(incidentType);
+  const parsed = schema.safeParse(candidate);
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string[]> = {};
+    const detailsMessages: string[] = [];
+
+    for (const issue of parsed.error.issues) {
+      const msg = issue.message || "ข้อมูล details ไม่ตรงกับประเภทเหตุ";
+      detailsMessages.push(msg);
+      if (issue.path.length > 0) {
+        const key = `details.${String(issue.path[0])}`;
+        fieldErrors[key] = [...(fieldErrors[key] ?? []), msg];
+      }
+    }
+
+    fieldErrors.details =
+      detailsMessages.length > 0
+        ? detailsMessages
+        : [`ข้อมูล details ไม่ตรงกับประเภทเหตุ ${INCIDENT_REGISTRY[incidentType].label.th}`];
+
+    return {
+      ok: false,
+      error: `ข้อมูล details ไม่ตรงกับประเภทเหตุ ${INCIDENT_REGISTRY[incidentType].label.th}`,
+      fieldErrors,
+      fields: Object.keys(fieldErrors),
+    };
+  }
+
+  const publicDetails: Record<string, IncidentDetailValue> = {};
+  const sensitiveDetails: Record<string, IncidentDetailValue> = {};
+  const data = parsed.data as Record<string, IncidentDetailValue | undefined>;
+
+  for (const q of INCIDENT_REGISTRY[incidentType].questions) {
+    const val = data[q.key];
+    if (val === undefined) continue;
+
+    // ถ้าคำถามมี dependsOn และเงื่อนไขไม่ตรง ให้ข้ามไม่บันทึกคำตอบเก่า
+    if (q.dependsOn && !isQuestionVisible(q, data as Record<string, unknown>)) {
+      continue;
+    }
+
+    if (q.sensitive || (FORBIDDEN_DETAIL_KEYS as readonly string[]).includes(q.key)) {
+      if (q.kind === "boolean") {
+        if (val === true) sensitiveDetails[q.key] = true;
+      } else if (q.kind === "number") {
+        if (typeof val === "number" && val > 0) sensitiveDetails[q.key] = val;
+      } else if (typeof val === "string" && val.length > 0) {
+        sensitiveDetails[q.key] = val;
+      } else if (Array.isArray(val) && val.length > 0) {
+        sensitiveDetails[q.key] = val;
+      }
+    } else {
+      if (q.key === "vehicleTypes" && hadLegacyVehicleType && !hadVehicleTypes) {
+        publicDetails.vehicleType = candidate.vehicleType as string;
+      } else if (typeof val === "string") {
+        const trimmed = val.trim();
+        if (trimmed.length > 0) publicDetails[q.key] = trimmed;
+      } else if (Array.isArray(val)) {
+        if (val.length > 0) publicDetails[q.key] = val;
+      } else {
+        publicDetails[q.key] = val;
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    publicDetails,
+    sensitiveDetails,
+  };
+}

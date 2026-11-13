@@ -1,6 +1,7 @@
 "use client";
 
 import { SOS_STEPS, formatStepProgressText, type SosStepNumber } from "../draft-storage";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
 
 /**
  * ความคืบหน้าของฟอร์ม SOS ตาม Figma
@@ -9,20 +10,21 @@ import { SOS_STEPS, formatStepProgressText, type SosStepNumber } from "../draft-
  *   ช่องที่ผ่าน/กำลังทำ สูง 8px สีน้ำเงิน ช่องที่ยังไม่ถึง สูง 4px สีเทา
  */
 export function SosProgressBar({ currentStep }: { currentStep: SosStepNumber }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col gap-[10px]">
       <p
         data-testid="sos-step-badge"
         className="text-primary-700 text-base leading-[1.4] font-medium"
       >
-        {formatStepProgressText(currentStep)}
+        {formatStepProgressText(currentStep, t.sos)}
       </p>
       <div
         role="progressbar"
         aria-valuemin={1}
         aria-valuemax={SOS_STEPS.length}
         aria-valuenow={currentStep}
-        aria-label={formatStepProgressText(currentStep)}
+        aria-label={formatStepProgressText(currentStep, t.sos)}
         className="hidden gap-2 lg:flex"
       >
         {SOS_STEPS.map(({ step }) => (

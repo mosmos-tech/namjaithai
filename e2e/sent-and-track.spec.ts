@@ -1,5 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import { adminDb, createCaseViaApi, type CreatedCase } from "./helpers/db";
+import {
+  adminDb,
+  createCaseViaApi,
+  randomPhone,
+  stepTestCase,
+  type CreatedCase,
+} from "./helpers/db";
+import { openFreshSosForm, goToStep5 } from "./helpers/sos";
 
 // F. /sos/sent · G. /track · H. /track/[code] (TF-13)
 
@@ -179,7 +186,7 @@ test.describe("/track/[code] หน้าสถานะเคส", () => {
   test("เคสใหม่: รอทีมรับเคส และไม่มีคำว่า กำลังมา (TF-13)", async ({ page }) => {
     await page.goto(`/track/${c.caseCode}?t=${c.trackingToken}`);
     await expect(page.getByText("รอทีมรับเคส")).toBeVisible();
-    await expect(page.getByText(/^ระหว่างรอ: ขึ้นที่สูง/)).toBeVisible();
+    await expect(page.getByText(/^ระหว่างรอ: เปิดเสียงโทรศัพท์/)).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).not.toContainText("กำลังมา");
     await expect(page.getByText(/ทีม(กู้ภัย)?กำลังมา/)).toHaveCount(0);
   });
@@ -205,14 +212,11 @@ test.describe("/track/[code] หน้าสถานะเคส", () => {
       })
       .select("id")
       .single();
-    await db
-      .from("cases")
-      .update({
-        status: "EN_ROUTE",
-        assigned_unit_id: unit!.id,
-        accepted_at: new Date().toISOString(),
-      })
-      .eq("case_code", c.caseCode);
+    // TF-26: เลื่อนทีละขั้น (ข้ามขั้น NEW → EN_ROUTE ไม่ได้)
+    await stepTestCase(c.caseCode, ["ACCEPTED", "EN_ROUTE"], {
+      assigned_unit_id: unit!.id,
+      accepted_at: new Date().toISOString(),
+    });
 
     await expect(page.getByRole("heading", { name: "ทีมกู้ภัยกำลังมาหาคุณ" })).toBeVisible({
       timeout: 32_000,
@@ -247,4 +251,59 @@ test.describe("/track/[code] หน้าสถานะเคส", () => {
     await page.goto(`/track/${c.caseCode}?t=${c.trackingToken}`);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
   });
+});
+
+test("TF-53 คำแนะนำกับสายด่วนตรงประเภท โดยไม่แสดงคำแนะนำน้ำท่วมให้เหตุไฟไหม้", async ({
+  page,
+  baseURL,
+}) => {
+  const sent = await createCaseViaApi(baseURL!);
+  await page.route("**/api/track/**", async (route) => {
+    const response = await route.fetch();
+    if (!response.ok()) return route.fulfill({ response });
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, incidentType: "FIRE" } });
+  });
+  await rememberSent(page, sent);
+  await page.evaluate((key) => {
+    const value = JSON.parse(sessionStorage.getItem(key)!);
+    value.incidentType = "FIRE";
+    sessionStorage.setItem(key, JSON.stringify(value));
+  }, SENT_KEY);
+  await page.reload();
+  const sentAdvice = page.getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" });
+  await expect(sentAdvice.getByRole("link", { name: /199/ })).toHaveAttribute("href", "tel:199");
+  await expect(sentAdvice).not.toContainText("หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม");
+  await page.goto(`/track/${sent.caseCode}?t=${sent.trackingToken}`);
+  const trackedAdvice = page.getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" });
+  await expect(trackedAdvice.getByRole("link", { name: /199/ })).toBeVisible();
+  await expect(trackedAdvice).not.toContainText("หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("TF-53 น้ำท่วมแสดงคำแนะนำและเบอร์ที่หน้าติดตาม", async ({ page, baseURL }) => {
+  const sent = await createCaseViaApi(baseURL!);
+  await page.goto(`/track/${sent.caseCode}?t=${sent.trackingToken}`);
+  const advice = page.getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" });
+  await expect(advice).toContainText("หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม");
+  await expect(advice.getByRole("link", { name: /1784/ })).toHaveAttribute("href", "tel:1784");
+});
+
+test("TF-53 ส่งฟอร์มจริงแล้วดูคำแนะนำและหน้าส่งสำเร็จได้", async ({ page }) => {
+  await openFreshSosForm(page);
+  await goToStep5(page);
+  await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ TF-53");
+  await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(randomPhone());
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+  await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
+  const advice = page.getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" });
+  await expect(advice).toContainText("หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม");
+  await page.getByRole("link", { name: "ดูรายละเอียดการแจ้งและติดตามเคส" }).click();
+  await expect(page).toHaveURL(/\/sos\/sent$/);
+  await expect(
+    page
+      .getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" })
+      .getByRole("link", { name: /1784/ }),
+  ).toBeVisible();
 });

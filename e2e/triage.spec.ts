@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { adminDb, createCaseViaApi, randomPhone } from "./helpers/db";
 import {
-  answerStep1,
+  answerDangerQuestions,
+  goToStep2,
   expectStep,
   nextButton,
   openFreshSosForm,
@@ -30,18 +31,21 @@ test("ส่งจากฟอร์มพร้อมสัญญาณอั�
   page,
 }) => {
   await openFreshSosForm(page);
-  await answerStep1(page, { dangerSigns: ["มีคนหมดสติ"], canSelfEvacuate: true });
+  await goToStep2(page);
+  await answerDangerQuestions(page, { dangerSigns: ["มีคนหมดสติ"], canSelfEvacuate: true });
   await page.getByRole("radio", { name: "ระดับข้อเท้า–เข่า" }).click();
   await nextButton(page).click();
-  await expectStep(page, 2);
+  await expectStep(page, 3);
   await seedLocationIntoDraft(page);
-  for (const step of [3, 4, 5]) {
+  for (const step of [4, 5]) {
     await nextButton(page).click();
     await expectStep(page, step);
   }
 
   await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ TF-55");
   await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(randomPhone());
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
   const responsePromise = page.waitForResponse(
     (r) => r.url().endsWith("/api/cases") && r.request().method() === "POST",
   );

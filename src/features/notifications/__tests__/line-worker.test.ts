@@ -27,6 +27,7 @@ function setup(response: Response | Error) {
         fetcher,
         token: "fake-channel-token",
         baseUrl: "https://example.test",
+        appEnv: "production",
       }),
   };
 }
@@ -58,6 +59,28 @@ describe("LINE status notification worker", () => {
       expect.objectContaining({ p_result: "SENT", p_lease_id: job.lease_id }),
     );
   });
+  it.each(["STALE_UNCLAIMED", "STALE_TEAM"] as const)(
+    "sends %s without a reporter tracking token",
+    async (kind) => {
+      const rpc = vi
+        .fn()
+        .mockResolvedValueOnce({ data: [{ ...job, kind, to_status: null }], error: null })
+        .mockResolvedValue({ data: null, error: null });
+      const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+      await deliverLineNotifications({
+        db: { rpc },
+        fetcher,
+        token: "fake-token",
+        baseUrl: "https://example.test",
+        appEnv: "production",
+      });
+      const message = JSON.parse(fetcher.mock.calls[0][1].body).messages[0].text as string;
+      expect(message).toContain(job.case_code);
+      expect(message).not.toContain(job.tracking_token);
+      expect(message).not.toContain("/track/");
+      expect(message).toContain(kind === "STALE_UNCLAIMED" ? "/admin/cases" : "/rescue/my-tasks");
+    },
+  );
   it.each([429, 500, 503])("retries transient HTTP %i failures", async (status) => {
     const { rpc, run } = setup(new Response("{}", { status }));
     await run();

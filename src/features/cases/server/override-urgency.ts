@@ -12,6 +12,7 @@ import { priorityScore, triageOverrideSchema, WaterLevel, type Urgency } from ".
 
 export interface OverrideCaseRow {
   urgency: Urgency;
+  incident_type?: import("../../../lib/domain").IncidentType;
   version: number;
   created_at: string;
   details: { waterLevel?: string } | null;
@@ -63,6 +64,7 @@ export async function overrideCaseUrgency(
   const score = priorityScore(
     {
       urgency: input.urgency,
+      incidentType: row.incident_type,
       waterLevel,
       bedridden: row.case_people?.bedridden ?? 0,
       elderly: row.case_people?.elderly ?? 0,

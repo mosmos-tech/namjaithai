@@ -1,18 +1,24 @@
 import { z } from "zod";
 import {
   sosSchema,
+  validateAndSplitIncidentDetails,
   priorityScore,
   computeTriage,
+  accuracyForLocationSource,
   IncidentType,
+  WaterLevel,
   duplicateResolutionSchema,
-  duplicateActionLabels,
+  duplicateOptionsFor,
   formatAdminDuplicateNotice,
+  SMS_CONSENT_VERSION,
   type SosFormData,
   type CaseStatus,
   type TriageReason,
   type Urgency,
   type DuplicateAction,
   type DuplicateCandidateMatch,
+  type DuplicateMatchReason,
+  type IncidentDetailValue,
 } from "../../../lib/domain";
 
 // คำตอบด้านสุขภาพไม่ส่งตรงๆ แต่รวมไว้ใน sensitive → ฐานข้อมูลเก็บลง case_sensitive_details
@@ -22,16 +28,27 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   // TF-55: ระดับคำนวณที่เซิร์ฟเวอร์ ไม่เชื่อค่าที่ส่งมาจากเบราว์เซอร์
   urgency: Urgency;
   triageReasons: TriageReason[];
-  // ส่งมาเฉพาะเมื่อมีคำตอบด้านสุขภาพที่เป็น "ใช่" อย่างน้อย 1 ข้อ
-  sensitive?: { dangerSigns?: string[]; hasDisabled?: true; hasInjured?: true };
+  consentVersion: string;
+  // TF-36: ไม่ส่งมา = ฟอร์มเว็บ · SMS = webhook รับ SMS (ฐานข้อมูลตั้งพิกัดเป็น "จาก SMS" เอง)
+  channel?: "SMS";
+  details?: Record<string, IncidentDetailValue>;
+  sensitive?: {
+    dangerSigns?: string[];
+    hasDisabled?: true;
+    hasInjured?: true;
+    [key: string]: string | number | boolean | string[] | undefined;
+  };
   duplicateAction?: DuplicateAction;
   targetCaseId?: string;
+  // TF-74: ส่งเฉพาะตอน "อัปเดตเคสเดิม" — ฐานข้อมูลใช้เทียบอย่างเดียว ไม่บันทึก
+  deviceConfirmationTokens?: string[];
 };
 
 export interface CreateSosCaseRpcRow {
   case_id: string;
-  case_code: string;
-  tracking_token: string;
+  // TF-74: null = รายงานเพิ่มเติมจากเครื่องอื่นของเบอร์เดิม (ไม่คืนรหัสเคส/ลิงก์ติดตาม)
+  case_code: string | null;
+  tracking_token: string | null;
   status: CaseStatus;
   created_at: string;
   replayed: boolean;
@@ -85,6 +102,13 @@ export interface CreateSosCaseSuccessResponse {
   adminDuplicateNotice?: string | null;
 }
 
+/** TF-74: เบอร์เดิมส่งจากเครื่องอื่น — บันทึกเป็นรายงานเพิ่มเติมให้ทีม ไม่มีรหัสเคส/ลิงก์ติดตาม */
+export interface CreateSosCaseSupplementResponse {
+  supplemented: true;
+  caseId: string;
+  replayed: boolean;
+}
+
 export interface CreateSosCaseValidationErrorResponse {
   error: string;
   fieldErrors: Record<string, string[] | undefined>;
@@ -95,12 +119,11 @@ export interface CreateSosCaseValidationErrorResponse {
 export interface CreateSosCaseDuplicatePromptResponse {
   code: "DUPLICATE_CANDIDATE";
   error: string;
-  candidate: DuplicateCandidateMatch;
-  options: ["UPDATE_EXISTING", "CREATE_NEW"];
-  optionLabels: {
-    UPDATE_EXISTING: string;
-    CREATE_NEW: string;
-  };
+  // TF-74: ฟอร์มเว็บได้แค่ว่าพบเคสที่อาจซ้ำแบบไหน + ทางเลือก ไม่มีรหัส/ข้อมูลใดๆ ของเคสเดิม
+  matchReason: DuplicateMatchReason;
+  options: Exclude<DuplicateAction, "ASK">[];
+  // TF-36: เฉพาะช่องทาง SMS (ตอบรหัสเคสเดิมกลับไปยังเบอร์เดียวกัน) — /api/cases ไม่ส่งออกไป
+  candidate?: DuplicateCandidateMatch;
 }
 
 export interface CreateSosCaseRateLimitErrorResponse {
@@ -112,6 +135,11 @@ export type CreateSosCaseResult =
   | {
       status: 200 | 201;
       body: CreateSosCaseSuccessResponse;
+      headers?: Record<string, string>;
+    }
+  | {
+      status: 200;
+      body: CreateSosCaseSupplementResponse;
       headers?: Record<string, string>;
     }
   | {
@@ -195,8 +223,16 @@ export async function handleCreateSosCase(params: {
   supabase: SosCaseRpcClient;
   reporterUserId?: string | null;
   now?: Date;
+  channel?: "WEB" | "SMS";
 }): Promise<CreateSosCaseResult> {
-  const { rawBody, headers, supabase, reporterUserId = null, now = new Date() } = params;
+  const {
+    rawBody,
+    headers,
+    supabase,
+    reporterUserId = null,
+    now = new Date(),
+    channel = "WEB",
+  } = params;
 
   // 1. ตรวจว่าข้อมูลที่ส่งมาเป็น Object และผ่านกติกา sosSchema จาก src/lib/domain
   if (typeof rawBody !== "object" || rawBody === null || Array.isArray(rawBody)) {
@@ -257,41 +293,89 @@ export async function handleCreateSosCase(params: {
     };
   }
 
-  // 3. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
+  // 3. ตรวจ details เฉพาะประเภทเหตุด้วย Zod และแยกข้อมูลสุขภาพออกจาก cases.details (TF-51)
   const { dangerSigns, hasDisabled, hasInjured, atScene: _atScene, ...answers } = parsed.data;
   void _atScene;
-  const triage = computeTriage({
-    incidentType: answers.incidentType ?? IncidentType.FLOOD,
-    dangerSigns,
+  const incidentType = answers.incidentType ?? IncidentType.FLOOD;
+  const rawDetails = (rawBody as Record<string, unknown>).details;
+
+  const detailsCheck = validateAndSplitIncidentDetails(incidentType, rawDetails, {
     waterLevel: answers.waterLevel,
     canSelfEvacuate: answers.canSelfEvacuate,
+    hasInjured,
+  });
+  if (!detailsCheck.ok) {
+    return {
+      status: 400,
+      body: {
+        error: detailsCheck.error,
+        fieldErrors: detailsCheck.fieldErrors,
+        formErrors: [detailsCheck.error],
+        fields: detailsCheck.fields,
+      },
+    };
+  }
+
+  const effectiveWaterLevel =
+    incidentType === IncidentType.FLOOD
+      ? ((detailsCheck.publicDetails.waterLevel as WaterLevel | undefined) ?? answers.waterLevel)
+      : undefined;
+  const effectiveCanSelfEvacuate =
+    typeof detailsCheck.publicDetails.canSelfEvacuate === "boolean"
+      ? detailsCheck.publicDetails.canSelfEvacuate
+      : answers.canSelfEvacuate;
+  const effectiveHasInjured = Boolean(
+    hasInjured ||
+    detailsCheck.sensitiveDetails.hasInjured === true ||
+    (typeof detailsCheck.sensitiveDetails.injuredCount === "number" &&
+      detailsCheck.sensitiveDetails.injuredCount > 0) ||
+    detailsCheck.sensitiveDetails.hasBittenOrStung === true,
+  );
+
+  // 4. คำนวณระดับความเร่งด่วนจากคำตอบด้วย computeTriage() (TF-55)
+  const triage = computeTriage({
+    incidentType,
+    dangerSigns,
+    waterLevel: effectiveWaterLevel,
+    canSelfEvacuate: effectiveCanSelfEvacuate,
     elderly: answers.elderly,
     bedridden: answers.bedridden,
     children: answers.children,
     hasDisabled,
-    hasInjured,
+    hasInjured: effectiveHasInjured,
     needs: answers.needs,
   });
-  const hasSensitive = dangerSigns.length > 0 || hasDisabled || hasInjured;
+
+  const sensitivePayload: NonNullable<CreateSosCasePayload["sensitive"]> = {
+    ...(dangerSigns.length > 0 ? { dangerSigns } : {}),
+    ...(hasDisabled ? { hasDisabled: true as const } : {}),
+    ...(hasInjured ? { hasInjured: true as const } : {}),
+    ...detailsCheck.sensitiveDetails,
+  };
+  const hasSensitive = Object.keys(sensitivePayload).length > 0;
 
   const formData: CreateSosCasePayload = {
     ...answers,
+    incidentType,
+    waterLevel: effectiveWaterLevel,
+    canSelfEvacuate: effectiveCanSelfEvacuate,
+    accuracyM: accuracyForLocationSource(answers.locationSource, answers.accuracyM),
+    // TF-36: คนพิมพ์ SMS เองไม่เคยเห็นหน้ายินยอมของฟอร์ม จึงบันทึกฉบับของช่องทาง SMS แยก
+    consentVersion: channel === "SMS" ? SMS_CONSENT_VERSION : "2026-11-06",
+    ...(channel === "SMS" ? { channel: "SMS" as const } : {}),
     urgency: triage.level,
     triageReasons: triage.reasons,
-    ...(hasSensitive
-      ? {
-          sensitive: {
-            ...(dangerSigns.length > 0 ? { dangerSigns } : {}),
-            ...(hasDisabled ? { hasDisabled: true as const } : {}),
-            ...(hasInjured ? { hasInjured: true as const } : {}),
-          },
-        }
+    ...(Object.keys(detailsCheck.publicDetails).length > 0
+      ? { details: detailsCheck.publicDetails }
       : {}),
+    ...(hasSensitive ? { sensitive: sensitivePayload } : {}),
     ...(dupResolution.data.duplicateAction
       ? { duplicateAction: dupResolution.data.duplicateAction }
       : {}),
-    ...(dupResolution.data.targetCaseId
-      ? { targetCaseId: dupResolution.data.targetCaseId }
+    ...(dupResolution.data.targetCaseId ? { targetCaseId: dupResolution.data.targetCaseId } : {}),
+    ...(dupResolution.data.duplicateAction === "UPDATE_EXISTING" &&
+    dupResolution.data.deviceConfirmationTokens?.length
+      ? { deviceConfirmationTokens: dupResolution.data.deviceConfirmationTokens }
       : {}),
   };
 
@@ -299,6 +383,7 @@ export async function handleCreateSosCase(params: {
   const score = priorityScore(
     {
       urgency: formData.urgency,
+      incidentType: formData.incidentType ?? IncidentType.FLOOD,
       waterLevel: formData.waterLevel,
       bedridden: formData.bedridden,
       elderly: formData.elderly,
@@ -320,28 +405,57 @@ export async function handleCreateSosCase(params: {
   });
 
   if (error) {
+    if (error.code === "SOS25") {
+      return {
+        status: 400,
+        body: {
+          error:
+            "คำขอเดิมส่งถึงระบบแล้ว แต่ข้อมูลหรือรูปเปลี่ยนไป กรุณาติดตามเคสเดิมหรือโทร 1669 / 1784",
+          fieldErrors: {},
+          formErrors: [],
+          fields: [],
+        },
+      };
+    }
     // กรณีพบเคสเปิดอยู่จากเบอร์เดียวกัน หรือห่างไม่ถึง 50 ม. ภายใน 24 ชม. (รหัส SOS49 จาก TF-16)
     if (error.code === "SOS49" && error.details) {
       try {
-        const candidate = JSON.parse(error.details) as DuplicateCandidateMatch;
+        // TF-74: ฟอร์มเว็บได้แค่ matchReason · SMS ได้ข้อมูลเคสเดิมครบ (ฐานข้อมูลแยกตามช่องทาง)
+        const detail = JSON.parse(error.details) as Partial<DuplicateCandidateMatch> & {
+          matchReason: DuplicateMatchReason;
+        };
+        const matchReason = detail.matchReason;
         const promptMessage =
-          candidate.matchReason === "SAME_PHONE" || candidate.matchReason === "BOTH"
-            ? `เบอร์โทรศัพท์นี้มีเคสที่ยังเปิดอยู่ (${candidate.caseCode}) คุณต้องการอัปเดตเคสเดิมหรือสร้างเคสใหม่?`
-            : `พบเคสที่ยังเปิดอยู่ใกล้ตำแหน่งของคุณในระยะ ${Math.round(candidate.distanceM)} เมตร (${candidate.caseCode}) เป็นการอัปเดตเคสเดิมหรือไม่?`;
+          matchReason === "NEARBY_50M"
+            ? "มีคนแจ้งเหตุใกล้คุณแล้ว ทีมกู้ภัยจะเห็นทั้งสองเคส"
+            : "เบอร์โทรศัพท์นี้มีคำขอที่ยังเปิดอยู่ ต้องการอัปเดตเคสเดิม หรือสร้างเคสใหม่?";
 
         return {
           status: 409,
           body: {
             code: "DUPLICATE_CANDIDATE",
             error: promptMessage,
-            candidate,
-            options: ["UPDATE_EXISTING", "CREATE_NEW"],
-            optionLabels: duplicateActionLabels,
+            matchReason,
+            options: duplicateOptionsFor(matchReason),
+            ...(detail.caseCode ? { candidate: detail as DuplicateCandidateMatch } : {}),
           },
         };
       } catch {
         // กรณีแปลง JSON ไม่ได้ ให้ตกไปตอบ 500 ด้านล่าง
       }
+    }
+
+    // TF-74: เคสใกล้กันแต่คนละเบอร์เป็นของคนอื่น อัปเดตไม่ได้ (SOS48)
+    if (error.code === "SOS48") {
+      return {
+        status: 400,
+        body: {
+          error: "อัปเดตเคสเดิมได้เฉพาะเบอร์โทรเดียวกับที่แจ้งไว้ กรุณาส่งเป็นคำขอใหม่",
+          fieldErrors: {},
+          formErrors: [],
+          fields: [],
+        },
+      };
     }
 
     // กรณีส่งถี่เกินกำหนด (รหัส SOS29 จากฟังก์ชัน create_sos_case)
@@ -365,7 +479,8 @@ export async function handleCreateSosCase(params: {
     return {
       status: 500,
       body: {
-        error: "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
+        error:
+          "ไม่สามารถบันทึกคำขอความช่วยเหลือได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทร 1669 / 1784",
       },
     };
   }
@@ -377,6 +492,14 @@ export async function handleCreateSosCase(params: {
       body: {
         error: "ไม่ได้รับข้อมูลเคสกลับมาจากฐานข้อมูล",
       },
+    };
+  }
+
+  // TF-74: เบอร์เดิมจากเครื่องอื่น = รายงานเพิ่มเติม ฐานข้อมูลไม่คืนรหัสเคส/ลิงก์ติดตาม
+  if (!row.case_code || !row.tracking_token) {
+    return {
+      status: 200,
+      body: { supplemented: true, caseId: row.case_id, replayed: row.replayed },
     };
   }
 
@@ -394,9 +517,7 @@ export async function handleCreateSosCase(params: {
       status: row.status,
       createdAt: row.created_at,
       replayed: row.replayed,
-      ...(row.updated_existing !== undefined
-        ? { updatedExisting: row.updated_existing }
-        : {}),
+      ...(row.updated_existing !== undefined ? { updatedExisting: row.updated_existing } : {}),
       ...(row.is_potential_duplicate !== undefined
         ? {
             isPotentialDuplicate,

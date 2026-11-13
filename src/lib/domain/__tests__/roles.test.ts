@@ -35,10 +35,10 @@ describe("decideAccess — กัน /rescue /unit /admin", () => {
   });
 
   it.each([
-    ["USER", ["/my-cases"], ["/rescue", "/unit", "/admin"]],
-    ["RESCUER", ["/my-cases", "/rescue"], ["/unit", "/admin"]],
-    ["UNIT_LEAD", ["/my-cases", "/rescue", "/unit"], ["/admin"]],
-    ["ADMIN", ["/my-cases", "/rescue", "/unit", "/admin"], []],
+    ["USER", ["/my-cases"], ["/rescue", "/unit", "/unit/dashboard", "/admin"]],
+    ["RESCUER", ["/my-cases", "/rescue", "/unit/dashboard"], ["/unit", "/admin"]],
+    ["UNIT_LEAD", ["/my-cases", "/rescue", "/unit", "/unit/dashboard"], ["/admin"]],
+    ["ADMIN", ["/my-cases", "/rescue", "/unit", "/unit/dashboard", "/admin"], []],
   ] as const)("%s เข้าได้ %j ไม่ได้ %j", (role, allowed, denied) => {
     for (const p of allowed) expect(decideAccess(p, active(role)).allow).toBe(true);
     for (const p of denied) {

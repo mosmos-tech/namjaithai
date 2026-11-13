@@ -36,6 +36,8 @@ export function homePathForRole(role: UserRole): string {
 // แอดมินเข้าได้ทุกหน้าเพื่อดูภาพรวม (แต่ไม่รับเคสเอง — กติกานั้นอยู่ที่ปุ่ม/ฐานข้อมูล ไม่ใช่ที่หน้า)
 const PROTECTED: { prefix: string; roles: readonly UserRole[] }[] = [
   { prefix: "/admin", roles: ["ADMIN"] },
+  // TF-57: ผลงานหน่วยให้สมาชิกดูได้ด้วย (ข้อมูลกรองตามหน่วยในฐานข้อมูล)
+  { prefix: "/unit/dashboard", roles: ["RESCUER", "UNIT_LEAD", "ADMIN"] },
   { prefix: "/unit", roles: ["UNIT_LEAD", "ADMIN"] },
   { prefix: "/rescue", roles: ["RESCUER", "UNIT_LEAD", "ADMIN"] },
   { prefix: "/my-cases", roles: ["USER", "RESCUER", "UNIT_LEAD", "ADMIN"] },

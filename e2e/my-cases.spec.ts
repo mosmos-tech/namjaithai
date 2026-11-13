@@ -56,6 +56,8 @@ async function report(request: APIRequestContext, extra: Record<string, unknown>
       "X-Forwarded-For": `10.43.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
     },
     data: {
+      consent: true,
+      healthConsent: true,
       // TF-55: ส่งคำตอบ ระบบคำนวณระดับเอง (ไม่รับ urgency จากผู้แจ้งแล้ว)
       dangerSigns: [],
       canSelfEvacuate: false,
@@ -184,7 +186,7 @@ test.describe("TF-43 account cases", () => {
     ).toHaveCount(1);
   });
 
-  test("พักคิว LINE เมื่อเปลี่ยนสถานะ และผู้ใช้เรียก worker เองไม่ได้", async ({ page }) => {
+  test("เปลี่ยนสถานะแล้วเข้าคิว LINE (TF-34) และผู้ใช้เรียก worker เองไม่ได้", async ({ page }) => {
     const sent = await report(page.request);
     const { data: row } = await adminDb()
       .from("cases")
@@ -198,10 +200,12 @@ test.describe("TF-43 account cases", () => {
     expect(updateError).toBeNull();
     const { data: jobs, error: queueError } = await adminDb()
       .from("case_line_notifications")
-      .select("user_id,to_status,state")
+      .select("user_id,kind,to_status,state")
       .eq("case_id", row!.id);
     expect(queueError).toBeNull();
-    expect(jobs).toEqual([]);
+    expect(jobs).toEqual([
+      { user_id: owner.id, kind: "CASE_STATUS", to_status: "ACCEPTED", state: "PENDING" },
+    ]);
     expect((await page.request.post("/api/notifications/line")).status()).toBe(401);
   });
 

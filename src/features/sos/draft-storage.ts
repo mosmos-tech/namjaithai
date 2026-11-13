@@ -11,11 +11,37 @@ import {
   IncidentType,
   INCIDENT_REGISTRY,
   UNIVERSAL_DANGER_SIGNS,
+  LocationSource,
+  accuracyForLocationSource,
+  isInaccurateGps,
+  isQuestionVisible,
+  locationSourceSchema,
+  normalizePhoneInput,
   type LocatedArea,
+  type IncidentDetailValue,
+  type WebLocationSource,
+  type DuplicateMatchReason,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
+import { format, pickText } from "../../lib/i18n/locale";
+import { SOS_TEXT_TH, type SosText } from "./sos-text";
+import { readDeviceCases } from "./device-cases";
 
-export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v1";
+/**
+ * ข้อความจาก zod schema ใน src/lib/domain เป็นภาษาไทย — หน้าไทยใช้ตามเดิม หน้าอังกฤษใช้ข้อความจาก dictionary
+ */
+function schemaMessage(thMessage: string | undefined, fallback: string, t: SosText): string {
+  return t.locale === "th" ? (thMessage ?? fallback) : fallback;
+}
+
+export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v2";
+
+/**
+ * ร่างก่อน TF-66 (ขั้น 2 = ตำแหน่ง, ขั้น 3 = ผู้ติดค้าง) — ชื่อฟิลด์เหมือนเดิม ต่างแค่เลขขั้น
+ * เปิดหน้าครั้งแรกหลังอัปเดต migrateLegacySosDraft() ย้ายมาเป็น v2 แล้วลบทิ้ง
+ */
+export const LEGACY_SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v1";
+const LEGACY_STEP_TO_STEP: Record<SosStepNumber, SosStepNumber> = { 1: 1, 2: 3, 3: 2, 4: 4, 5: 5 };
 
 /**
  * เกณฑ์ความคลาดเคลื่อนของ GPS (เมตร): ถ้าเกิน 100 เมตร ต้องแจ้งให้ผู้ใช้ปักหมุดเพิ่มบนแผนที่ (TF-09)
@@ -31,11 +57,7 @@ export const DEFAULT_THAILAND_CENTER = {
   lng: 100.5018,
 } as const;
 
-export type GpsErrorCode =
-  | "PERMISSION_DENIED"
-  | "POSITION_UNAVAILABLE"
-  | "TIMEOUT"
-  | "UNSUPPORTED";
+export type GpsErrorCode = "PERMISSION_DENIED" | "POSITION_UNAVAILABLE" | "TIMEOUT" | "UNSUPPORTED";
 
 export type SosStepNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -66,28 +88,28 @@ export interface SosDraftPhoto {
 export const SOS_STEPS: readonly SosStepDefinition[] = [
   {
     step: 1,
-    title: "สถานการณ์ตอนนี้",
-    shortLabel: "สถานการณ์",
-    // TF-55: ผู้แจ้งตอบคำถามสั้นๆ ระบบจัดลำดับความเร่งด่วนเอง (ผู้แจ้งไม่เห็นระดับ)
-    description: "ตอบคำถามสั้นๆ เรื่องอันตรายและระดับน้ำ เพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
+    title: "เกิดเหตุอะไร",
+    shortLabel: "ประเภทเหตุ",
+    description: "เลือกประเภทเหตุ และยืนยันว่าคุณอยู่ที่จุดเกิดเหตุ",
   },
   {
     step: 2,
+    title: "รายละเอียดเหตุ",
+    shortLabel: "รายละเอียด",
+    // TF-55: ผู้แจ้งตอบคำถามสั้นๆ ระบบจัดลำดับความเร่งด่วนเอง (ผู้แจ้งไม่เห็นระดับ)
+    description: "ตอบคำถามเรื่องอันตรายและจำนวนคน เพื่อให้ทีมกู้ภัยจัดลำดับความช่วยเหลือ",
+  },
+  {
+    step: 3,
     title: "ตำแหน่งที่เกิดเหตุ",
     shortLabel: "ตำแหน่ง",
     description: "ระบุพิกัด GPS หรือปักหมุดบนแผนที่ พร้อมจุดสังเกตที่มองเห็นได้ชัดเจน",
   },
   {
-    step: 3,
-    title: "จำนวนผู้ติดค้าง",
-    shortLabel: "ผู้ติดค้าง",
-    description: "ระบุจำนวนผู้ใหญ่ ผู้สูงอายุ ผู้ป่วยติดเตียง เด็กเล็ก และสัตว์เลี้ยง",
-  },
-  {
     step: 4,
     title: "สิ่งที่ต้องการความช่วยเหลือ",
     shortLabel: "สิ่งที่ต้องการ",
-    description: "เลือกสิ่งที่ต้องการเร่งด่วน เช่น เรืออพยพ น้ำดื่ม อาหาร หรือยารักษาโรค",
+    description: "เลือกสิ่งที่ต้องการเร่งด่วน เช่น อพยพ น้ำดื่ม อาหาร หรือยารักษาโรค",
   },
   {
     step: 5,
@@ -103,16 +125,20 @@ export const SOS_STEPS: readonly SosStepDefinition[] = [
  */
 export interface SosDraft {
   currentStep: SosStepNumber;
-  // ขั้นที่ 1: สถานการณ์ (TF-50, TF-55) — undefined = ยังไม่ได้ตอบ
+  // ขั้นที่ 1: เกิดเหตุอะไร (TF-50) — undefined = ยังไม่ได้ตอบ
   incidentType?: IncidentType;
   atScene?: boolean;
+  // ขั้นที่ 2: รายละเอียดเหตุ — สัญญาณอันตราย ออกเองได้ไหม (TF-55) ระดับน้ำ (คำถามน้ำท่วม)
   dangerSigns?: string[];
   canSelfEvacuate?: boolean;
   waterLevel?: WaterLevel;
-  // ขั้นที่ 2: ตำแหน่ง (TF-09)
+  // ขั้นที่ 3: ตำแหน่ง (TF-09)
   lat?: number;
   lng?: number;
   accuracyM?: number;
+  // TF-65: ได้พิกัดมาจาก GPS / ปักเอง / ลิงก์ และผู้แจ้งเลือก "ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน" หรือยัง
+  locationSource?: WebLocationSource;
+  addressFallback?: boolean;
   provinceCode?: string;
   districtCode?: string;
   subdistrictCode?: string;
@@ -122,7 +148,8 @@ export interface SosDraft {
   addressLine?: string;
   gmapsUrl?: string;
   landmark: string;
-  // ขั้นที่ 3: ผู้ติดค้าง (TF-11)
+  // ขั้นที่ 2 (ต่อ): คำถามเฉพาะประเภทเหตุ (TF-51) และผู้ติดค้าง (TF-11)
+  details?: Record<string, string | number | boolean | string[] | undefined>;
   adults: number;
   elderly: number;
   bedridden: number;
@@ -140,6 +167,8 @@ export interface SosDraft {
   lineId: string;
   notes: string;
   photos: SosDraftPhoto[];
+  consent: boolean;
+  healthConsent: boolean;
   // คีย์กันส่งซ้ำประจำร่างนี้ (ใช้ซ้ำถ้ากดส่งซ้ำหรือลองส่งใหม่ และถูกล้างเมื่อส่งสำเร็จ)
   idempotencyKey?: string;
   // เวลาที่บันทึกร่างล่าสุด (ISO string)
@@ -157,6 +186,7 @@ export function createInitialSosDraft(): SosDraft {
     addressLine: "",
     gmapsUrl: "",
     landmark: "",
+    details: {},
     adults: 1,
     elderly: 0,
     bedridden: 0,
@@ -171,6 +201,8 @@ export function createInitialSosDraft(): SosDraft {
     lineId: "",
     notes: "",
     photos: [],
+    consent: false,
+    healthConsent: false,
   };
 }
 
@@ -193,151 +225,223 @@ export function parseIncidentTypeParam(
   return undefined;
 }
 
+/**
+ * เปลี่ยนประเภทเหตุในร่าง (TF-66: ย้อนกลับไปเปลี่ยนได้)
+ * คำตอบเฉพาะประเภทเดิมต้องหายทั้งหมด ไม่ให้หลุดไปกับเคสใหม่:
+ * - details (คำถามจากทะเบียน), hasInjured, ระดับน้ำ (ถามเฉพาะน้ำท่วม)
+ * - สัญญาณอันตรายที่ประเภทใหม่ไม่มี และสิ่งที่ต้องการที่ประเภทใหม่ไม่มี
+ * คำตอบกลาง (อยู่ที่จุดเกิดเหตุ ออกเองได้ไหม จำนวนคน ตำแหน่ง ติดต่อ) เก็บไว้
+ */
+export function applyIncidentTypeToDraft(draft: SosDraft, incidentType: IncidentType): SosDraft {
+  if (draft.incidentType === incidentType) return draft;
+  const registry = INCIDENT_REGISTRY[incidentType];
+  const signKeys = (
+    registry.dangerSigns.length > 0 ? registry.dangerSigns : UNIVERSAL_DANGER_SIGNS
+  ).map((sign) => sign.key);
+  const allowedNeeds = new Set<Need>([
+    ...(registry.needs.length > 0 ? registry.needs : Object.values(Need)),
+    Need.OTHER,
+  ]);
+  const needs = draft.needs.filter((need) => allowedNeeds.has(need));
+  return {
+    ...draft,
+    incidentType,
+    details: {},
+    hasInjured: false,
+    waterLevel: incidentType === IncidentType.FLOOD ? draft.waterLevel : undefined,
+    dangerSigns: draft.dangerSigns?.filter((key) => signKeys.includes(key)),
+    needs,
+    otherDetail: needs.includes(Need.OTHER) ? draft.otherDetail : "",
+  };
+}
+
 export interface Step1ValidationErrors {
   incidentType?: string;
   atScene?: string;
-  dangerSigns?: string;
-  canSelfEvacuate?: string;
-  waterLevel?: string;
-  missingSummary: string[];
-}
-
-export interface Step2ValidationErrors {
-  location?: string;
-  landmark?: string;
   missingSummary: string[];
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 1 ด้วย step1Schema จาก src/lib/domain
- * - ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene === false) จะไม่ผ่านและไม่สร้างเคส (TF-50)
- * - ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
+ * ตรวจสอบข้อมูลขั้นที่ 1 "เกิดเหตุอะไร" (TF-50, TF-66)
+ * - ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene === false) จะไม่ผ่านและไม่สร้างเคส
+ * - ยังไม่เลือกประเภท = น้ำท่วม (เหมือนเดิม) แต่ประเภทนั้นต้องเปิดรับแจ้งอยู่
+ *   enabledTypes = รายการที่แอดมินเปิดไว้ (TF-30) ไม่ส่งมา = ไม่ตรวจ (เซิร์ฟเวอร์ตรวจซ้ำอยู่แล้ว)
  */
 export function validateStep1Draft(
-  draft: Pick<
-    SosDraft,
-    "incidentType" | "atScene" | "dangerSigns" | "canSelfEvacuate" | "waterLevel"
-  >,
+  draft: Pick<SosDraft, "incidentType" | "atScene">,
+  enabledTypes?: readonly IncidentType[],
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   errors: Step1ValidationErrors;
 } {
-  const result = step1Schema.safeParse({
-    incidentType: draft.incidentType,
-    atScene: draft.atScene,
-    dangerSigns: draft.dangerSigns,
-    canSelfEvacuate: draft.canSelfEvacuate,
-    waterLevel: draft.waterLevel,
-  });
-
-  if (result.success) {
-    return {
-      valid: true,
-      errors: { missingSummary: [] },
-    };
-  }
-
   const errors: Step1ValidationErrors = {
     missingSummary: [],
   };
+  const result = step1Schema
+    .pick({ incidentType: true, atScene: true })
+    .safeParse({ incidentType: draft.incidentType, atScene: draft.atScene });
 
-  const validIncidentTypes = Object.values(IncidentType) as string[];
-  const validWaterLevels = Object.values(WaterLevel) as string[];
-
-  if (draft.atScene === false) {
-    errors.atScene = "แจ้งแทนคนอื่นไม่ได้ กรุณาโทรสายด่วนฉุกเฉินแทน";
-    errors.missingSummary.push("อยู่ที่จุดเกิดเหตุ");
-  }
-
-  if (
-    draft.incidentType !== undefined &&
-    !validIncidentTypes.includes(draft.incidentType)
-  ) {
-    errors.incidentType = "ไม่มีประเภทเหตุนี้";
-    errors.missingSummary.push("ประเภทเหตุ");
-  }
-
-  if (!Array.isArray(draft.dangerSigns)) {
-    errors.dangerSigns = "กรุณาเลือกข้อที่ตรง หรือกด \"ไม่มีข้อใดเลย\"";
-    errors.missingSummary.push("สัญญาณอันตราย");
-  }
-
-  if (typeof draft.canSelfEvacuate !== "boolean") {
-    errors.canSelfEvacuate = "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม";
-    errors.missingSummary.push("ออกเองได้ไหม");
-  }
-
-  // ระดับน้ำไม่บังคับ ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
-  if (draft.waterLevel && !validWaterLevels.includes(draft.waterLevel)) {
-    errors.waterLevel = "ไม่มีตัวเลือกระดับน้ำนี้";
-    errors.missingSummary.push("ระดับน้ำ");
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      if (issue.path[0] === "atScene" && !errors.atScene) {
+        errors.atScene = schemaMessage(issue.message, t.v.atSceneOnly, t);
+        errors.missingSummary.push(t.v.sumAtScene);
+      } else if (issue.path[0] === "incidentType" && !errors.incidentType) {
+        errors.incidentType = schemaMessage(issue.message, t.v.incidentInvalid, t);
+        errors.missingSummary.push(t.v.sumIncident);
+      }
+    }
+  } else if (enabledTypes && !enabledTypes.includes(draft.incidentType ?? IncidentType.FLOOD)) {
+    errors.incidentType = t.v.incidentRequired;
+    errors.missingSummary.push(t.v.sumIncident);
   }
 
   return {
-    valid: false,
+    valid: errors.missingSummary.length === 0,
     errors,
   };
 }
 
 export interface Step2ValidationErrors {
+  dangerSigns?: string;
+  canSelfEvacuate?: string;
+  waterLevel?: string;
+  totalPeople?: string;
+  questionErrors?: Record<string, string>;
+  missingSummary: string[];
+}
+
+/**
+ * ตรวจคำตอบเรื่องอันตรายในขั้นที่ 2 ด้วย step1Schema จาก src/lib/domain
+ * - ต้องตอบเรื่องสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม ระดับน้ำไม่บังคับ
+ */
+function validateDangerAnswers(
+  draft: Pick<SosDraft, "dangerSigns" | "canSelfEvacuate" | "waterLevel">,
+  errors: Step2ValidationErrors,
+  t: SosText,
+): void {
+  const validWaterLevels = Object.values(WaterLevel) as string[];
+
+  if (!Array.isArray(draft.dangerSigns)) {
+    errors.dangerSigns = t.v.dangerRequired;
+    errors.missingSummary.push(t.v.sumDanger);
+  }
+
+  if (typeof draft.canSelfEvacuate !== "boolean") {
+    errors.canSelfEvacuate = t.v.selfEvacRequired;
+    errors.missingSummary.push(t.v.sumSelfEvac);
+  }
+
+  // ระดับน้ำไม่บังคับ ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
+  if (draft.waterLevel && !validWaterLevels.includes(draft.waterLevel)) {
+    errors.waterLevel = t.v.waterLevelInvalid;
+    errors.missingSummary.push(t.v.sumWaterLevel);
+  }
+
+  if (errors.missingSummary.length === 0) {
+    const result = step1Schema
+      .pick({ dangerSigns: true, canSelfEvacuate: true, waterLevel: true })
+      .safeParse({
+        dangerSigns: draft.dangerSigns,
+        canSelfEvacuate: draft.canSelfEvacuate,
+        waterLevel: draft.waterLevel,
+      });
+    if (!result.success) {
+      errors.dangerSigns = schemaMessage(result.error.issues[0]?.message, t.v.dangerInvalid, t);
+      errors.missingSummary.push(t.v.sumDanger);
+    }
+  }
+}
+
+export interface Step3ValidationErrors {
   location?: string;
+  addressLine?: string;
   landmark?: string;
   missingSummary: string[];
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 2 (พิกัดและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
+ * ตรวจสอบข้อมูลขั้นที่ 3 (พิกัดและจุดสังเกต) ด้วย step2Schema จาก src/lib/domain
  * - พิกัด (lat, lng) ต้องอยู่ในขอบเขตประเทศไทย
  * - จุดสังเกต (landmark) บังคับต้องระบุเพื่อให้ทีมกู้ภัยสังเกตเห็นได้เมื่อป้ายบ้านจมน้ำ
  */
-export function validateStep2Draft(
+export function validateStep3Draft(
   draft: Pick<
     SosDraft,
-    "lat" | "lng" | "accuracyM" | "province" | "district" | "subdistrict" | "landmark"
+    | "lat"
+    | "lng"
+    | "accuracyM"
+    | "locationSource"
+    | "addressFallback"
+    | "addressLine"
+    | "province"
+    | "district"
+    | "subdistrict"
+    | "landmark"
   >,
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
-  errors: Step2ValidationErrors;
+  errors: Step3ValidationErrors;
 } {
   const result = step2Schema.safeParse({
     lat: draft.lat,
     lng: draft.lng,
     accuracyM: draft.accuracyM,
+    locationSource: draft.locationSource,
+    addressLine: draft.addressLine,
     province: draft.province,
     district: draft.district,
     subdistrict: draft.subdistrict,
     landmark: draft.landmark,
   });
 
-  if (result.success) {
+  // TF-65: GPS คลาดเคลื่อนเกิน 1000 ม. ไปต่อได้ 2 ทาง คือปักหมุดเอง/วางลิงก์ (accuracy ถูกล้าง)
+  // หรือกด "ส่งพร้อมที่อยู่แทน" แล้วกรอกที่อยู่ — ไม่บล็อกการขอความช่วยเหลือ
+  const inaccurateGps = isInaccurateGps(draft.accuracyM);
+  const needsPinOrFallback = inaccurateGps && draft.addressFallback !== true;
+  const needsAddress =
+    inaccurateGps && draft.addressFallback === true && !draft.addressLine?.trim();
+
+  if (result.success && !needsPinOrFallback && !needsAddress) {
     return {
       valid: true,
       errors: { missingSummary: [] },
     };
   }
 
-  const errors: Step2ValidationErrors = {
+  const errors: Step3ValidationErrors = {
     missingSummary: [],
   };
 
   if (typeof draft.lat !== "number" || typeof draft.lng !== "number") {
-    errors.location = "กรุณาดึงพิกัด GPS หรือแตะปักหมุดตำแหน่งบนแผนที่";
-    errors.missingSummary.push("พิกัดตำแหน่ง");
+    errors.location = t.v.locationRequired;
+    errors.missingSummary.push(t.v.sumLocation);
+  } else if (needsPinOrFallback) {
+    errors.location = t.v.locationInaccurate;
+    errors.missingSummary.push(t.v.sumLocation);
   } else {
     const latCheck = latSchema.safeParse(draft.lat);
     const lngCheck = lngSchema.safeParse(draft.lng);
     if (!latCheck.success || !lngCheck.success) {
-      errors.location =
-        latCheck.error?.issues[0]?.message ??
-        lngCheck.error?.issues[0]?.message ??
-        "พิกัดอยู่นอกประเทศไทย";
-      errors.missingSummary.push("พิกัดตำแหน่ง");
+      errors.location = schemaMessage(
+        latCheck.error?.issues[0]?.message ?? lngCheck.error?.issues[0]?.message,
+        t.v.locationOutsideThailand,
+        t,
+      );
+      errors.missingSummary.push(t.v.sumLocation);
     }
   }
 
+  if (needsAddress) {
+    errors.addressLine = t.v.addressRequired;
+    errors.missingSummary.push(t.v.sumAddress);
+  }
+
   if (!draft.landmark || draft.landmark.trim().length === 0) {
-    errors.landmark = "กรุณาระบุจุดสังเกต เช่น สีหลังคา จำนวนชั้น หรือสถานที่ใกล้เคียง";
-    errors.missingSummary.push("จุดสังเกต");
+    errors.landmark = t.v.landmarkRequired;
+    errors.missingSummary.push(t.v.sumLandmark);
   }
 
   return {
@@ -359,6 +463,7 @@ export function isLowGpsAccuracy(accuracyM?: number): boolean {
 
 /**
  * นำพิกัดจาก GPS ของอุปกรณ์มาอัปเดตลงร่างฟอร์ม พร้อมบันทึกค่าความแม่นยำ (accuracyM)
+ * เก็บไว้แม้คลาดเคลื่อนเกิน 1000 ม. (ใช้ตอนผู้แจ้งเลือกส่งพร้อมที่อยู่แทน) แต่หน้าจอจะไม่ปักหมุดให้ (TF-65)
  */
 export function applyGpsPositionToDraft(
   draft: SosDraft,
@@ -372,24 +477,32 @@ export function applyGpsPositionToDraft(
       typeof coords.accuracy === "number" && Number.isFinite(coords.accuracy)
         ? Math.round(coords.accuracy)
         : undefined,
+    locationSource: LocationSource.GPS,
+    addressFallback: false,
   };
 }
 
 /**
  * นำพิกัดจากการปักหมุดเองบนแผนที่หรือลิงก์ Google Maps มาอัปเดตลงร่างฟอร์ม
- * ล้างค่า accuracyM ออกเพราะเป็นจุดที่ผู้ใช้ปักยืนยันด้วยตัวเองแล้ว
+ * ล้างค่า accuracyM ออกเพราะเป็นจุดที่ผู้ใช้ปักยืนยันด้วยตัวเองแล้ว (เคสเก็บ accuracy_m = null)
  */
 export function applyManualPinToDraft(
   draft: SosDraft,
   coords: { lat: number; lng: number },
+  source: ManualLocationSource = LocationSource.MANUAL_PIN,
 ): SosDraft {
   return {
     ...draft,
     lat: Number(coords.lat.toFixed(6)),
     lng: Number(coords.lng.toFixed(6)),
     accuracyM: undefined,
+    locationSource: source,
+    addressFallback: false,
   };
 }
+
+export type ManualLocationSource =
+  typeof LocationSource.MANUAL_PIN | typeof LocationSource.GMAPS_LINK;
 
 /**
  * นำผลลัพธ์จาก API แปลงพิกัดเป็นที่อยู่ (/api/geo/reverse) มาเติมจังหวัด/อำเภอ/ตำบลในร่างฟอร์มอัตโนมัติ
@@ -407,7 +520,7 @@ export function applyLocatedAreaToDraft(draft: SosDraft, area: LocatedArea): Sos
 }
 
 export interface GpsStatusBanner {
-  tone: "success" | "warning";
+  tone: "success" | "warning" | "error";
   desktopText: string;
   mobileText: string;
 }
@@ -422,32 +535,44 @@ export function getGpsStatusMessage(params: {
   lng?: number;
   accuracyM?: number;
   gpsError?: GpsErrorCode | null;
-}): GpsStatusBanner | null {
+}, t: SosText = SOS_TEXT_TH): GpsStatusBanner | null {
   if (params.gpsError === "PERMISSION_DENIED") {
     return {
       tone: "warning",
-      desktopText:
-        "ไม่ได้รับอนุญาตให้ใช้ GPS · คุณยังสามารถแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเองได้",
-      mobileText: "ไม่อนุญาต GPS · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+      desktopText: t.gps.deniedDesktop,
+      mobileText: t.gps.deniedMobile,
     };
   }
 
   if (params.gpsError) {
     return {
       tone: "warning",
-      desktopText:
-        "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
-      mobileText: "ดึง GPS ไม่สำเร็จ · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+      desktopText: t.gps.failedDesktop,
+      mobileText: t.gps.failedMobile,
     };
   }
 
   if (typeof params.lat === "number" && typeof params.lng === "number") {
+    if (isInaccurateGps(params.accuracyM)) {
+      const rounded = Math.round(params.accuracyM!).toLocaleString(
+        t.locale === "en" ? "en-US" : "th-TH",
+      );
+      return {
+        tone: "error",
+        desktopText: format(t.gps.inaccurateDesktop, {
+          message: t.v.locationInaccurate,
+          meters: rounded,
+        }),
+        mobileText: t.v.locationInaccurate,
+      };
+    }
+
     if (isLowGpsAccuracy(params.accuracyM)) {
       const rounded = Math.round(params.accuracyM!);
       return {
         tone: "warning",
-        desktopText: `ความแม่นยำ ±${rounded} เมตร (คลาดเคลื่อนเกิน 100 ม.) · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเพิ่มให้ตรงจุด`,
-        mobileText: `ความแม่นยำ ±${rounded} ม. (เกิน 100 ม.) กรุณาเลื่อนหมุดปักหมุดเพิ่มบนแผนที่`,
+        desktopText: format(t.gps.lowDesktop, { meters: rounded }),
+        mobileText: format(t.gps.lowMobile, { meters: rounded }),
       };
     }
 
@@ -455,24 +580,19 @@ export function getGpsStatusMessage(params: {
       const rounded = Math.round(params.accuracyM);
       return {
         tone: "success",
-        desktopText: `ได้ตำแหน่งแล้ว · แม่นยำ ±${rounded} เมตร · ลากหมุดบนแผนที่เพื่อปรับได้`,
-        mobileText: `ได้ตำแหน่งแล้ว (แม่นยำ ±${rounded} ม.)`,
+        desktopText: format(t.gps.okDesktop, { meters: rounded }),
+        mobileText: format(t.gps.okMobile, { meters: rounded }),
       };
     }
 
     return {
       tone: "success",
-      desktopText: "ปักหมุดตำแหน่งแล้ว · ลากหมุดบนแผนที่เพื่อปรับได้",
-      mobileText: "ปักหมุดตำแหน่งแล้ว",
+      desktopText: t.gps.pinnedDesktop,
+      mobileText: t.gps.pinnedMobile,
     };
   }
 
   return null;
-}
-
-export interface Step3ValidationErrors {
-  totalPeople?: string;
-  missingSummary: string[];
 }
 
 /**
@@ -490,15 +610,55 @@ export function getTotalPeopleCount(
 }
 
 /**
- * ตรวจสอบข้อมูลขั้นที่ 3 (ผู้ติดค้าง) ด้วย step3Schema จาก src/lib/domain
- * เกณฑ์ผ่าน: จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน
+ * ตรวจสอบข้อมูลขั้นที่ 2 "รายละเอียดเหตุ" (TF-66 รวมคำถามเดิมของขั้น 1 และ 3)
+ * เกณฑ์ผ่าน:
+ * - ตอบสัญญาณอันตราย (ติ๊ก หรือกด "ไม่มี") และออกเองได้ไหม (TF-55)
+ * - คำถามที่บังคับ (required: true) ของประเภทเหตุนั้นต้องตอบครบและถูกต้องตามชนิดข้อมูล (TF-51)
+ * - จำนวนคนรวม (ผู้ใหญ่ + ผู้สูงอายุ + ผู้ป่วยติดเตียง + เด็กเล็ก) ต้องมีอย่างน้อย 1 คน (TF-11)
  */
-export function validateStep3Draft(
-  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets">,
+export function validateStep2Draft(
+  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets"> &
+    Partial<
+      Pick<
+        SosDraft,
+        "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured" | "dangerSigns"
+      >
+    >,
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   totalPeople: number;
-  errors: Step3ValidationErrors;
+  errors: Step2ValidationErrors;
+} {
+  const errors: Step2ValidationErrors = {
+    missingSummary: [],
+  };
+  validateDangerAnswers(draft, errors, t);
+  const people = validatePeopleAndQuestions(draft, t);
+  errors.missingSummary.push(...people.errors.missingSummary);
+  if (people.errors.totalPeople) errors.totalPeople = people.errors.totalPeople;
+  if (people.errors.questionErrors) errors.questionErrors = people.errors.questionErrors;
+
+  return {
+    valid: errors.missingSummary.length === 0,
+    totalPeople: people.totalPeople,
+    errors: errors.missingSummary.length === 0 ? { missingSummary: [] } : errors,
+  };
+}
+
+/**
+ * คำถามเฉพาะประเภทจากทะเบียน + จำนวนผู้ติดค้าง (ส่วนหนึ่งของขั้นที่ 2)
+ */
+function validatePeopleAndQuestions(
+  draft: Pick<SosDraft, "adults" | "elderly" | "bedridden" | "children" | "pets"> &
+    Partial<
+      Pick<SosDraft, "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured">
+    >,
+  t: SosText,
+): {
+  valid: boolean;
+  totalPeople: number;
+  errors: Step2ValidationErrors;
 } {
   const totalPeople = getTotalPeopleCount(draft);
   const result = step3Schema.safeParse({
@@ -509,21 +669,122 @@ export function validateStep3Draft(
     pets: draft.pets,
   });
 
-  if (result.success) {
+  const errors: Step2ValidationErrors = {
+    missingSummary: [],
+  };
+  const questionErrors: Record<string, string> = {};
+
+  const activeType = draft.incidentType ?? IncidentType.FLOOD;
+  const questions = INCIDENT_REGISTRY[activeType].questions;
+
+  const allAnswers: Record<string, unknown> = {
+    ...(draft.details ?? {}),
+    waterLevel: draft.waterLevel,
+    canSelfEvacuate: draft.canSelfEvacuate,
+    hasInjured: draft.hasInjured,
+  };
+  if (allAnswers.vehicleTypes === undefined && draft.details?.vehicleType !== undefined) {
+    allAnswers.vehicleTypes = Array.isArray(draft.details.vehicleType)
+      ? draft.details.vehicleType
+      : [draft.details.vehicleType];
+  }
+
+  for (const q of questions) {
+    // ถ้าคำถามมีเงื่อนไข dependsOn และคำตอบปัจจุบันไม่ตรงเงื่อนไข ให้ข้ามการตรวจ
+    if (q.dependsOn && !isQuestionVisible(q, allAnswers)) {
+      continue;
+    }
+
+    let val: string | number | boolean | string[] | undefined = draft.details?.[q.key];
+    if (val === undefined) {
+      if (q.key === "waterLevel") val = draft.waterLevel;
+      else if (q.key === "canSelfEvacuate") val = draft.canSelfEvacuate;
+      else if (q.key === "hasInjured") val = draft.hasInjured;
+      else if (q.key === "vehicleTypes" && draft.details?.vehicleType !== undefined) {
+        val = Array.isArray(draft.details.vehicleType)
+          ? draft.details.vehicleType
+          : [draft.details.vehicleType as string];
+      }
+    }
+
+    // ออกเองได้ไหม (FLOOD) ตรวจในส่วนสัญญาณอันตรายของขั้นเดียวกันแล้ว (validateDangerAnswers)
+    if (q.key === "canSelfEvacuate") {
+      continue;
+    }
+
+    const isEmpty = val === undefined || val === "" || (Array.isArray(val) && val.length === 0);
+
+    if (q.required && isEmpty) {
+      const label = pickText(q.label, t.locale);
+      questionErrors[q.key] = format(t.v.questionRequired, { label });
+      errors.missingSummary.push(label);
+      continue;
+    }
+
+    if (val !== undefined && val !== "") {
+      if (q.kind === "choice") {
+        if (q.multiple) {
+          if (
+            !Array.isArray(val) ||
+            val.length === 0 ||
+            !val.every((v) => typeof v === "string" && q.options.some((o) => o.value === v))
+          ) {
+            questionErrors[q.key] = format(t.v.questionChoiceInvalid, { label: pickText(q.label, t.locale) });
+            errors.missingSummary.push(pickText(q.label, t.locale));
+          }
+        } else {
+          if (typeof val !== "string" || !q.options.some((o) => o.value === val)) {
+            questionErrors[q.key] = format(t.v.questionChoiceInvalid, { label: pickText(q.label, t.locale) });
+            errors.missingSummary.push(pickText(q.label, t.locale));
+          }
+        }
+      } else if (q.kind === "number") {
+        if (typeof val !== "number" || !Number.isInteger(val) || val < q.min || val > q.max) {
+          questionErrors[q.key] = format(t.v.questionNumberRange, {
+            label: pickText(q.label, t.locale),
+            min: q.min,
+            max: q.max,
+          });
+          errors.missingSummary.push(pickText(q.label, t.locale));
+        }
+      } else if (q.kind === "boolean") {
+        if (typeof val !== "boolean") {
+          questionErrors[q.key] = format(t.v.questionRequired, { label: pickText(q.label, t.locale) });
+          errors.missingSummary.push(pickText(q.label, t.locale));
+        }
+      } else if (q.kind === "text") {
+        if (typeof val !== "string" || val.length > q.maxLength) {
+          questionErrors[q.key] = format(t.v.questionTextTooLong, {
+            label: pickText(q.label, t.locale),
+            max: q.maxLength,
+          });
+          errors.missingSummary.push(pickText(q.label, t.locale));
+        }
+      }
+    }
+  }
+
+  if (!result.success) {
+    errors.totalPeople = t.v.peopleRequired;
+    errors.missingSummary.push(t.v.sumPeople);
+  }
+
+  if (Object.keys(questionErrors).length > 0) {
+    errors.questionErrors = questionErrors;
+  }
+
+  if (errors.totalPeople || Object.keys(questionErrors).length > 0) {
     return {
-      valid: true,
+      valid: false,
       totalPeople,
-      errors: { missingSummary: [] },
+      errors,
     };
   }
 
   return {
-    valid: false,
+    valid: true,
     totalPeople,
-    errors: {
-      totalPeople: "ต้องมีผู้ติดค้างอย่างน้อย 1 คน (ไม่นับรวมสัตว์เลี้ยง)",
-      missingSummary: ["จำนวนผู้ติดค้างอย่างน้อย 1 คน"],
-    },
+    errors: { missingSummary: [] },
   };
 }
 
@@ -538,6 +799,7 @@ export interface Step4ValidationErrors {
  */
 export function validateStep4Draft(
   draft: Pick<SosDraft, "needs" | "otherDetail">,
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   errors: Step4ValidationErrors;
@@ -549,8 +811,8 @@ export function validateStep4Draft(
       return {
         valid: false,
         errors: {
-          otherDetail: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ก่อนไปขั้นถัดไป",
-          missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ"],
+          otherDetail: t.v.otherDetailRequired,
+          missingSummary: [t.v.sumOtherDetail],
         },
       };
     }
@@ -559,8 +821,8 @@ export function validateStep4Draft(
       return {
         valid: false,
         errors: {
-          otherDetail: "รายละเอียดสิ่งที่ต้องการอื่นๆ ต้องไม่เกิน 200 ตัวอักษร",
-          missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ ไม่เกิน 200 ตัวอักษร"],
+          otherDetail: t.v.otherDetailTooLong,
+          missingSummary: [t.v.sumOtherDetailTooLong],
         },
       };
     }
@@ -581,8 +843,8 @@ export function validateStep4Draft(
   return {
     valid: false,
     errors: {
-      otherDetail: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ก่อนไปขั้นถัดไป",
-      missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ"],
+      otherDetail: t.v.otherDetailRequired,
+      missingSummary: [t.v.sumOtherDetail],
     },
   };
 }
@@ -592,6 +854,8 @@ export interface Step5ValidationErrors {
   phone?: string;
   notes?: string;
   photos?: string;
+  consent?: string;
+  healthConsent?: string;
   missingSummary: string[];
 }
 
@@ -605,7 +869,10 @@ export interface Step5ValidationErrors {
 export function validateStep5Draft(
   draft: Pick<SosDraft, "name" | "phone" | "lineId" | "notes"> & {
     photos?: readonly SosDraftPhoto[];
+    consent?: boolean;
+    healthConsent?: boolean;
   },
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   normalizedPhone?: string;
@@ -617,19 +884,19 @@ export function validateStep5Draft(
 
   const trimmedName = draft.name?.trim() ?? "";
   if (trimmedName.length === 0) {
-    errors.name = "กรุณาระบุชื่อผู้แจ้งหรือผู้ติดต่อ";
-    errors.missingSummary.push("ชื่อผู้แจ้ง");
+    errors.name = t.v.nameRequired;
+    errors.missingSummary.push(t.v.sumName);
   }
 
   const cleanedPhone = (draft.phone ?? "").replace(/[\s\-]/g, "");
   if (cleanedPhone.length === 0) {
-    errors.phone = "กรุณาระบุเบอร์โทรศัพท์สำหรับติดต่อกลับ";
-    errors.missingSummary.push("เบอร์โทรศัพท์");
+    errors.phone = t.v.phoneRequired;
+    errors.missingSummary.push(t.v.sumPhone);
   }
 
   if ((draft.notes ?? "").length > 500) {
-    errors.notes = "รายละเอียดเพิ่มเติมต้องไม่เกิน 500 ตัวอักษร";
-    errors.missingSummary.push("รายละเอียดเพิ่มเติมไม่เกิน 500 ตัวอักษร");
+    errors.notes = t.v.notesTooLong;
+    errors.missingSummary.push(t.v.sumNotesTooLong);
   }
 
   const parsed = step5Schema.safeParse({
@@ -643,29 +910,44 @@ export function validateStep5Draft(
     for (const issue of parsed.error.issues) {
       const field = issue.path[0];
       if (field === "name" && !errors.name) {
-        errors.name = issue.message;
-        errors.missingSummary.push("ชื่อผู้แจ้ง");
+        errors.name = schemaMessage(issue.message, t.v.nameRequired, t);
+        errors.missingSummary.push(t.v.sumName);
       } else if (field === "phone" && !errors.phone) {
-        errors.phone = issue.message;
-        errors.missingSummary.push("เบอร์โทรศัพท์ไทยที่ถูกต้อง");
+        errors.phone = schemaMessage(issue.message, t.v.phoneInvalid, t);
+        errors.missingSummary.push(t.v.sumPhoneInvalid);
       } else if (field === "notes" && !errors.notes) {
-        errors.notes = issue.message;
-        errors.missingSummary.push("รายละเอียดเพิ่มเติม");
+        errors.notes = schemaMessage(issue.message, t.v.notesTooLong, t);
+        errors.missingSummary.push(t.v.sumNotes);
       }
     }
   }
 
+  if (draft.consent !== true) {
+    errors.consent = t.v.consentRequired;
+    errors.missingSummary.push(t.v.sumConsent);
+  }
+  if (draft.healthConsent !== true) {
+    errors.healthConsent = t.v.healthConsentRequired;
+    errors.missingSummary.push(t.v.sumHealthConsent);
+  }
+
   const photos = draft.photos ?? [];
   if (photos.length > MAX_SOS_PHOTOS) {
-    errors.photos = `แนบรูปได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป`;
-    errors.missingSummary.push(`รูปถ่ายไม่เกิน ${MAX_SOS_PHOTOS} รูป`);
+    errors.photos = format(t.v.photosTooMany, { max: MAX_SOS_PHOTOS });
+    errors.missingSummary.push(format(t.v.sumPhotosTooMany, { max: MAX_SOS_PHOTOS }));
   } else if (photos.some((p) => p.compressedBytes > MAX_PHOTO_BYTES)) {
-    errors.photos = "มีรูปถ่ายที่ขนาดเกิน 500 KB กรุณาลบแล้วเลือกใหม่";
-    errors.missingSummary.push("ขนาดรูปไม่เกิน 500 KB");
+    errors.photos = t.v.photoTooLarge;
+    errors.missingSummary.push(t.v.sumPhotoTooLarge);
   }
 
   const valid =
-    !errors.name && !errors.phone && !errors.notes && !errors.photos && parsed.success;
+    !errors.name &&
+    !errors.phone &&
+    !errors.notes &&
+    !errors.photos &&
+    !errors.consent &&
+    !errors.healthConsent &&
+    parsed.success;
 
   return {
     valid,
@@ -696,12 +978,13 @@ export function loadSosDraft(
   storage: Pick<Storage, "getItem"> | undefined = typeof window !== "undefined"
     ? window.localStorage
     : undefined,
+  { legacy = false }: { legacy?: boolean } = {},
 ): SosDraft {
   const initial = createInitialSosDraft();
   if (!storage) return initial;
 
   try {
-    const raw = storage.getItem(SOS_DRAFT_STORAGE_KEY);
+    const raw = storage.getItem(legacy ? LEGACY_SOS_DRAFT_STORAGE_KEY : SOS_DRAFT_STORAGE_KEY);
     if (!raw) return initial;
 
     const parsed = JSON.parse(raw) as Partial<SosDraft>;
@@ -722,8 +1005,7 @@ export function loadSosDraft(
     );
 
     const incidentType =
-      typeof parsed.incidentType === "string" &&
-      validIncidentTypes.includes(parsed.incidentType)
+      typeof parsed.incidentType === "string" && validIncidentTypes.includes(parsed.incidentType)
         ? (parsed.incidentType as IncidentType)
         : undefined;
     const atScene = typeof parsed.atScene === "boolean" ? parsed.atScene : undefined;
@@ -736,6 +1018,8 @@ export function loadSosDraft(
       : undefined;
     const canSelfEvacuate =
       typeof parsed.canSelfEvacuate === "boolean" ? parsed.canSelfEvacuate : undefined;
+
+    const locationSource = locationSourceSchema.safeParse(parsed.locationSource).data;
 
     const waterLevel =
       typeof parsed.waterLevel === "string" && validWaterLevels.includes(parsed.waterLevel)
@@ -752,17 +1036,31 @@ export function loadSosDraft(
       ? parsed.photos.slice(0, MAX_SOS_PHOTOS)
       : initial.photos;
 
+    const details: Record<string, IncidentDetailValue | undefined> = {};
+    if (
+      typeof parsed.details === "object" &&
+      parsed.details !== null &&
+      !Array.isArray(parsed.details)
+    ) {
+      for (const [k, v] of Object.entries(parsed.details)) {
+        if (
+          typeof v === "string" ||
+          typeof v === "number" ||
+          typeof v === "boolean" ||
+          (Array.isArray(v) && v.every((item): item is string => typeof item === "string"))
+        ) {
+          details[k] = v;
+        }
+      }
+    }
+
     const idempotencyKey =
-      typeof parsed.idempotencyKey === "string" &&
-      parsed.idempotencyKey.trim().length > 0
+      typeof parsed.idempotencyKey === "string" && parsed.idempotencyKey.trim().length > 0
         ? parsed.idempotencyKey.trim()
         : undefined;
 
-    // ถ้าเคยอยู่ขั้นถัดไปแต่ค่าขั้นที่ 1 ไม่ครบ หรือตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ ให้กลับมาเริ่มที่ขั้นที่ 1
-    const rawStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
-    const step1Answered =
-      atScene !== false && dangerSigns !== undefined && canSelfEvacuate !== undefined;
-    const currentStep: SosStepNumber = rawStep > 1 && !step1Answered ? 1 : rawStep;
+    const savedStep = isValidStepNumber(parsed.currentStep) ? parsed.currentStep : 1;
+    const rawStep = legacy ? LEGACY_STEP_TO_STEP[savedStep] : savedStep;
 
     // ตัด urgency ของร่างรุ่นเก่าทิ้ง ไม่ให้หลุดไปกับคำขอ
     const { urgency: _legacyUrgency, ...rest } = parsed as Partial<SosDraft> & {
@@ -770,23 +1068,72 @@ export function loadSosDraft(
     };
     void _legacyUrgency;
 
-    return {
+    const draft: SosDraft = {
       ...initial,
       ...rest,
-      currentStep,
+      currentStep: rawStep,
       incidentType,
       atScene,
       dangerSigns,
       canSelfEvacuate,
+      consent: false,
+      healthConsent: false,
       hasDisabled: parsed.hasDisabled === true,
       hasInjured: parsed.hasInjured === true,
       waterLevel,
+      details,
+      locationSource,
+      addressFallback: parsed.addressFallback === true,
       needs,
       photos,
       idempotencyKey,
     };
+    // ร่างเก่า (ก่อน TF-66): คำถามย้ายขั้น จึงพากลับไปขั้นแรกที่ยังไม่ครบ
+    // ร่างปัจจุบัน: ขั้น 1 ไม่ครบหรือตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ ให้กลับมาเริ่มที่ขั้นที่ 1 (เหมือนเดิม)
+    const limit = legacy ? firstIncompleteStep(draft) : validateStep1Draft(draft).valid ? 5 : 1;
+    return {
+      ...draft,
+      currentStep: Math.min(rawStep, limit) as SosStepNumber,
+    };
   } catch {
     return initial;
+  }
+}
+
+/** ขั้นแรกที่ยังกรอกไม่ครบ (นับแค่ขั้น 1–3 ที่ต้องผ่านก่อนไปต่อ) — ครบหมด = 5 */
+function firstIncompleteStep(draft: SosDraft): SosStepNumber {
+  if (!validateStep1Draft(draft).valid) return 1;
+  if (!validateStep2Draft(draft).valid) return 2;
+  if (!validateStep3Draft(draft).valid) return 3;
+  return 5;
+}
+
+/**
+ * ย้ายร่างก่อน TF-66 (คีย์ v1) มาเป็นคีย์ v2 พร้อมแปลงเลขขั้น แล้วลบคีย์เก่าเสมอ
+ * - มีร่าง v2 อยู่แล้ว: ใช้ v2 ทิ้ง v1
+ * - JSON เสีย: ทิ้ง v1 เริ่มฟอร์มใหม่ (ไม่ทำให้หน้าพัง)
+ */
+export function migrateLegacySosDraft(
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+): void {
+  try {
+    const legacy = storage.getItem(LEGACY_SOS_DRAFT_STORAGE_KEY);
+    if (legacy === null) return;
+    if (storage.getItem(SOS_DRAFT_STORAGE_KEY) === null) {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(legacy);
+      } catch {
+        // JSON เสีย ทิ้งไป
+      }
+      if (typeof parsed === "object" && parsed !== null) {
+        const draft = loadSosDraft(storage, { legacy: true });
+        storage.setItem(SOS_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      }
+    }
+    storage.removeItem(LEGACY_SOS_DRAFT_STORAGE_KEY);
+  } catch {
+    // พื้นที่เก็บข้อมูลใช้ไม่ได้ (โหมดส่วนตัว) — ฟอร์มยังเริ่มใหม่ได้ตามปกติ
   }
 }
 
@@ -847,6 +1194,7 @@ export function clearSosDraft(
  */
 export function getSosDraftSnapshot(): SosDraft {
   try {
+    migrateLegacySosDraft(window.localStorage);
     const raw = window.localStorage.getItem(SOS_DRAFT_STORAGE_KEY);
     const search = window.location.search;
     const cacheKey = `${raw ?? ""}::${search}`;
@@ -881,12 +1229,25 @@ export function subscribeSosDraft(listener: () => void): () => void {
 /**
  * สร้างข้อความแสดงความคืบหน้า เช่น "ขั้นที่ 1 จาก 5"
  */
-export function formatStepProgressText(step: SosStepNumber): string {
-  return `ขั้นที่ ${step} จาก ${SOS_STEPS.length}`;
+export function formatStepProgressText(step: SosStepNumber, t: SosText = SOS_TEXT_TH): string {
+  return format(t.stepProgress, { step, total: SOS_STEPS.length });
 }
 
 export type SubmitSosDraftResult =
   | { status: "duplicate_in_flight" }
+  | {
+      // TF-74: พบเคสที่อาจซ้ำ — ให้ผู้แจ้งเลือก แล้วส่งใหม่ด้วย idempotency key เดิม
+      status: "duplicate_candidate";
+      matchReason: DuplicateMatchReason;
+      options: DuplicateChoice[];
+      idempotencyKey: string;
+    }
+  | {
+      // TF-74: เบอร์เดิมจากเครื่องอื่น — ส่งเป็นรายงานเพิ่มเติมแล้ว ไม่มีรหัสเคส
+      status: "supplemented";
+      idempotencyKey: string;
+      successMessage: string;
+    }
   | {
       status: "invalid_step";
       step: 1;
@@ -921,14 +1282,35 @@ export type SubmitSosDraftResult =
       status: "api_error" | "network_error";
       error: string;
       idempotencyKey: string;
+      requestBody?: string;
+    }
+  | {
+      status: "photo_pending";
+      idempotencyKey: string;
+      requestBody: string;
+      caseCode: string;
+      trackingToken: string;
+      confirmationToken?: string;
     }
   | {
       status: "submitted";
       caseCode: string;
       trackingToken?: string;
+      confirmationToken?: string;
       idempotencyKey: string;
       successMessage: string;
+      /** TF-74: อัปเดตเคสเดิมจากเครื่องที่ส่งเคสนั้น — พาไปหน้าติดตามเคสนั้น */
+      updatedExisting?: boolean;
     };
+
+/** เวลารอสูงสุดของคำขอส่ง SOS หลัก (12 วิ) เพื่อไม่ให้ปุ่มหมุนค้างหลายนาทีบนเน็ตช้าแล้วส่งเข้าคิว TF-15 */
+export const SOS_SUBMIT_TIMEOUT_MS = 12_000;
+
+/** เวลารอสูงสุดของคำขออัปโหลดรูปตามหลังเคส (12 วิ) — หากหมดเวลาจะเก็บคิวส่งรูปซ้ำโดยเคสไม่ล้ม */
+export const SOS_PHOTO_UPLOAD_TIMEOUT_MS = 12_000;
+
+/** เวลาที่รอเกินแล้วแสดงปุ่มโทร 1669 และส่งทาง SMS บนขั้นที่ 5 ทันที (5 วิ) */
+export const SOS_SLOW_SUBMIT_NOTICE_MS = 5_000;
 
 export interface SubmitSosDraftOptions {
   draft: SosDraft;
@@ -936,6 +1318,79 @@ export interface SubmitSosDraftOptions {
   inFlightRef?: { current: boolean };
   fetchImpl?: typeof fetch;
   generateIdempotencyKey?: () => string;
+  timeoutMs?: number;
+  photoTimeoutMs?: number;
+  /** TF-63: ข้อความตามภาษาของหน้า และภาษาผู้แจ้งที่เก็บกับเคส (reporter_locale) */
+  text?: SosText;
+  /** TF-74: ทางที่ผู้แจ้งเลือกหลังพบเคสที่อาจซ้ำ (ไม่ส่ง = ให้ระบบถามก่อน) */
+  duplicateAction?: DuplicateChoice;
+}
+
+/** TF-74: ทางเลือกเมื่อพบเคสที่อาจซ้ำ */
+export type DuplicateChoice = "UPDATE_EXISTING" | "CREATE_NEW";
+
+interface CaseSubmitApiResponse {
+  // TF-74: 409 พบเคสที่อาจซ้ำ / 200 รายงานเพิ่มเติม / อัปเดตเคสเดิม
+  code?: string;
+  matchReason?: DuplicateMatchReason;
+  options?: DuplicateChoice[];
+  supplemented?: boolean;
+  updatedExisting?: boolean;
+  caseCode?: string;
+  trackingToken?: string;
+  confirmationToken?: string;
+  error?: string;
+  photoWarning?: string;
+  photosPending?: boolean;
+}
+
+/** ครอบ fetch ด้วย AbortController + timeout rejection เพื่อกันค้างบนเครือข่ายช้ามาก */
+async function fetchWithTimeout(
+  fetchImpl: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new DOMException("Request timed out", "TimeoutError");
+      controller.abort(err);
+      reject(err);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      fetchImpl(input, { ...init, signal: controller.signal }),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function postCasePayload(
+  fetchImpl: typeof fetch,
+  idempotencyKey: string,
+  body: string,
+  timeoutMs: number,
+): Promise<{ response: Response; data: CaseSubmitApiResponse }> {
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    "/api/cases",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body,
+    },
+    timeoutMs,
+  );
+  const data = (await response.json()) as CaseSubmitApiResponse;
+  return { response, data };
 }
 
 const _defaultInFlightRef = { current: false };
@@ -943,7 +1398,7 @@ const _defaultInFlightRef = { current: false };
 /**
  * ส่งคำขอความช่วยเหลือ SOS ไปยัง POST /api/cases:
  * 1. ป้องกันการกดส่งซ้ำขณะกำลังส่ง (inFlightRef lock) และผูก Idempotency-Key ประจำร่าง
- * 2. ตรวจความครบถ้วนทุกขั้น (รวมถึงพิกัดและจุดสังเกตในขั้นที่ 2 — ถ้าไม่มีตำแหน่งจะตอบ error ไม่ขึ้นกล่องสีเขียว)
+ * 2. ตรวจความครบถ้วนทุกขั้น (รวมถึงพิกัดและจุดสังเกตในขั้นที่ 3 — ถ้าไม่มีตำแหน่งจะตอบ error ไม่ขึ้นกล่องสีเขียว)
  * 3. เมื่อส่งสำเร็จ (response.ok) จะล้างร่างออกจาก localStorage ทันทีด้วย clearSosDraft()
  */
 export async function submitSosDraft(
@@ -961,60 +1416,71 @@ export async function submitSosDraft(
       storage = typeof window !== "undefined" ? window.localStorage : undefined,
       fetchImpl = fetch,
       generateIdempotencyKey = () => crypto.randomUUID(),
+      timeoutMs = SOS_SUBMIT_TIMEOUT_MS,
+      photoTimeoutMs = SOS_PHOTO_UPLOAD_TIMEOUT_MS,
+      text: t = SOS_TEXT_TH,
     } = options;
+    const list = (items: string[], joiner: string) => items.join(joiner);
 
-    const check5 = validateStep5Draft(draft);
+    const check5 = validateStep5Draft(draft, t);
     if (!check5.valid) {
       return {
         status: "invalid_step",
         step: 5,
         step5Errors: check5.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาตรวจสอบ: ${check5.errors.missingSummary.join(", ")}`,
+        error: format(t.submit.invalidStep5, {
+          items: list(check5.errors.missingSummary, t.listComma),
+        }),
       };
     }
 
-    const check1 = validateStep1Draft(draft);
+    const check1 = validateStep1Draft(draft, undefined, t);
     if (!check1.valid) {
       return {
         status: "invalid_step",
         step: 1,
         step1Errors: check1.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาตอบ${check1.errors.missingSummary.join("และ")} ในขั้นที่ 1`,
+        error: format(t.submit.invalidStep1, {
+          items: list(check1.errors.missingSummary, t.listAnd),
+        }),
       };
     }
 
-    const check3 = validateStep3Draft(draft);
-    if (!check3.valid) {
+    const check2 = validateStep2Draft(draft, t);
+    if (!check2.valid) {
       return {
         status: "invalid_step",
-        step: 3,
-        step3Errors: check3.errors,
-        error: "ยังส่งคำขอไม่ได้ กรุณาระบุจำนวนผู้ติดค้างอย่างน้อย 1 คนในขั้นที่ 3",
+        step: 2,
+        step2Errors: check2.errors,
+        error: format(t.submit.invalidStep2, {
+          items: list(check2.errors.missingSummary, t.listComma),
+        }),
       };
     }
 
-    const check4 = validateStep4Draft(draft);
+    const check4 = validateStep4Draft(draft, t);
     if (!check4.valid) {
       return {
         status: "invalid_step",
         step: 4,
         step4Errors: check4.errors,
-        error: "ยังส่งคำขอไม่ได้ กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ในขั้นที่ 4",
+        error: t.submit.invalidStep4,
       };
     }
 
-    const check2 = validateStep2Draft(draft);
-    if (!check2.valid || typeof draft.lat !== "number" || typeof draft.lng !== "number") {
+    const check3 = validateStep3Draft(draft, t);
+    if (!check3.valid || typeof draft.lat !== "number" || typeof draft.lng !== "number") {
       return {
         status: "invalid_step",
-        step: 2,
-        step2Errors: check2.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check2.errors.missingSummary.join("และ")} ในขั้นที่ 2 ก่อนส่งคำขอ`,
+        step: 3,
+        step3Errors: check3.errors,
+        error: format(t.submit.invalidStep3, {
+          items: list(check3.errors.missingSummary, t.listAnd),
+        }),
       };
     }
 
-    const normalizedPhone =
-      check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
+    const normalizedPhone = check5.normalizedPhone ?? normalizePhoneInput(draft.phone);
     const idempotencyKey =
       draft.idempotencyKey && draft.idempotencyKey.trim().length > 0
         ? draft.idempotencyKey.trim()
@@ -1030,76 +1496,211 @@ export async function submitSosDraft(
 
     saveSosDraft(nextDraft, storage);
 
-    try {
-      const response = await fetchImpl("/api/cases", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify({
-          dangerSigns: nextDraft.dangerSigns,
-          canSelfEvacuate: nextDraft.canSelfEvacuate,
-          waterLevel: nextDraft.waterLevel,
-          lat: nextDraft.lat,
-          lng: nextDraft.lng,
-          accuracyM: nextDraft.accuracyM,
-          province: nextDraft.province,
-          district: nextDraft.district,
-          subdistrict: nextDraft.subdistrict,
-          landmark: nextDraft.landmark,
-          adults: nextDraft.adults,
-          elderly: nextDraft.elderly,
-          bedridden: nextDraft.bedridden,
-          children: nextDraft.children,
-          pets: nextDraft.pets,
-          hasDisabled: nextDraft.hasDisabled,
-          hasInjured: nextDraft.hasInjured,
-          needs: nextDraft.needs,
-          otherDetail: nextDraft.needs.includes(Need.OTHER)
-            ? nextDraft.otherDetail
-            : undefined,
-          name: nextDraft.name,
-          phone: nextDraft.phone,
-          lineId: nextDraft.lineId || undefined,
-          notes: nextDraft.notes || undefined,
-        }),
-      });
+    const activeType = nextDraft.incidentType ?? IncidentType.FLOOD;
+    const detailsPayload: Record<string, IncidentDetailValue> = {};
+    for (const q of INCIDENT_REGISTRY[activeType].questions) {
+      if (q.dependsOn && !isQuestionVisible(q, nextDraft.details ?? {})) {
+        continue;
+      }
+      let val: IncidentDetailValue | undefined = nextDraft.details?.[q.key];
+      if (val === undefined) {
+        if (q.key === "waterLevel") val = nextDraft.waterLevel;
+        else if (q.key === "canSelfEvacuate") val = nextDraft.canSelfEvacuate;
+        else if (q.key === "hasInjured" && nextDraft.hasInjured) val = true;
+        else if (q.key === "vehicleTypes" && nextDraft.details?.vehicleType !== undefined) {
+          val = Array.isArray(nextDraft.details.vehicleType)
+            ? nextDraft.details.vehicleType
+            : [String(nextDraft.details.vehicleType)];
+        }
+      }
+      if (val !== undefined) {
+        detailsPayload[q.key] = val;
+      }
+    }
 
-      const data = (await response.json()) as {
-        caseCode?: string;
-        trackingToken?: string;
-        error?: string;
-      };
+    const basePayload = {
+      incidentType: nextDraft.incidentType,
+      atScene: nextDraft.atScene,
+      dangerSigns: nextDraft.dangerSigns,
+      canSelfEvacuate: nextDraft.canSelfEvacuate,
+      waterLevel: activeType === IncidentType.FLOOD ? nextDraft.waterLevel : undefined,
+      details: detailsPayload,
+      lat: nextDraft.lat,
+      lng: nextDraft.lng,
+      accuracyM: accuracyForLocationSource(nextDraft.locationSource, nextDraft.accuracyM),
+      locationSource: nextDraft.locationSource,
+      addressLine: nextDraft.addressLine?.trim() || undefined,
+      province: nextDraft.province,
+      district: nextDraft.district,
+      subdistrict: nextDraft.subdistrict,
+      landmark: nextDraft.landmark,
+      adults: nextDraft.adults,
+      elderly: nextDraft.elderly,
+      bedridden: nextDraft.bedridden,
+      children: nextDraft.children,
+      pets: nextDraft.pets,
+      hasDisabled: nextDraft.hasDisabled,
+      hasInjured: nextDraft.hasInjured,
+      needs: nextDraft.needs,
+      otherDetail: nextDraft.needs.includes(Need.OTHER) ? nextDraft.otherDetail : undefined,
+      name: nextDraft.name,
+      phone: nextDraft.phone,
+      lineId: nextDraft.lineId || undefined,
+      notes: nextDraft.notes || undefined,
+      consent: nextDraft.consent,
+      healthConsent: nextDraft.healthConsent,
+      // TF-63: ภาษาของฟอร์มที่ผู้แจ้งใช้ (กู้ภัยเห็นป้าย / ลิงก์ติดตามพาไปภาษานี้)
+      reporterLocale: t.locale,
+      ...(options.duplicateAction ? { duplicateAction: options.duplicateAction } : {}),
+      // TF-74: token ยืนยันของเครื่องนี้ (TF-58) — เซิร์ฟเวอร์ใช้เทียบว่าเป็นเครื่องที่ส่งเคสเดิมไหม
+      ...(options.duplicateAction === "UPDATE_EXISTING" && storage
+        ? {
+            deviceConfirmationTokens: readDeviceCases(storage as Storage).map(
+              (item) => item.confirmationToken,
+            ),
+          }
+        : {}),
+    };
+    const hasPhotos = nextDraft.photos.length > 0;
+    const caseRequestBody = JSON.stringify(basePayload);
+    const fullRequestBody = hasPhotos
+      ? JSON.stringify({
+          ...basePayload,
+          photos: nextDraft.photos.map((photo) => photo.dataUrl),
+        })
+      : caseRequestBody;
+
+    let caseData: CaseSubmitApiResponse;
+    try {
+      // ขั้น 1 (TF-69): ส่งเคสโดยไม่มีรูปก่อนเสมอเพื่อให้ถึงเซิร์ฟเวอร์เร็วแม้เน็ตช้ามาก
+      const { response, data } = await postCasePayload(
+        fetchImpl,
+        idempotencyKey,
+        caseRequestBody,
+        timeoutMs,
+      );
 
       if (!response.ok) {
+        if (response.status === 409 && data.code === "DUPLICATE_CANDIDATE" && data.matchReason) {
+          return {
+            status: "duplicate_candidate",
+            matchReason: data.matchReason,
+            options: data.options?.length ? data.options : ["CREATE_NEW"],
+            idempotencyKey,
+          };
+        }
+        if (data.photosPending && data.caseCode && data.trackingToken) {
+          return {
+            status: "photo_pending",
+            idempotencyKey,
+            requestBody: fullRequestBody,
+            caseCode: data.caseCode,
+            trackingToken: data.trackingToken,
+            confirmationToken: data.confirmationToken,
+          };
+        }
         return {
           status: "api_error",
-          error:
-            data.error ??
-            "ไม่สามารถส่งคำขอได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทรสายด่วน 1669 / 1784",
+          // ข้อความจากเซิร์ฟเวอร์เป็นภาษาไทย — หน้าอังกฤษใช้ข้อความกลางแทน
+          error: (t.locale === "th" ? data.error : undefined) ?? t.submit.apiError,
           idempotencyKey,
         };
       }
 
-      // ส่งสำเร็จแล้วต้องล้างข้อมูลร่างในเครื่องทันทีเพื่อไม่ให้ค้างหรือส่งซ้ำ
-      clearSosDraft(storage);
-
-      const caseCode = data.caseCode ?? "";
-      return {
-        status: "submitted",
-        caseCode,
-        trackingToken: data.trackingToken,
-        idempotencyKey,
-        successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${caseCode}`,
-      };
+      caseData = data;
     } catch {
       return {
         status: "network_error",
-        error: "ไม่สามารถเชื่อมต่อเครือข่ายได้ ระบบบันทึกข้อมูลร่างไว้ในเครื่องแล้ว",
+        error: t.submit.networkError,
         idempotencyKey,
+        requestBody: fullRequestBody,
       };
     }
+
+    const caseCode = caseData.caseCode ?? "";
+    let finalCaseData: CaseSubmitApiResponse = caseData;
+    let photoWarning = caseData.photoWarning;
+
+    // ขั้น 2 (TF-69): เมื่อสร้างเคสได้รหัสแล้วค่อยอัปโหลดรูปด้วย Idempotency-Key เดิม — รูปล้มต้องไม่ทำให้เคสล้ม
+    if (hasPhotos) {
+      try {
+        const { response: photoResponse, data: photoData } = await postCasePayload(
+          fetchImpl,
+          idempotencyKey,
+          fullRequestBody,
+          photoTimeoutMs,
+        );
+        if (photoResponse.ok) {
+          finalCaseData = {
+            ...caseData,
+            ...photoData,
+            caseCode: photoData.caseCode ?? caseData.caseCode,
+            trackingToken: photoData.trackingToken ?? caseData.trackingToken,
+            confirmationToken: photoData.confirmationToken ?? caseData.confirmationToken,
+          };
+          photoWarning = photoData.photoWarning ?? photoWarning;
+        } else {
+          const isPermanent4xx =
+            photoResponse.status >= 400 &&
+            photoResponse.status < 500 &&
+            photoResponse.status !== 429;
+          if (isPermanent4xx) {
+            photoWarning =
+              (t.locale === "th" ? photoData.error : undefined) ?? t.submit.photoRejected;
+          } else if (caseData.trackingToken) {
+            return {
+              status: "photo_pending",
+              idempotencyKey,
+              requestBody: fullRequestBody,
+              caseCode: photoData.caseCode ?? caseCode,
+              trackingToken: photoData.trackingToken ?? caseData.trackingToken,
+              confirmationToken: photoData.confirmationToken ?? caseData.confirmationToken,
+            };
+          } else {
+            photoWarning = t.submit.photoFailed;
+          }
+        }
+      } catch {
+        if (caseData.trackingToken) {
+          return {
+            status: "photo_pending",
+            idempotencyKey,
+            requestBody: fullRequestBody,
+            caseCode,
+            trackingToken: caseData.trackingToken,
+            confirmationToken: caseData.confirmationToken,
+          };
+        }
+        photoWarning = t.submit.photoFailed;
+      }
+    }
+
+    // ส่งสำเร็จแล้วต้องล้างข้อมูลร่างในเครื่องทันทีเพื่อไม่ให้ค้างหรือส่งซ้ำ
+    clearSosDraft(storage);
+
+    if (finalCaseData.supplemented) {
+      return {
+        status: "supplemented",
+        idempotencyKey,
+        successMessage: t.submit.supplemented,
+      };
+    }
+
+    const finalCode = finalCaseData.caseCode ?? caseCode;
+    return {
+      status: "submitted",
+      caseCode: finalCode,
+      trackingToken: finalCaseData.trackingToken,
+      confirmationToken: finalCaseData.confirmationToken,
+      idempotencyKey,
+      ...(finalCaseData.updatedExisting ? { updatedExisting: true } : {}),
+      successMessage: photoWarning
+        ? format(t.submit.successWithWarning, {
+            code: finalCode,
+            warning: t.locale === "th" ? photoWarning : t.submit.photoFailed,
+          })
+        : format(t.submit.success, { code: finalCode }),
+    };
   } finally {
     inFlightRef.current = false;
   }

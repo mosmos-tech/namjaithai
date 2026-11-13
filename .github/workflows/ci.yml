@@ -24,6 +24,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # migration ที่ PR เพิ่มต้องใหม่กว่าตัวล่าสุดใน base branch ไม่งั้นตอน merge แล้ว Deploy DB จะลงไม่ได้
+      # (เคยเกิดกับ TF-27: migration ทุกไฟล์ที่ตามมาไม่ได้ลง dev จนกว่าจะแก้)
+      - name: เช็กลำดับ migration
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          npm run check:migrations -- "origin/${{ github.base_ref }}"
+
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -53,9 +61,9 @@ jobs:
 
       - run: npm ci
 
-      # ข้าม service ที่เว็บยังไม่ใช้ ให้เปิดเร็วขึ้น (migration + seed จังหวัดรันเองตอน start)
+      # ข้าม service ที่เว็บยังไม่ใช้ ให้เปิดเร็วขึ้น (migration + seed จังหวัดรันเองตอน start; เปิด realtime สำหรับ TF-27)
       - name: Start Supabase
-        run: npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor,realtime,storage-api
+        run: npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor
 
       # เขียน .env.local จากคีย์ของ Supabase ใน CI (คีย์ทดสอบที่สร้างใหม่ทุกครั้ง ไม่ใช่ความลับ)
       - name: Write .env.local
@@ -65,6 +73,9 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
             echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+            # TF-36: ค่าทดสอบของ SMS gateway (ไม่ใช่ความลับ ไม่มี API key = ไม่ส่ง SMS จริง)
+            echo "NEXT_PUBLIC_SMS_GATEWAY_NUMBER=0800000036"
+            echo "HTTPSMS_WEBHOOK_SIGNING_KEY=e2e-tf36-signing-key-not-secret"
           } > .env.local
 
       # TF-43: verify owner-only reads and notification outbox permissions.
@@ -73,7 +84,17 @@ jobs:
       # ใช้ Google Chrome ที่มีในเครื่อง CI อยู่แล้ว โหลดเพิ่มแค่ ffmpeg สำหรับอัดวิดีโอ
       - run: npx playwright install ffmpeg
 
+      # TF-39: build ครั้งเดียวหลังเปิด Supabase และเขียน .env.local แล้ว (NEXT_PUBLIC_* ถูกฝังตอน build
+      # ต้องเป็น URL/key ของ Supabase ในเครื่อง CI ชุดนี้ ไม่งั้น Realtime ตอบ MalformedJWT — global-setup ตรวจซ้ำ)
+      - run: npm run build
+
+      # TF-39: รัน E2E กับ production build (next start) — dev server compile หน้าตอนเปิดครั้งแรกจน test ล้มเป็นบางครั้ง
       - run: npm run e2e
+        env:
+          E2E_SERVER: production
+
+      # TF-41: service-worker/offline behavior must run against a production build.
+      - run: npm run e2e:pwa
 
       - name: Upload videos and report
         if: failure()

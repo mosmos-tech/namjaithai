@@ -28,12 +28,30 @@ export const UnitCapability = {
 } as const;
 export type UnitCapability = (typeof UnitCapability)[keyof typeof UnitCapability];
 
+/** TF-72: ชื่อไทยของความสามารถหน่วย — ที่เดียวในโปรเจกต์ ทุกหน้าใช้ชุดนี้ */
+export const UNIT_CAPABILITY_LABELS: Record<UnitCapability, string> = {
+  BOAT: "เรือ",
+  EMS: "การแพทย์ฉุกเฉิน",
+  FIRE_SUPPRESSION: "ดับเพลิง",
+  EXTRICATION: "ตัดถ่าง",
+  WATER_RESCUE: "กู้ภัยทางน้ำ",
+  ANIMAL_CAPTURE: "จับสัตว์",
+  EVACUATION: "อพยพ",
+};
+
 /**
- * ข้อความ 2 ภาษา: ใส่ th ก่อน, en เติมทีหลังตอนทำฟอร์มภาษาอังกฤษ (TF-63)
+ * ข้อความ 2 ภาษา (TF-63): ต้องมีทั้งไทยและอังกฤษ — ขาดภาษาอังกฤษ typecheck ล้ม
  */
 export interface LocalizedText {
   th: string;
-  en?: string;
+  en: string;
+}
+
+export interface QuestionCondition {
+  /** key ของคำถามอื่นที่คำถามนี้ขึ้นอยู่กับ */
+  key: string;
+  /** ค่าที่ตรงกับเงื่อนไขเพื่อให้คำถามนี้แสดง (ค่าเดี่ยว หรือ array ของค่าที่ยอมรับ) */
+  value: string | boolean | number | readonly (string | boolean | number)[];
 }
 
 interface QuestionBase {
@@ -46,15 +64,46 @@ interface QuestionBase {
    * (เห็นเฉพาะกู้ภัยที่รับเคส หัวหน้าหน่วยนั้น และแอดมิน) ห้ามลง cases.details
    */
   sensitive?: boolean;
+  /** เงื่อนไขในการแสดงคำถามย่อยนี้ (ถ้ามี) */
+  dependsOn?: QuestionCondition;
 }
 
 export type IncidentQuestion =
   | (QuestionBase & {
       kind: "choice";
       options: { value: string; label: LocalizedText }[];
+      /** true = ผู้ใช้เลือกได้มากกว่า 1 ตัวเลือก (เก็บเป็น string[]) */
+      multiple?: boolean;
     })
   | (QuestionBase & { kind: "number"; min: number; max: number })
-  | (QuestionBase & { kind: "boolean" });
+  | (QuestionBase & { kind: "boolean" })
+  | (QuestionBase & { kind: "text"; maxLength: number; placeholder?: LocalizedText });
+
+/**
+ * ตรวจว่าคำถามนี้ควรแสดงในแบบฟอร์มหรือไม่ ตามเงื่อนไข dependsOn และคำตอบที่มี
+ */
+export function isQuestionVisible(
+  q: IncidentQuestion,
+  answers: Record<string, unknown>,
+): boolean {
+  if (!q.dependsOn) return true;
+  const target = answers[q.dependsOn.key];
+  if (target === undefined || target === null) return false;
+
+  const expected = q.dependsOn.value;
+  if (Array.isArray(expected)) {
+    if (Array.isArray(target)) {
+      return expected.some((v) => target.includes(v));
+    }
+    return expected.includes(target as string | boolean | number);
+  }
+
+  if (Array.isArray(target)) {
+    return target.includes(expected);
+  }
+
+  return target === expected;
+}
 
 /** สัญญาณอันตราย — ผู้แจ้งตอบว่าใช่แล้วขึ้นแถบโทรสายด่วนทันที (TF-50) */
 export interface DangerSign {
@@ -69,18 +118,30 @@ export const TF55_TRIAGE_TABLE_SOURCE =
   "ตารางกติกา TF-55 (เอกสารสถาปัตยกรรม อ้างอิง CBD สพฉ.) — รอตรวจกับต้นฉบับใน TF-54";
 
 /**
- * สัญญาณอันตรายที่ใช้กับทุกประเภทเหตุ (แถวแรกของตารางกติกา TF-55)
+ * สัญญาณอันตรายที่ใช้กับทุกประเภทเหตุ (คู่มือปฏิบัติการแจ้งเหตุ 1669 สพฉ.)
  * แต่ละประเภทเหตุเพิ่มสัญญาณเฉพาะของตัวเองต่อท้าย เช่น น้ำท่วม = มีคนอยู่ในน้ำ
  */
 export const UNIVERSAL_DANGER_SIGNS: readonly DangerSign[] = [
-  { key: "UNCONSCIOUS", label: { th: "มีคนหมดสติ" }, source: TF55_TRIAGE_TABLE_SOURCE },
+  {
+    key: "UNCONSCIOUS",
+    label: { th: "มีคนหมดสติ", en: "Someone is unconscious" },
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
+  },
   {
     key: "ABNORMAL_BREATHING",
-    label: { th: "มีคนหายใจผิดปกติ" },
-    source: TF55_TRIAGE_TABLE_SOURCE,
+    label: { th: "มีคนหายใจผิดปกติ", en: "Someone is breathing abnormally" },
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
   },
-  { key: "SEVERE_BLEEDING", label: { th: "มีคนเลือดออกมาก" }, source: TF55_TRIAGE_TABLE_SOURCE },
-  { key: "CHEST_PAIN", label: { th: "มีคนเจ็บหน้าอก" }, source: TF55_TRIAGE_TABLE_SOURCE },
+  {
+    key: "SEVERE_BLEEDING",
+    label: { th: "มีคนเลือดออกมาก", en: "Someone is bleeding heavily" },
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
+  },
+  {
+    key: "CHEST_PAIN",
+    label: { th: "มีคนเจ็บหน้าอก", en: "Someone has chest pain" },
+    source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
+  },
 ];
 
 /** คำแนะนำระหว่างรอทีม (TF-53) */
@@ -92,6 +153,8 @@ export interface WaitingAdvice {
 export interface IncidentDefinition {
   code: IncidentType;
   label: LocalizedText;
+  /** หัวข้อตัวนับคนในฟอร์ม SOS (TF-66) — มีทั้งไทยและอังกฤษให้ TF-63 ใช้ต่อ */
+  peopleLabel: Required<LocalizedText>;
   /** ชื่อไอคอนใน lucide-react (เช่น "Waves") — เก็บเป็นชื่อเพื่อให้โค้ดกลางไม่ต้อง import React */
   icon: string;
   /** ความสามารถทีมที่เหมาะกับเหตุนี้ (TF-52 canUnitHandle) — ว่าง = หน่วยไหนก็ช่วยได้ */
@@ -112,8 +175,12 @@ export const FORBIDDEN_DETAIL_KEYS = [
   "lineId",
   "detailedAddress",
   "health",
-  // TF-55: คำตอบเรื่องสุขภาพที่ใช้คำนวณระดับ เก็บใน case_sensitive_details เท่านั้น
+  // TF-55 & TF-51: คำตอบเรื่องสุขภาพที่ใช้คำนวณระดับและคำถามเฉพาะประเภท เก็บใน case_sensitive_details เท่านั้น
   "dangerSigns",
   "hasDisabled",
   "hasInjured",
+  "injuredCount",
+  "symptomGroup",
+  "hasChronicCondition",
+  "hasBittenOrStung",
 ] as const;

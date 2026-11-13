@@ -39,6 +39,51 @@ describe("handleTrackCase", () => {
     });
   });
 
+  it("TF-42: เติมเวลาที่คาดว่าจะถึงจากระยะทาง (ความเร็วเฉลี่ยค่าเดียวใน domain)", async () => {
+    const supabase = mockClient({
+      data: {
+        ...TRACKED,
+        status: "EN_ROUTE",
+        scene: { lat: 13.75, lng: 100.53 },
+        teamLocation: {
+          lat: 13.77,
+          lng: 100.53,
+          updatedAt: "2026-10-30T08:00:00Z",
+          distanceM: 2200,
+        },
+      },
+      error: null,
+    });
+    const res = await handleTrackCase({
+      caseCode: "FL-2610-0042",
+      proof: { trackingToken: TOKEN },
+      headers,
+      supabase,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as typeof TRACKED).teamLocation).toEqual({
+      lat: 13.77,
+      lng: 100.53,
+      updatedAt: "2026-10-30T08:00:00Z",
+      distanceM: 2200,
+      etaMinutes: 5,
+    });
+  });
+
+  it("TF-42: ไม่มีตำแหน่งทีม ไม่เดาเวลา", async () => {
+    const supabase = mockClient({
+      data: { ...TRACKED, status: "EN_ROUTE", teamLocation: null },
+      error: null,
+    });
+    const res = await handleTrackCase({
+      caseCode: "FL-2610-0042",
+      proof: { trackingToken: TOKEN },
+      headers,
+      supabase,
+    });
+    expect((res.body as typeof TRACKED).teamLocation).toBeNull();
+  });
+
   it("เปิดด้วย 4 ตัวท้าย: ไม่ส่ง token", async () => {
     const supabase = mockClient({ data: TRACKED, error: null });
     await handleTrackCase({

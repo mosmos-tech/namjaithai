@@ -12,13 +12,10 @@ import {
   type SentCase,
 } from "../sent-case";
 import { SuccessCheck } from "./SuccessCheck";
-
-const WAITING_TIPS = [
-  "ขึ้นไปอยู่ที่สูงที่สุดที่ปลอดภัย",
-  "สับคัตเอาต์ไฟถ้าน้ำเริ่มเข้าบ้าน",
-  "ประหยัดแบตมือถือ ลดแสงหน้าจอ ปิดแอปที่ไม่ใช้",
-  "โบกผ้าสีสด หรือใช้ไฟฉายส่งสัญญาณเมื่อได้ยินเสียงเรือ",
-];
+import { WaitingAdvice } from "./WaitingAdvice";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { LanguageSwitch } from "../../../components/public/LanguageSwitch";
+import { format, localePath } from "../../../lib/i18n/locale";
 
 /**
  * หน้าส่งสำเร็จ (TF-13): ติ๊กถูก รหัสเคสตัวใหญ่ ปุ่มคัดลอก ติดตามเคส แชร์ LINE
@@ -36,8 +33,9 @@ export function SentCaseView() {
 }
 
 function SentCaseCard({ sent }: { sent: SentCase }) {
+  const { t, locale } = useI18n();
   const [copied, setCopied] = useState(false);
-  const track = trackPath(sent.caseCode, sent.trackingToken);
+  const track = localePath(trackPath(sent.caseCode, sent.trackingToken), locale);
 
   async function copyCode() {
     try {
@@ -50,24 +48,34 @@ function SentCaseCard({ sent }: { sent: SentCase }) {
   }
 
   function shareLine() {
-    const text = lineShareText(sent.caseCode, new URL(track, window.location.origin).href);
+    const url = new URL(track, window.location.origin).href;
+    const text =
+      locale === "th"
+        ? lineShareText(sent.caseCode, url)
+        : t.sent.lineShareLines
+            .map((line) => format(line, { code: sent.caseCode, url }))
+            .join("\n");
     window.location.href = lineShareUrl(text);
   }
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+      <LanguageSwitch
+        locale={locale}
+        path="/sos/sent"
+        label={t.common.languageSwitchLabel}
+        className="self-end"
+      />
       <section className="bg-bg-surface sm:border-border-default rounded-[14px] px-5 py-8 text-center sm:border sm:px-12 sm:py-12">
         <SuccessCheck />
 
         <h1 className="font-heading text-text-primary mt-6 text-3xl font-bold sm:text-4xl">
-          ส่งถึงระบบแล้ว
+          {t.sent.title}
         </h1>
-        <p className="text-text-secondary mx-auto mt-3 max-w-lg text-lg">
-          ตอนนี้รอทีมกู้ภัยกดรับเคส อยู่ในที่สูงและเปิดเสียงโทรศัพท์ไว้
-        </p>
+        <p className="text-text-secondary mx-auto mt-3 max-w-lg text-lg">{t.sent.subtitle}</p>
 
         <div className="border-primary-100 bg-primary-50 mt-8 rounded-[12px] border px-4 py-6">
-          <p className="text-primary-700 text-base font-medium">รหัสเคสของคุณ (จดไว้)</p>
+          <p className="text-primary-700 text-base font-medium">{t.sent.yourCode}</p>
           <p
             className="text-text-primary mt-2 font-mono text-[32px] leading-tight font-bold tracking-[-0.02em] sm:text-[40px]"
             aria-live="polite"
@@ -75,9 +83,9 @@ function SentCaseCard({ sent }: { sent: SentCase }) {
             {sent.caseCode}
           </p>
           <p className="text-text-secondary mt-2 text-base">
-            ใช้คู่กับ 4 ตัวท้ายเบอร์โทร{" "}
+            {t.sent.useWithLast4Before}{" "}
             <span className="text-text-primary font-mono font-semibold">{sent.phoneLast4}</span>{" "}
-            เพื่อติดตามเคส
+            {t.sent.useWithLast4After}
           </p>
           <button
             type="button"
@@ -85,7 +93,7 @@ function SentCaseCard({ sent }: { sent: SentCase }) {
             className="font-heading text-primary-700 hover:bg-primary-100 mt-3 inline-flex min-h-12 items-center gap-2 rounded-full px-5 text-lg font-semibold transition-colors"
           >
             {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
-            {copied ? "คัดลอกแล้ว" : "คัดลอกรหัสเคส"}
+            {copied ? t.sent.copied : t.sent.copyCode}
           </button>
         </div>
 
@@ -94,7 +102,7 @@ function SentCaseCard({ sent }: { sent: SentCase }) {
             href={track}
             className="bg-primary-600 font-heading text-text-on-primary hover:bg-primary-700 flex min-h-14 items-center justify-center rounded-full px-6 text-[19px] font-semibold transition-colors"
           >
-            ติดตามสถานะเคส
+            {t.sent.trackStatus}
           </Link>
           <button
             type="button"
@@ -102,57 +110,48 @@ function SentCaseCard({ sent }: { sent: SentCase }) {
             className="bg-line-green font-heading flex min-h-14 items-center justify-center gap-3 rounded-full px-6 text-[19px] font-semibold text-white transition-[filter] hover:brightness-95"
           >
             <LineLogo className="size-7" />
-            แชร์ให้ญาติทาง LINE
+            {t.sent.shareLine}
           </button>
         </div>
 
         <Link
-          href="/"
+          href={locale === "en" ? "/en/hotlines" : "/"}
           className="font-heading text-primary-700 hover:bg-primary-50 mt-4 inline-flex min-h-12 items-center rounded-full px-5 text-lg font-semibold"
         >
-          กลับหน้าแรก
+          {t.sent.backHome}
         </Link>
       </section>
 
-      <section className="border-border-default bg-bg-surface rounded-[14px] border p-5 sm:p-8">
-        <h2 className="font-heading text-text-primary text-[22px] font-semibold">
-          ระหว่างรอทีมกู้ภัย
-        </h2>
-        <ul className="mt-4 flex flex-col gap-3">
-          {WAITING_TIPS.map((tip) => (
-            <li key={tip} className="text-text-primary flex items-start gap-3 text-lg">
-              <span className="bg-primary-50 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full">
-                <Check className="text-primary-600 size-4" aria-hidden="true" />
-              </span>
-              {tip}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <WaitingAdvice incidentType={sent.incidentType ?? "FLOOD"} />
     </div>
   );
 }
 
 // เปิดหน้านี้ตรงๆ หรือจากแท็บใหม่ ไม่มีเคสที่เพิ่งส่งในแท็บนี้
 function NoSentCase() {
+  const { t, locale } = useI18n();
   return (
     <div className="mx-auto max-w-xl px-4 py-12 text-center sm:px-6">
-      <h1 className="font-heading text-text-primary text-3xl font-bold">ไม่พบเคสที่เพิ่งส่ง</h1>
-      <p className="text-text-secondary mt-3 text-lg">
-        ถ้าคุณแจ้งไว้แล้ว ติดตามได้ด้วยรหัสเคสและเบอร์โทร 4 ตัวท้าย
-      </p>
+      <LanguageSwitch
+        locale={locale}
+        path="/sos/sent"
+        label={t.common.languageSwitchLabel}
+        className="mb-6"
+      />
+      <h1 className="font-heading text-text-primary text-3xl font-bold">{t.sent.notFoundTitle}</h1>
+      <p className="text-text-secondary mt-3 text-lg">{t.sent.notFoundBody}</p>
       <div className="mt-8 flex flex-col gap-3">
         <Link
-          href="/track"
+          href={localePath("/track", locale)}
           className="bg-primary-600 font-heading text-text-on-primary hover:bg-primary-700 flex min-h-14 items-center justify-center rounded-full px-6 text-[19px] font-semibold"
         >
-          ติดตามเคส
+          {t.sent.trackCase}
         </Link>
         <Link
-          href="/request"
+          href={localePath("/request", locale)}
           className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle flex min-h-14 items-center justify-center rounded-full border px-6 text-[19px] font-semibold"
         >
-          แจ้งขอความช่วยเหลือ
+          {t.sent.requestHelp}
         </Link>
       </div>
     </div>

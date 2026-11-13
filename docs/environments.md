@@ -110,6 +110,26 @@ merge เข้า `develop` ปุ๊บ ฐานข้อมูลของ u
 
 ---
 
+## Realtime ในเครื่องตอบ MalformedJWT (TF-68)
+
+**อาการ:** หน้าแผนที่/รายการกู้ภัยในเครื่องขึ้น "อัปเดตทุก 30 วินาที" แทน "อัปเดตทันที", E2E `realtime-cases` ล้มเฉพาะในเครื่อง
+แต่ CI ผ่าน, log ของ Realtime (`docker logs supabase_realtime_namjaithai`) มี `MalformedJWT`
+
+**สาเหตุ:** `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` ใน `.env.local` เป็นคีย์เก่า (เช่น คัดลอกมาตอนใช้ Supabase CLI รุ่นก่อน)
+ไม่ตรงกับ `npx supabase status -o env` — REST/Auth ในเครื่องยอมรับคีย์อะไรก็ได้ อย่างอื่นจึงดูปกติ
+แต่ Realtime ตรวจคีย์จริงและปฏิเสธ CI ไม่เจอเพราะเขียน `.env.local` ใหม่จาก `supabase status` ทุกรอบ
+
+**วิธีแก้:**
+
+```bash
+npm run env:sync          # อัปเดต URL/คีย์ Supabase ใน .env.local (สำรองไฟล์เดิมเป็น .env.local.bak)
+                          # ไม่พิมพ์ค่าคีย์ บอกแค่ชื่อตัวที่เปลี่ยน · ค่าอื่น (LINE ฯลฯ) ไม่แตะ
+# แล้วปิด/เปิด npm run dev ใหม่
+npm run env:sync -- --check   # ตรวจอย่างเดียว (E2E รันให้เองทุกครั้งก่อนเริ่ม)
+```
+
+ทำซ้ำทุกครั้งที่อัปเดต Supabase CLI หรือรัน `supabase stop --no-backup` แล้วเปิดใหม่
+
 ## บันทึกการตั้งค่า (ทำแล้ว 5 พ.ย. 2569)
 
 ตั้งค่าครั้งแรกเสร็จแล้วตามรายการข้างล่าง เก็บไว้ดูเวลาต้องแก้ ต้องตั้งใหม่ หรือต้องเปลี่ยนคีย์

@@ -5,6 +5,8 @@ import {
   createInitialSosDraft,
   parseIncidentTypeParam,
   validateStep1Draft,
+  validateStep2Draft,
+  migrateLegacySosDraft,
   saveSosDraft,
   loadSosDraft,
   clearSosDraft,
@@ -25,9 +27,13 @@ function createMemoryStorage() {
   };
 }
 
-describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานการณ์ (ไม่มีการเลือกสี)", () => {
+// TF-66: คำถามอันตรายย้ายไปขั้นที่ 2 (รายละเอียดเหตุ) ตรวจพร้อมจำนวนคน — ใส่จำนวนคนเริ่มต้นไว้ให้
+const people = { adults: 1, elderly: 0, bedridden: 0, children: 0, pets: 0 };
+
+describe("TF-08 / TF-55 / TF-66: คำถามอันตรายในขั้น 2 (ไม่มีการเลือกสี)", () => {
   it("ตอบสัญญาณอันตราย + ออกเองได้ไหม ครบแล้วผ่าน (ระดับน้ำไม่บังคับ)", () => {
-    const check = validateStep1Draft({
+    const check = validateStep2Draft({
+      ...people,
       dangerSigns: [],
       canSelfEvacuate: false,
       waterLevel: undefined,
@@ -35,7 +41,8 @@ describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานกา�
     expect(check.valid).toBe(true);
     expect(check.errors.missingSummary).toEqual([]);
 
-    const withSigns = validateStep1Draft({
+    const withSigns = validateStep2Draft({
+      ...people,
       dangerSigns: ["UNCONSCIOUS", "PERSON_IN_WATER"],
       canSelfEvacuate: true,
       waterLevel: WaterLevel.WAIST_CHEST,
@@ -44,7 +51,8 @@ describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานกา�
   });
 
   it("ยังไม่ตอบแล้วกดถัดไป มีข้อความบอกว่าขาดอะไรอย่างชัดเจน", () => {
-    const nothing = validateStep1Draft({
+    const nothing = validateStep2Draft({
+      ...people,
       dangerSigns: undefined,
       canSelfEvacuate: undefined,
       waterLevel: undefined,
@@ -55,23 +63,31 @@ describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานกา�
     expect(nothing.errors.missingSummary).toEqual(["สัญญาณอันตราย", "ออกเองได้ไหม"]);
 
     // ตอบ "ไม่มีข้อใดเลย" แล้ว แต่ยังไม่ตอบเรื่องออกเองได้ไหม
-    const noEvacuate = validateStep1Draft({ dangerSigns: [], canSelfEvacuate: undefined });
+    const noEvacuate = validateStep2Draft({
+      ...people,
+      dangerSigns: [],
+      canSelfEvacuate: undefined,
+    });
     expect(noEvacuate.valid).toBe(false);
     expect(noEvacuate.errors.dangerSigns).toBeUndefined();
     expect(noEvacuate.errors.missingSummary).toEqual(["ออกเองได้ไหม"]);
   });
 
   it("สัญญาณอันตรายที่ไม่มีในทะเบียนไม่ผ่าน", () => {
-    const check = validateStep1Draft({ dangerSigns: ["ALIEN_ATTACK"], canSelfEvacuate: true });
+    const check = validateStep2Draft({
+      ...people,
+      dangerSigns: ["ALIEN_ATTACK"],
+      canSelfEvacuate: true,
+    });
     expect(check.valid).toBe(false);
   });
 
   it('โครงฟอร์ม 5 ขั้นและข้อความ "ขั้นที่ X จาก 5" ถูกต้องทุกขั้น', () => {
     expect(SOS_STEPS).toHaveLength(5);
     expect(SOS_STEPS.map((s) => s.shortLabel)).toEqual([
-      "สถานการณ์",
+      "ประเภทเหตุ",
+      "รายละเอียด",
       "ตำแหน่ง",
-      "ผู้ติดค้าง",
       "สิ่งที่ต้องการ",
       "ข้อมูลติดต่อ",
     ]);
@@ -114,14 +130,16 @@ describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานกา�
     expect(afterClear.currentStep).toBe(1);
   });
 
-  it("ร่างรุ่นเก่าที่มีแต่ urgency (ก่อน TF-55) กลับไปตอบขั้น 1 ใหม่ และไม่พก urgency ไปต่อ", () => {
+  it("ร่างรุ่นเก่าที่มีแต่ urgency (ก่อน TF-55) กลับไปตอบคำถามอันตรายใหม่ และไม่พก urgency ไปต่อ", () => {
     const storage = createMemoryStorage();
     storage.setItem(
       "namjaithai-sos-draft-v1",
       JSON.stringify({ ...createInitialSosDraft(), currentStep: 3, urgency: "GREEN" }),
     );
+    migrateLegacySosDraft(storage);
     const restored = loadSosDraft(storage) as unknown as Record<string, unknown>;
-    expect(restored.currentStep).toBe(1);
+    // ขั้น 3 เก่า (ผู้ติดค้าง) = ขั้น 2 ใหม่ ซึ่งยังไม่ได้ตอบสัญญาณอันตราย
+    expect(restored.currentStep).toBe(2);
     expect(restored.urgency).toBeUndefined();
   });
 
@@ -129,8 +147,6 @@ describe("TF-08 / TF-55: ฟอร์ม SOS ขั้น 1 สถานกา�
     const check = validateStep1Draft({
       incidentType: IncidentType.FLOOD,
       atScene: false,
-      dangerSigns: [],
-      canSelfEvacuate: true,
     });
     expect(check.valid).toBe(false);
     expect(check.errors.atScene).toContain("แจ้งแทนคนอื่นไม่ได้");

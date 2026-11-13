@@ -1,3 +1,6 @@
+import { rememberDeviceCase } from "./device-cases";
+import type { IncidentType } from "@/lib/domain/incidents/types";
+
 /**
  * จำเคสที่เพิ่งส่งสำเร็จไว้ใน sessionStorage เพื่อให้หน้า /sos/sent แสดงรหัสเคสได้ทันที
  * โดยไม่ต้องถามฐานข้อมูล และไม่ต้องใส่ token/เบอร์ลงใน URL
@@ -12,7 +15,9 @@
 
 export type SentCase = {
   caseCode: string;
+  incidentType?: IncidentType;
   trackingToken: string;
+  confirmationToken?: string;
   phoneLast4: string;
 };
 
@@ -20,6 +25,12 @@ const STORAGE_KEY = "namjaithai:sent-case";
 
 export function rememberSentCase(sent: SentCase): void {
   try {
+    if (sent.confirmationToken)
+      rememberDeviceCase(window.localStorage, {
+        caseCode: sent.caseCode,
+        trackingToken: sent.trackingToken,
+        confirmationToken: sent.confirmationToken,
+      });
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sent));
   } catch {
     // โหมดส่วนตัวบางเบราว์เซอร์เขียน storage ไม่ได้ หน้า /sos/sent จะพาไปกรอกที่ /track แทน

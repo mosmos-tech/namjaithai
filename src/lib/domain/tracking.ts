@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CaseStatus } from "./case-status";
+import type { IncidentType } from "./incidents/types";
 
 // ── ข้อมูลที่ผู้แจ้งพิมพ์/ส่งมาเพื่อเปิดหน้าติดตาม ───────────────────────────────
 // รหัสเคสจาก create_sos_case(): FL-YYMM-NNNN (เลขรันเกิน 9999 ได้ เลยรับ 4 หลักขึ้นไป)
@@ -35,10 +36,16 @@ export type CaseEventType =
   | "MERGED_DUPLICATE"
   | "MARKED_UNREACHABLE"
   | "AUTO_ESCALATED"
-  | "NOTE_ADDED";
+  | "NOTE_ADDED"
+  | "SMS_REPEATED"
+  | "TRANSFER_REQUESTED"
+  | "TRANSFER_ACCEPTED"
+  | "TRANSFER_CANCELLED"
+  | "TRANSFER_EXPIRED";
 
 export type TrackedCase = {
   caseCode: string;
+  incidentType?: IncidentType;
   trackingToken: string;
   status: CaseStatus;
   // ไม่มีระดับความเร่งด่วน: ผู้แจ้งไม่เห็นระดับที่ระบบคำนวณ (TF-55)
@@ -47,6 +54,11 @@ export type TrackedCase = {
   area: { province: string | null; district: string | null; subdistrict: string | null };
   // null = ยังไม่มีทีมรับ; unitName เป็น null ได้ถ้ามีกู้ภัยรับแต่ไม่ได้ผูกหน่วย
   team: { unitName: string | null; contactPhone: string | null } | null;
+  // TF-59: กำลังส่งต่อให้หน่วยที่มีอุปกรณ์ (ไม่มีชื่อหน่วยปลายทาง)
+  transferPending?: boolean;
+  // TF-42: เฉพาะ EN_ROUTE / ON_SITE — จุดของผู้แจ้ง และตำแหน่งล่าสุดของคนที่รับเคส (ไม่มีข้อมูลส่วนตัวกู้ภัย)
+  scene?: { lat: number; lng: number } | null;
+  teamLocation?: ReporterTeamLocation | null;
   timeline: { type: CaseEventType; toStatus: CaseStatus | null; at: string }[];
 };
 
@@ -72,7 +84,7 @@ const STATUS_VIEW: Record<CaseStatus, ReporterStatusView> = {
   NEW: {
     badge: "รอทีมรับเคส",
     title: "กำลังหาทีมกู้ภัยที่ใกล้คุณที่สุด",
-    description: "ระบบแจ้งทีมในพื้นที่แล้ว ระหว่างรอให้ขึ้นที่สูงและเปิดเสียงโทรศัพท์ไว้",
+    description: "ระบบแจ้งทีมในพื้นที่แล้ว ระหว่างรอให้เปิดเสียงโทรศัพท์ไว้",
     tone: "waiting",
     progress: { done: 1, active: true },
   },
@@ -96,6 +108,14 @@ const STATUS_VIEW: Record<CaseStatus, ReporterStatusView> = {
     description: "ส่งสัญญาณให้ทีมเห็น เช่น โบกผ้าสีสด หรือเปิดไฟฉาย",
     tone: "progress",
     progress: { done: 4, active: false },
+  },
+  // TF-26: กู้ภัยกดช่วยเสร็จแล้ว รอผู้แจ้งยืนยัน (ปุ่มยืนยันอยู่ใน LINE / TF-58)
+  AWAITING_CONFIRMATION: {
+    badge: "รอคุณยืนยัน",
+    title: "ทีมแจ้งว่าช่วยเหลือเสร็จแล้ว",
+    description: "ถ้าได้รับความช่วยเหลือแล้ว กรุณายืนยันปิดเคส ถ้ายังไม่ได้รับ โทร 1669 / 1784",
+    tone: "progress",
+    progress: { done: 4, active: true },
   },
   RESOLVED: {
     badge: "ช่วยเหลือสำเร็จ",
@@ -139,6 +159,7 @@ export function isClosedStatus(status: CaseStatus): boolean {
 const STATUS_CHANGED_LABEL: Partial<Record<CaseStatus, string>> = {
   [CaseStatus.EN_ROUTE]: "ทีมออกเดินทาง",
   [CaseStatus.ON_SITE]: "ทีมถึงจุดของคุณ",
+  [CaseStatus.AWAITING_CONFIRMATION]: "ทีมแจ้งว่าช่วยเหลือเสร็จแล้ว",
   [CaseStatus.RESOLVED]: "ช่วยเหลือสำเร็จ",
 };
 
@@ -154,6 +175,13 @@ const EVENT_LABEL: Record<CaseEventType, string> = {
   MARKED_UNREACHABLE: "ทีมติดต่อคุณไม่ได้",
   AUTO_ESCALATED: "ระบบเร่งหาทีมเพิ่ม",
   NOTE_ADDED: "ทีมเพิ่มบันทึก",
+  // TF-36: เบอร์เดิมส่ง SMS SOS มาอีกขณะเคสยังเปิด (ไม่เก็บเนื้อความ)
+  SMS_REPEATED: "ได้รับ SMS ซ้ำจากผู้แจ้ง",
+  // TF-59: ไม่บอกชื่อหน่วย
+  TRANSFER_REQUESTED: "กำลังส่งต่อให้ทีมที่มีอุปกรณ์",
+  TRANSFER_ACCEPTED: "ทีมที่มีอุปกรณ์รับเคสแล้ว",
+  TRANSFER_CANCELLED: "ทีมเดิมดูแลเคสต่อ",
+  TRANSFER_EXPIRED: "กำลังหาทีมที่มีอุปกรณ์",
 };
 
 export function timelineLabel(type: CaseEventType, toStatus: CaseStatus | null): string {
@@ -171,7 +199,7 @@ export function trackPath(caseCode: string, trackingToken: string): string {
 // ข้อความที่ส่งเข้า LINE: รหัสเคสอยู่บรรทัดแรก ญาติจะได้เห็นทันทีในแชต
 export function lineShareText(caseCode: string, trackUrl: string): string {
   return [
-    `ฉันแจ้งขอความช่วยเหลือน้ำท่วมแล้ว รหัสเคส ${caseCode}`,
+    `ฉันแจ้งขอความช่วยเหลือแล้ว รหัสเคส ${caseCode}`,
     `ติดตามสถานะได้ที่ ${trackUrl}`,
     "(น้ำใจไทย SOS)",
   ].join("\n");
@@ -180,4 +208,63 @@ export function lineShareText(caseCode: string, trackUrl: string): string {
 // ลิงก์แชร์ของ LINE เปิดแอป LINE ให้เลือกคนส่งได้เลย (มือถือ) หรือเปิดหน้า LINE บนเว็บ (คอม)
 export function lineShareUrl(text: string): string {
   return `https://line.me/R/share?text=${encodeURIComponent(text)}`;
+}
+
+// ── TF-42 แผนที่สดของผู้แจ้ง (แบบติดตามพัสดุ) ──────────────────────────────────
+
+/** ความเร็วเฉลี่ยที่ใช้ประมาณเวลาถึง — ค่าเดียวในโปรเจกต์ (ไม่ใช้ API นำทางที่เสียเงิน) */
+export const REPORTER_ETA_SPEED_KMH = 30;
+
+/** ตำแหน่งทีมที่ผู้แจ้งเห็น: ระยะจาก PostGIS (เส้นตรง) และ ETA ที่เซิร์ฟเวอร์เติมให้ */
+export type ReporterTeamLocation = {
+  lat: number;
+  lng: number;
+  updatedAt: string;
+  distanceM: number;
+  etaMinutes?: number;
+};
+
+/** เวลาที่คาดว่าจะถึง (นาที ปัดขึ้น อย่างน้อย 1) = ระยะทาง ÷ ความเร็วเฉลี่ย */
+export function etaMinutes(distanceM: number): number {
+  const metersPerMinute = (REPORTER_ETA_SPEED_KMH * 1000) / 60;
+  return Math.max(1, Math.ceil(Math.max(0, distanceM) / metersPerMinute));
+}
+
+export function etaText(minutes: number): string {
+  if (minutes < 60) return `ประมาณ ${minutes} นาที`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `ประมาณ ${hours} ชม. ${rest} นาที` : `ประมาณ ${hours} ชม.`;
+}
+
+export function distanceText(distanceM: number): string {
+  return distanceM < 1000
+    ? `${Math.round(distanceM / 10) * 10} ม.`
+    : `${(distanceM / 1000).toFixed(distanceM < 10_000 ? 1 : 0)} กม.`;
+}
+
+/** หน้าจอ 3 แบบของการ์ด TF-42 (+ เคสปิดแล้ว) */
+export type TrackScreen = "waiting" | "en_route" | "arrived" | "closed";
+
+export function trackScreen(status: CaseStatus): TrackScreen {
+  switch (status) {
+    case CaseStatus.NEW:
+    case CaseStatus.ACCEPTED:
+      return "waiting";
+    case CaseStatus.EN_ROUTE:
+      return "en_route";
+    case CaseStatus.ON_SITE:
+    case CaseStatus.AWAITING_CONFIRMATION:
+      return "arrived";
+    default:
+      return "closed";
+  }
+}
+
+/** "อัปเดตล่าสุด x วินาทีที่แล้ว" */
+export function secondsAgoText(since: Date | string, now: number): string {
+  const seconds = Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
+  if (seconds < 5) return "เมื่อสักครู่";
+  if (seconds < 60) return `${seconds} วินาทีที่แล้ว`;
+  return `${Math.floor(seconds / 60)} นาทีที่แล้ว`;
 }

@@ -49,8 +49,8 @@ npm run dev
 
 ```bash
 npm run db:start                 # ครั้งแรกรอ 5–10 นาที
-npx supabase status -o env       # ดูคีย์
-cp .env.example .env.local       # แล้วใส่ค่า PUBLISHABLE_KEY ลงไป
+cp .env.example .env.local       # ครั้งแรก
+npm run env:sync                 # ใส่ URL/คีย์ Supabase ในเครื่องลง .env.local ให้ (สำรองไฟล์เดิมเป็น .env.local.bak)
 npm run dev
 ```
 
@@ -109,15 +109,29 @@ npm run dev
 
 ```bash
 npm run db:start        # ต้องเปิด Supabase ในเครื่องก่อน (test ใช้ฐานข้อมูลในเครื่องเท่านั้น)
-npm run e2e             # รันทั้งหมดแบบไม่เห็นจอ (เปิด npm run dev ให้เอง ถ้าเปิดค้างไว้จะใช้ตัวนั้น)
+npm run e2e             # รันทั้งหมดแบบไม่เห็นจอ (เปิด dev server ให้เอง — ต้องปิด npm run dev ที่เปิดค้างไว้ก่อน)
 npm run e2e:headed      # เห็นเบราว์เซอร์กดทีละขั้น
 npm run e2e:ui          # UI mode: เลือก test, ดูทีละขั้น, ย้อนดูหน้าจอ
 npx playwright test e2e/auth.spec.ts --project=mobile   # รันเฉพาะไฟล์/ขนาดจอ
+npm run e2e:prod        # TF-39: build แล้วรันกับ production build (next start) แบบเดียวกับ CI
 ```
+
+**รันแบบเดียวกับ CI (`npm run e2e:prod`)** — CI รัน E2E กับ production build ไม่ใช่ dev server
+เพราะ dev server compile แต่ละหน้าตอนเปิดครั้งแรก (บน CI หน้า `/track/[code]` ราว 9 วินาที) test ที่บังเอิญเปิดหน้านั้นก่อนจึงล้มเป็นบางครั้ง
+
+1. ปิด `npm run dev` ก่อน แล้ว `npm run db:start` และ `npm run env:sync` ให้ `.env.local` ตรงกับ Supabase ในเครื่อง
+2. `npm run e2e:prod` = `npm run build` แล้ว `E2E_SERVER=production playwright test` (รันเฉพาะไฟล์: `npm run build` ครั้งเดียว แล้ว `E2E_SERVER=production npx playwright test e2e/<ไฟล์>.spec.ts`)
+3. ค่า `NEXT_PUBLIC_*` ถูกฝังตอน build — แก้ `.env.local` หรือ `db:reset` แล้วคีย์เปลี่ยน ต้อง build ใหม่ ถ้า build ใช้ URL/key คนละชุด `global-setup` จะหยุดพร้อมบอกให้ build ใหม่ (กัน MalformedJWT แบบ TF-68)
+4. ชุดนี้ปิด service worker ไว้ (`serviceWorkers: "block"`) — การทำงานออฟไลน์ทดสอบแยกใน `npm run e2e:pwa`
+5. ภาพหลักฐานเกณฑ์ขอบเขต (TF-39): `E2E_EVIDENCE=1 E2E_SERVER=production npx playwright test` เก็บภาพไว้ใน `test-results/evidence/` แล้วแปลงเป็น webp ลง `docs/e2e-scope/` (รันปกติไม่เขียนไฟล์) ดูขั้นตอนและตารางใน `docs/e2e-scope/README.md`
 
 - ต้องมี Google Chrome ในเครื่อง ครั้งแรกรัน `npx playwright install ffmpeg` (ใช้อัดวิดีโอตอน test ล้ม)
 - test ล้มแล้วดูวิดีโอ/ภาพหน้าจอได้ใน `test-results/` (ใน CI โหลดได้จาก Artifacts ของ job **e2e**)
 - ก่อนรัน ระบบล้างตัวนับ rate limit ในฐานข้อมูลในเครื่องให้ (`e2e/global-setup.ts`) และจะไม่ยอมรันถ้าชี้ไป Supabase ที่ไม่ใช่ในเครื่อง
+- **ห้ามเปิด `npm run dev` ค้างไว้ตอนรัน E2E** (TF-68): ถ้าพอร์ต 3000 ถูกใช้อยู่ Playwright จะหยุดพร้อมบอกวิธีปิด
+- คีย์ใน `.env.local` ไม่ตรงกับ Supabase ในเครื่อง E2E จะหยุดพร้อมบอกให้รัน `npm run env:sync` (ดูหัวข้อ "Realtime ในเครื่องตอบ MalformedJWT" ใน `docs/environments.md`)
+- รันกับ dev server (`npm run e2e`): ก่อนเริ่ม test ระบบเปิดหน้าหลักทุกหน้า 1 รอบให้ compile ไว้ก่อน (เวลาแต่ละหน้าอยู่ในบรรทัด `[global-setup]`) — production build ไม่ต้อง
+- หน้าที่ต้องใช้ JS ให้รอ "กำลังโหลด..." หาย (`waitForSosFormReady`) หรือรอปุ่มกดได้ ห้ามใช้ `waitForTimeout`
 
 **เพิ่ม test ใหม่**
 
@@ -127,4 +141,24 @@ npx playwright test e2e/auth.spec.ts --project=mobile   # รันเฉพา�
 4. ต้องการเคสตั้งต้นใช้ `createCaseViaApi()` ใน `e2e/helpers/db.ts` (สุ่มเบอร์/พิกัดให้ ไม่ชนการตรวจเคสซ้ำ)
 5. เจอบั๊กห้ามแก้ test ให้ผ่าน — ใส่ `test.fail(true, "บั๊ก E2E-n: ...")` แล้วแจ้งทีม พอแก้บั๊กแล้ว test จะล้มเตือนให้เอา `test.fail` ออก
 
-บั๊กที่ test เจออยู่ตอนนี้: **E2E-1** ลิงก์ "นโยบายความเป็นส่วนตัว" ใน footer ไปหน้า `/privacy` ที่ยังไม่มี · **E2E-2** ส่ง SOS ด้วยเบอร์ซ้ำ ไม่มีปุ่ม "อัปเดตเคสเดิม / สร้างใหม่" (TF-16)
+บั๊กที่ test เจออยู่ตอนนี้: **E2E-1** ลิงก์ "นโยบายความเป็นส่วนตัว" ใน footer ไปหน้า `/privacy` ที่ยังไม่มี
+
+## เปิดแบบออฟไลน์และเพิ่มหน้าจอหลัก (TF-41)
+
+- `npm run build` สร้าง Service Worker จาก build ID และรายการไฟล์ static จริง; `public/sw.js` เป็นไฟล์ที่สร้างอัตโนมัติ ไม่ commit
+- เปิดเว็บผ่าน HTTPS (หรือ localhost) และรอข้อความ “พร้อมเปิดฟอร์ม SOS สายด่วน และคู่มือแบบออฟไลน์” ก่อนปิดเน็ตครั้งแรก
+- เก็บ `/`, `/request`, `/sos`, `/hotlines`, `/survival` และไฟล์แอปไว้ในเครื่อง โดยดึง HTML แบบไม่ส่ง session cookie; ไม่เก็บ API, หน้าติดตามเคส, หน้าเข้าสู่ระบบ หรือหน้าที่ต้องล็อกอิน
+- ออฟไลน์กรอกและเก็บร่างได้ การส่ง SOS ยังต้องใช้เน็ต; ไม่ส่งซ้ำหรืออ้างว่าส่งสำเร็จขณะออฟไลน์
+- Android ใช้ install prompt ของเบราว์เซอร์เมื่อรองรับ; iPhone แสดงวิธี Safari → แชร์ → เพิ่มไปยังหน้าจอโฮม การปิดคำแนะนำจำไว้ 7 วัน และไม่แสดงเมื่อเปิดแบบ standalone
+- Worker รุ่นใหม่รอจนแท็บรุ่นเดิมปิด เพื่อไม่ให้ HTML กับ JavaScript ต่างรุ่นปนกัน
+
+ทดสอบ production จริง (แยกจาก dev เพื่อไม่ให้ cache โค้ดระหว่างพัฒนา):
+
+```bash
+npm run build
+npm run e2e:pwa
+```
+
+ชุด PWA ใช้พอร์ต 3100 ตรวจการเปิดแท็บใหม่หลังปิดเน็ต, ร่าง SOS, คู่มือ, cache ที่ไม่รวมข้อมูลส่วนตัว, install prompt, ไอคอน และงบหน้าแรก 150,000 ไบต์ โดยวัด HTML, JS, CSS และ SVG แบบ gzip รวมขนาดไฟล์ฟอนต์และรูปที่บีบอัดมาแล้ว แยกจากการเตรียมไฟล์ออฟไลน์เบื้องหลัง การทดสอบ iPhone ใช้ขนาดหน้าจอ/user agent บน Chromium และจำลอง install event ของ Android; ควรตรวจการติดตั้งบนอุปกรณ์จริงด้วยก่อน release
+
+หน้าแรก `/` อยู่ที่ `src/pages/index.tsx` เพื่อลดขนาด JavaScript เริ่มต้น โดยใช้เมนูและส่วนท้ายร่วมกับหน้า App Router และตรวจ session ฝั่งเซิร์ฟเวอร์เหมือนหน้าอื่น

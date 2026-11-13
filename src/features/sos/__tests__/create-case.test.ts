@@ -6,9 +6,11 @@ import {
   type SosCaseRpcClient,
   type CreateSosCaseRpcRow,
 } from "../server/create-case";
-import { Urgency, WaterLevel, Need, CaseStatus } from "../../../lib/domain";
+import { Urgency, WaterLevel, Need, CaseStatus, IncidentType } from "../../../lib/domain";
 
 const validPayload = {
+  consent: true,
+  healthConsent: true,
   dangerSigns: [],
   canSelfEvacuate: false,
   waterLevel: WaterLevel.WAIST_CHEST,
@@ -116,7 +118,12 @@ describe("handleCreateSosCase (TF-12)", () => {
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(200);
-    if (first.status !== 201 || second.status !== 200) {
+    if (
+      first.status !== 201 ||
+      second.status !== 200 ||
+      "supplemented" in first.body ||
+      "supplemented" in second.body
+    ) {
       throw new Error("Unexpected status");
     }
 
@@ -173,9 +180,7 @@ describe("handleCreateSosCase (TF-12)", () => {
     if (result.status !== 400) throw new Error("Expected 400");
 
     expect(result.body.fieldErrors.adults).toContain("ต้องมีผู้ติดค้างอย่างน้อย 1 คน");
-    expect(result.body.fieldErrors.otherDetail).toContain(
-      "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ",
-    );
+    expect(result.body.fieldErrors.otherDetail).toContain("กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ");
     expect(result.body.fieldErrors.phone).toBeDefined();
   });
 
@@ -222,12 +227,10 @@ describe("handleCreateSosCase (TF-12)", () => {
 
 describe("extractClientIp & resolveIdempotencyKey helpers", () => {
   it("ดึง IP ตัวแรกจาก x-forwarded-for หรือถอยไปใช้ x-real-ip", () => {
-    expect(
-      extractClientIp(new Headers({ "x-forwarded-for": "198.51.100.7, 10.0.0.1" })),
-    ).toBe("198.51.100.7");
-    expect(extractClientIp(new Headers({ "x-real-ip": "198.51.100.9" }))).toBe(
-      "198.51.100.9",
+    expect(extractClientIp(new Headers({ "x-forwarded-for": "198.51.100.7, 10.0.0.1" }))).toBe(
+      "198.51.100.7",
     );
+    expect(extractClientIp(new Headers({ "x-real-ip": "198.51.100.9" }))).toBe("198.51.100.9");
     expect(extractClientIp(new Headers())).toBeNull();
   });
 
@@ -289,5 +292,82 @@ describe("handleCreateSosCase — ระดับความเร่งด่�
     expect(result.status).toBe(400);
     if (result.status !== 400) throw new Error("Expected 400");
     expect(result.body.fields).toEqual(expect.arrayContaining(["dangerSigns", "canSelfEvacuate"]));
+  });
+
+  it("TF-51: ส่ง details ไม่ตรงกับประเภทเหตุ ตอบ 400", async () => {
+    // ส่ง vehicleType ของอุบัติเหตุทางถนนมาในเหตุน้ำท่วม
+    const { result: floodMismatch } = await send({
+      ...validPayload,
+      incidentType: IncidentType.FLOOD,
+      details: { vehicleType: "CAR" },
+    });
+    expect(floodMismatch.status).toBe(400);
+    if (floodMismatch.status === 400) {
+      expect(floodMismatch.body.fields).toContain("details");
+    }
+
+    // ส่ง waterLevel ของน้ำท่วมมาในอุบัติเหตุทางถนน
+    const { result: roadMismatch } = await send({
+      ...validPayload,
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      waterLevel: undefined,
+      details: { waterLevel: "ROOF" },
+    });
+    expect(roadMismatch.status).toBe(400);
+    if (roadMismatch.status === 400) {
+      expect(roadMismatch.body.fields).toContain("details");
+    }
+  });
+
+  it("TF-51: ส่ง details ของ ROAD_ACCIDENT ครบถ้วน ตอบ 201 และแยกข้อมูลสุขภาพ (injuredCount) ไปอยู่ใน sensitive", async () => {
+    const { waterLevel: _w, ...withoutWaterLevel } = validPayload;
+    void _w;
+    const { result, payload } = await send({
+      ...withoutWaterLevel,
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      needs: [Need.MEDICINE],
+      details: {
+        injuredCount: 3,
+        vehicleType: "MOTORCYCLE",
+        isTrapped: true,
+      },
+    });
+
+    expect(result.status).toBe(201);
+    expect(payload?.incidentType).toBe(IncidentType.ROAD_ACCIDENT);
+    expect(payload?.details).toEqual({
+      vehicleType: "MOTORCYCLE",
+      isTrapped: true,
+    });
+    expect(payload?.details).not.toHaveProperty("injuredCount");
+    expect(payload?.sensitive).toEqual({
+      injuredCount: 3,
+    });
+  });
+
+  it("TF-54: ส่ง details ของ ROAD_ACCIDENT แบบ multi-select vehicleTypes ตอบ 201 และแยก injuredCount ไป sensitive", async () => {
+    const { waterLevel: _w, ...withoutWaterLevel } = validPayload;
+    void _w;
+    const { result, payload } = await send({
+      ...withoutWaterLevel,
+      incidentType: IncidentType.ROAD_ACCIDENT,
+      needs: [Need.MEDICINE],
+      details: {
+        injuredCount: 2,
+        vehicleTypes: ["CAR", "MOTORCYCLE"],
+        isTrapped: true,
+      },
+    });
+
+    expect(result.status).toBe(201);
+    expect(payload?.incidentType).toBe(IncidentType.ROAD_ACCIDENT);
+    expect(payload?.details).toEqual({
+      vehicleTypes: ["CAR", "MOTORCYCLE"],
+      isTrapped: true,
+    });
+    expect(payload?.details).not.toHaveProperty("injuredCount");
+    expect(payload?.sensitive).toEqual({
+      injuredCount: 2,
+    });
   });
 });

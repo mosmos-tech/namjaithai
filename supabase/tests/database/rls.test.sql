@@ -58,6 +58,9 @@ insert into public.cases (id, case_code, urgency, lat, lng, landmark, province,
 
 insert into public.case_contacts (case_id, name, phone, phone_last4)
 select id, 'ผู้ประสบภัย ' || case_code, '0812345678', '5678' from public.cases where case_code like 'T-C%';
+-- ผู้ติดต่อที่เพิ่มภายหลังไม่ใช่ข้อมูลส่วนตัวของผู้แจ้งเดิม
+insert into public.case_contacts (case_id, name, phone, phone_last4, is_primary)
+values ('d0000000-0000-0000-0000-000000000001', 'ผู้ติดต่อรายอื่น', '0899999999', '9999', false);
 
 insert into public.case_people (case_id, adults)
 select id, 1 from public.cases where case_code like 'T-C%';
@@ -108,7 +111,7 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
 select is(pg_temp.visible_cases(), 'T-C1,T-C2,T-C4', 'กู้ภัย กทม.: เห็นเคส กทม. + เคสเชียงใหม่ที่มอบให้ตัวเอง ไม่เห็น C3');
-select is(pg_temp.visible_contacts(), 'T-C1,T-C4', 'กู้ภัย กทม.: เห็นชื่อ/เบอร์เฉพาะเคสที่ตัวเองรับ (C2 ยังไม่รับ → ไม่เห็น)');
+select is(pg_temp.visible_contacts(), '', 'กู้ภัยต้องเปิดข้อมูลติดต่อของเคสที่รับผ่าน RPC ที่บันทึก audit');
 select is((select count(*)::int from public.case_people p join public.cases c on c.id = p.case_id where c.case_code = 'T-C3'), 0,
   'กู้ภัย กทม.: เห็นจำนวนคนของเคสนอกพื้นที่ไม่ได้');
 select throws_ok($$update public.cases set status = 'ACCEPTED' where case_code = 'T-C2'$$, '42501', null,
@@ -152,13 +155,15 @@ select throws_ok(
     values ('b0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000001', 'APPROVED')$$,
   '42501', null, 'หัวหน้า: ดึงคนเข้าหน่วยเองไม่ได้ (ต้องผ่านลิงก์เชิญ)');
 
-select is(
-  pg_temp.rows_affected($$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001', assigned_rescuer_id = 'b0000000-0000-0000-0000-000000000003' where case_code = 'T-C2'$$), 1, 'หัวหน้า: มอบเคสในพื้นที่ให้ลูกทีมตัวเองได้');
+select throws_ok(
+  $$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001', assigned_rescuer_id = 'b0000000-0000-0000-0000-000000000003' where case_code = 'T-C2'$$,
+  '42501', null, 'หัวหน้า: ต้องมอบหมายผ่าน RPC ที่บันทึกประวัติ');
 select throws_ok(
   $$update public.cases set assigned_rescuer_id = 'b0000000-0000-0000-0000-000000000004' where case_code = 'T-C2'$$,
   '42501', null, 'หัวหน้า: มอบเคสให้กู้ภัยหน่วยอื่นไม่ได้');
-select is(
-  pg_temp.rows_affected($$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001' where case_code = 'T-C3'$$), 0, 'หัวหน้า: มอบเคสนอกพื้นที่หน่วยไม่ได้');
+select throws_ok(
+  $$update public.cases set assigned_unit_id = 'c0000000-0000-0000-0000-000000000001' where case_code = 'T-C3'$$,
+  '42501', null, 'หัวหน้า: แก้หน่วยที่รับเคสโดยตรงไม่ได้');
 select is(pg_temp.rows_affected($$update public.units set province = 'เชียงใหม่' where name = 'หน่วย กทม.'$$), 0,
   'หัวหน้า: เปลี่ยนจังหวัดของหน่วยเพื่อขยายพื้นที่ไม่ได้');
 reset role;
@@ -169,7 +174,7 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 select is(pg_temp.visible_cases(), 'T-C1,T-C2,T-C3,T-C4', 'แอดมิน: เห็นเคสทุกพื้นที่');
-select is(pg_temp.visible_contacts(), 'T-C1,T-C2,T-C3,T-C4', 'แอดมิน: เห็นข้อมูลติดต่อทุกเคส');
+select is(pg_temp.visible_contacts(), '', 'แอดมินต้องเปิดข้อมูลติดต่อผ่าน RPC ที่บันทึก audit');
 select ok((select count(*) from public.audit_logs where action = 'TEST') = 1, 'แอดมิน: อ่าน audit_logs ได้');
 select throws_ok($$update public.audit_logs set action = 'X'$$, '42501', null, 'แอดมิน: แก้ audit_logs ไม่ได้');
 select throws_ok($$delete from public.audit_logs$$, '42501', null, 'แอดมิน: ลบ audit_logs ไม่ได้');

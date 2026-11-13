@@ -1,7 +1,6 @@
-import { Need, WATER_LEVEL_DISPLAY_ORDER, waterLevelLabel } from "../enums";
+import { Need, WATER_LEVEL_DISPLAY_ORDER, waterLevelLabel, waterLevelLabelEn } from "../enums";
 import {
   IncidentType,
-  TF55_TRIAGE_TABLE_SOURCE,
   UNIVERSAL_DANGER_SIGNS,
   UnitCapability,
   type IncidentDefinition,
@@ -21,50 +20,57 @@ export const FLOOD_DURING_TIPS = [
 
 export const flood: IncidentDefinition = {
   code: IncidentType.FLOOD,
-  label: { th: "น้ำท่วม" },
+  label: { th: "น้ำท่วม", en: "Flood" },
+  // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
+  peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "Waves",
   capabilities: [UnitCapability.BOAT, UnitCapability.WATER_RESCUE, UnitCapability.EVACUATION],
   questions: [
     {
       key: "waterLevel",
       kind: "choice",
-      label: { th: "ระดับน้ำรอบตัวคุณ" },
+      label: { th: "ระดับน้ำรอบตัวคุณ", en: "Water level around you" },
       // ไม่บังคับ แต่ถ้าไม่ตอบ computeTriage จะไม่ให้ระดับเขียว (ถือว่าไม่ทราบระดับน้ำ)
       required: false,
       options: WATER_LEVEL_DISPLAY_ORDER.map((level) => ({
         value: level,
-        label: { th: waterLevelLabel[level] },
+        label: { th: waterLevelLabel[level], en: waterLevelLabelEn[level] },
       })),
     },
     {
       key: "canSelfEvacuate",
       kind: "boolean",
-      label: { th: "ออกจากที่นั่นเองได้ไหม" },
+      label: { th: "ออกจากที่นั่นเองได้ไหม", en: "Can you get out of there by yourself?" },
       required: true,
-    },
-    {
-      key: "hasDisabled",
-      kind: "boolean",
-      label: { th: "มีผู้พิการ" },
-      required: false,
-      sensitive: true,
     },
     {
       key: "hasInjured",
       kind: "boolean",
-      label: { th: "มีผู้บาดเจ็บ (ยังรู้สึกตัว)" },
+      label: { th: "มีผู้บาดเจ็บ (ยังรู้สึกตัว)", en: "Someone is injured (still conscious)" },
       required: false,
       sensitive: true,
     },
   ],
-  // TODO(TF-54): ตรวจกับต้นฉบับ CBD สพฉ. อีกรอบ
   dangerSigns: [
     ...UNIVERSAL_DANGER_SIGNS,
-    { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ" }, source: TF55_TRIAGE_TABLE_SOURCE },
+    { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ", en: "Someone is in the water" }, source: "https://www.disaster.go.th/" },
   ],
   needs: Object.values(Need),
-  waitingAdvice: FLOOD_DURING_TIPS.map((th) => ({
-    text: { th },
-    source: "คู่มือเอาตัวรอดของเว็บ (/survival) — ยังไม่ได้ตรวจกับแหล่งทางการ",
-  })),
+  // FEMA flood guidance; these items are separate from the legacy survival checklist.
+  waitingAdvice: [
+    {
+      text: { th: "หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม", en: "Avoid walking or driving through flood water." },
+      source: "https://www.ready.gov/floods",
+    },
+    {
+      text: { th: "หากติดในอาคาร ให้ขึ้นไปยังจุดสูงที่ปลอดภัยและส่งสัญญาณขอความช่วยเหลือ", en: "If you are trapped in a building, go to the highest safe place and signal for help." },
+      source: "https://www.ready.gov/floods",
+    },
+    {
+      text: {
+        th: "อย่าสัมผัสอุปกรณ์ไฟฟ้าที่เปียกหรือขณะยืนอยู่ในน้ำ ปิดไฟเฉพาะเมื่อทำได้อย่างปลอดภัย", en: "Do not touch electrical equipment if it is wet or while you are standing in water. Turn off the power only if it is safe to do so.",
+      },
+      source: "https://www.ready.gov/floods",
+    },
+  ],
 };

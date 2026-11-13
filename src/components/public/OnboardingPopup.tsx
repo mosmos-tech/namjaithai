@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+/* eslint-disable @next/next/no-img-element -- ไอคอน SVG ขนาดเล็กไม่ต้องผ่าน image optimizer */
 import { useState, useSyncExternalStore } from "react";
 
 export const ONBOARDING_SEEN_STORAGE_KEY = "namjaithai-onboarding-seen-v1";
@@ -71,7 +71,7 @@ export const ONBOARDING_STEPS: OnboardingStepConfig[] = [
     waterHeightPxMobile: 36,
     title: "ยินดีต้อนรับสู่ น้ำใจไทย SOS",
     description:
-      "เว็บนี้ใช้ขอความช่วยเหลือเมื่อเกิดน้ำท่วม ทีมกู้ภัยในพื้นที่จะเห็นตำแหน่งของคุณบนแผนที่ และเข้าไปช่วยได้เร็วขึ้น",
+      "เว็บนี้ใช้ขอความช่วยเหลือเมื่อเกิดเหตุฉุกเฉิน เช่น น้ำท่วม ทีมกู้ภัยในพื้นที่จะเห็นตำแหน่งของคุณบนแผนที่ และเข้าไปช่วยได้เร็วขึ้น",
     type: "welcome",
   },
   {
@@ -84,7 +84,7 @@ export const ONBOARDING_STEPS: OnboardingStepConfig[] = [
     waterHeightPxMobile: 72,
     // TF-55: ผู้แจ้งไม่เลือกสีเองแล้ว ระบบจัดลำดับจากคำตอบ
     title: "ตอบคำถามสั้นๆ",
-    description: "บอกว่ามีอันตรายอะไรและน้ำสูงแค่ไหน ระบบจะจัดลำดับให้ทีมกู้ภัยไปช่วยคนที่อันตรายที่สุดก่อน",
+    description: "บอกว่าเกิดเหตุอะไรและมีอันตรายแค่ไหน ระบบจะจัดลำดับให้ทีมกู้ภัยไปช่วยคนที่อันตรายที่สุดก่อน",
     type: "urgency",
   },
   {
@@ -302,13 +302,13 @@ export function OnboardingPopup({ forceOpen, onClose }: OnboardingPopupProps) {
 
           {/* Icon Badge */}
           <div className="absolute left-32 md:left-10 top-7 md:bottom-14 md:top-auto w-12 h-12 md:w-[72px] md:h-[72px] bg-bg-surface rounded-xl md:rounded-[14px] flex items-center justify-center shadow-md select-none transition-transform duration-300">
-            <Image
+            <img
               src={currentStep.iconSrc}
               alt={currentStep.iconAlt}
               width={36}
               height={36}
               className="w-6 h-6 md:w-9 md:h-9"
-              priority
+              fetchPriority="high"
             />
           </div>
 
@@ -320,7 +320,7 @@ export function OnboardingPopup({ forceOpen, onClose }: OnboardingPopupProps) {
             data-testid="onboarding-close"
             className="md:hidden absolute right-4 top-4 w-10 h-10 rounded-full bg-black/25 hover:bg-black/40 flex items-center justify-center text-white transition-colors"
           >
-            <Image
+            <img
               src="/brand/icon-x.svg"
               alt="ปิด"
               width={20}
@@ -346,7 +346,7 @@ export function OnboardingPopup({ forceOpen, onClose }: OnboardingPopupProps) {
               data-testid="onboarding-close"
               className="w-11 h-11 rounded-full bg-bg-page hover:bg-primary-50 flex items-center justify-center text-text-primary transition-colors cursor-pointer"
             >
-              <Image
+              <img
                 src="/brand/icon-x.svg"
                 alt="ปิด"
                 width={22}
@@ -373,7 +373,7 @@ export function OnboardingPopup({ forceOpen, onClose }: OnboardingPopupProps) {
             <div className="mt-3 md:mt-5 h-[38px] md:h-[46px] flex items-center shrink-0">
               {currentStep.type === "welcome" && (
                 <div className="inline-flex items-center gap-2 text-green-700">
-                  <Image
+                  <img
                     src="/brand/icon-check.svg"
                     alt="ยืนยัน"
                     width={22}
@@ -389,7 +389,7 @@ export function OnboardingPopup({ forceOpen, onClose }: OnboardingPopupProps) {
               {currentStep.type === "urgency" && (
                 <div className="flex items-center gap-2 md:gap-2.5">
                   <div className="inline-flex items-center gap-1.5 md:gap-2 px-3 py-1.5 rounded-full bg-red-50 text-xs md:text-base font-medium text-red-600">
-                    <Image
+                    <img
                       src="/brand/icon-phone-red.svg"
                       alt=""
                       width={16}

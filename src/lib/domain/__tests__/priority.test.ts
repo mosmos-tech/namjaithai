@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { priorityScore } from "../priority";
+import { priorityScore, severityBonus } from "../priority";
+import { IncidentType } from "../incidents/types";
 import { Urgency, WaterLevel } from "../enums";
 
 const base = (urgency: Urgency, overrides?: Partial<Parameters<typeof priorityScore>[0]>) =>
@@ -30,14 +31,17 @@ describe("priorityScore — ลำดับสีรับประกัน", (
       children: 0,
       createdAt: now,
     });
-    const yellowBig = priorityScore({
-      urgency: Urgency.YELLOW,
-      waterLevel: WaterLevel.ROOF,
-      bedridden: 99,
-      elderly: 99,
-      children: 99,
-      createdAt,
-    }, now);
+    const yellowBig = priorityScore(
+      {
+        urgency: Urgency.YELLOW,
+        waterLevel: WaterLevel.ROOF,
+        bedridden: 99,
+        elderly: 99,
+        children: 99,
+        createdAt,
+      },
+      now,
+    );
     expect(redMin).toBeGreaterThan(yellowBig);
   });
 
@@ -52,14 +56,17 @@ describe("priorityScore — ลำดับสีรับประกัน", (
       children: 0,
       createdAt: now,
     });
-    const greenBig = priorityScore({
-      urgency: Urgency.GREEN,
-      waterLevel: WaterLevel.ROOF,
-      bedridden: 99,
-      elderly: 99,
-      children: 99,
-      createdAt,
-    }, now);
+    const greenBig = priorityScore(
+      {
+        urgency: Urgency.GREEN,
+        waterLevel: WaterLevel.ROOF,
+        bedridden: 99,
+        elderly: 99,
+        children: 99,
+        createdAt,
+      },
+      now,
+    );
     expect(yellowMin).toBeGreaterThan(greenBig);
   });
 });
@@ -78,26 +85,37 @@ describe("priorityScore — คะแนนพิเศษ", () => {
   });
 
   it("ระดับน้ำสูงขึ้นเพิ่มคะแนน (ROOF > ANKLE)", () => {
-    expect(base(Urgency.GREEN, { waterLevel: WaterLevel.ROOF }))
-      .toBeGreaterThan(base(Urgency.GREEN, { waterLevel: WaterLevel.ANKLE_KNEE }));
+    expect(base(Urgency.GREEN, { waterLevel: WaterLevel.ROOF })).toBeGreaterThan(
+      base(Urgency.GREEN, { waterLevel: WaterLevel.ANKLE_KNEE }),
+    );
   });
 
   it("รอนานขึ้นเพิ่มคะแนน", () => {
     const now = new Date();
-    const createdRecently = new Date(now.getTime() - 5 * 60_000);   // 5 นาที
-    const createdLongAgo = new Date(now.getTime() - 60 * 60_000);   // 60 นาที
-    const recent = priorityScore({
-      urgency: Urgency.GREEN,
-      waterLevel: WaterLevel.ANKLE_KNEE,
-      bedridden: 0, elderly: 0, children: 0,
-      createdAt: createdRecently,
-    }, now);
-    const old = priorityScore({
-      urgency: Urgency.GREEN,
-      waterLevel: WaterLevel.ANKLE_KNEE,
-      bedridden: 0, elderly: 0, children: 0,
-      createdAt: createdLongAgo,
-    }, now);
+    const createdRecently = new Date(now.getTime() - 5 * 60_000); // 5 นาที
+    const createdLongAgo = new Date(now.getTime() - 60 * 60_000); // 60 นาที
+    const recent = priorityScore(
+      {
+        urgency: Urgency.GREEN,
+        waterLevel: WaterLevel.ANKLE_KNEE,
+        bedridden: 0,
+        elderly: 0,
+        children: 0,
+        createdAt: createdRecently,
+      },
+      now,
+    );
+    const old = priorityScore(
+      {
+        urgency: Urgency.GREEN,
+        waterLevel: WaterLevel.ANKLE_KNEE,
+        bedridden: 0,
+        elderly: 0,
+        children: 0,
+        createdAt: createdLongAgo,
+      },
+      now,
+    );
     expect(old).toBeGreaterThan(recent);
   });
 });
@@ -107,11 +125,25 @@ describe("priorityScore — now เป็น parameter", () => {
     const fixedNow = new Date("2026-01-01T12:00:00Z");
     const createdAt = new Date("2026-01-01T11:00:00Z"); // รอ 60 นาที
     const score1 = priorityScore(
-      { urgency: Urgency.GREEN, waterLevel: WaterLevel.ANKLE_KNEE, bedridden: 0, elderly: 0, children: 0, createdAt },
+      {
+        urgency: Urgency.GREEN,
+        waterLevel: WaterLevel.ANKLE_KNEE,
+        bedridden: 0,
+        elderly: 0,
+        children: 0,
+        createdAt,
+      },
       fixedNow,
     );
     const score2 = priorityScore(
-      { urgency: Urgency.GREEN, waterLevel: WaterLevel.ANKLE_KNEE, bedridden: 0, elderly: 0, children: 0, createdAt },
+      {
+        urgency: Urgency.GREEN,
+        waterLevel: WaterLevel.ANKLE_KNEE,
+        bedridden: 0,
+        elderly: 0,
+        children: 0,
+        createdAt,
+      },
       fixedNow,
     );
     expect(score1).toBe(score2); // ผลเหมือนกันทุกครั้งที่ now เดิม
@@ -143,4 +175,32 @@ describe("priorityScore — ระดับน้ำใหม่ตาม Figma 
     expect(scores).toEqual([...scores].sort((a, b) => a - b));
     expect(new Set(scores).size).toBe(5);
   });
+});
+
+describe("TF-53 severity bonus", () => {
+  it.each(Object.values(IncidentType))(
+    "keeps yellow below red for %s even at the cap",
+    (incidentType) => {
+      const now = new Date("2030-01-01T00:00:00Z");
+      const createdAt = new Date("2020-01-01T00:00:00Z");
+      const extreme = {
+        incidentType,
+        waterLevel: WaterLevel.ROOF,
+        bedridden: 99,
+        elderly: 99,
+        children: 99,
+        createdAt,
+      };
+      expect(priorityScore({ ...extreme, urgency: Urgency.YELLOW }, now)).toBe(1899);
+      expect(priorityScore({ ...extreme, urgency: Urgency.RED }, now)).toBeGreaterThan(1899);
+    },
+  );
+  it.each(Object.values(IncidentType))(
+    "applies only approved type rules for %s",
+    (incidentType) => {
+      expect(severityBonus(incidentType, WaterLevel.ROOF)).toBe(
+        incidentType === IncidentType.FLOOD ? 20 : 0,
+      );
+    },
+  );
 });

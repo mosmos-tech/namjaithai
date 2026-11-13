@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -13,10 +14,43 @@ try {
   // ไม่มีไฟล์ (เช่นใน CI) ใช้ env ที่มีอยู่แล้ว
 }
 
+// TF-36: ค่าทดสอบของ SMS gateway ให้ dev server ที่ playwright เปิดเอง (ไม่มี API key = ไม่ส่ง SMS จริง)
+process.env.HTTPSMS_WEBHOOK_SIGNING_KEY ||= "e2e-tf36-signing-key-not-secret";
+// ใช้เฉพาะ server ที่ Playwright เปิดเอง; ห้ามใช้ค่านี้กับระบบจริง
+process.env.RETENTION_WORKER_SECRET ||= "tf44-local-e2e-secret-not-for-production";
+
 const PORT = 3000;
+
+// TF-39: CI และ npm run e2e:prod รันกับ production build (next start) — ไม่มีการ compile ตอนเปิดหน้าครั้งแรก
+// (dev server บน CI compile หน้า /track/[code] ครั้งแรก ~9 วิ ทำให้ test ที่เปิดหน้านั้นก่อนล้มเป็นบางครั้ง)
+// ต้อง npm run build ก่อน ด้วย .env.local ชุดเดียวกับที่ E2E ใช้ (global-setup ตรวจให้)
+const E2E_PRODUCTION = process.env.E2E_SERVER === "production";
+
+// TF-68: ห้ามรัน E2E ตอนเปิด npm run dev ค้างไว้ — server ที่เปิดเองไม่มีค่าทดสอบของ SMS (TF-36)
+// และอาจใช้ .env.local คนละชุด ทำให้ test ล้มแบบไม่เกี่ยวกับโค้ด จึงหยุดตั้งแต่แรกพร้อมบอกวิธีแก้
+// เช็กครั้งเดียวในโปรเซสหลัก (worker โหลด config ซ้ำตอนที่ server ของ test เปิดอยู่แล้ว)
+function portInUse(port: number): boolean {
+  const probe = spawnSync(process.execPath, [
+    "-e",
+    `const s=require("node:net").connect(${port},"127.0.0.1");` +
+      `s.on("connect",()=>process.exit(0));s.on("error",()=>process.exit(1));` +
+      `setTimeout(()=>process.exit(1),1000);`,
+  ]);
+  return probe.status === 0;
+}
+if (!process.env.TEST_WORKER_INDEX && !process.env.E2E_PORT_CHECKED) {
+  if (portInUse(PORT)) {
+    throw new Error(
+      `พอร์ต ${PORT} ถูกใช้อยู่ (น่าจะเปิด npm run dev ค้างไว้) — ปิดก่อนแล้วรัน E2E ใหม่ ` +
+        `Playwright จะเปิด dev server ที่มีค่าทดสอบครบเอง (macOS/Linux: lsof -ti:${PORT} | xargs kill)`,
+    );
+  }
+  process.env.E2E_PORT_CHECKED = "1";
+}
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "pwa.spec.ts",
   globalSetup: "./e2e/global-setup.ts",
   // ฟอร์ม SOS เก็บร่างใน localStorage ของแต่ละ context อยู่แล้ว รันขนานกันได้
   fullyParallel: true,
@@ -37,6 +71,8 @@ export default defineConfig({
     video: "retain-on-failure",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
+    // production build ลงทะเบียน service worker (TF-41) ซึ่งทดสอบแยกในชุด e2e:pwa — ชุดนี้ปิดไว้ไม่ให้แคชปนผล
+    serviceWorkers: "block",
   },
 
   projects: [
@@ -52,10 +88,10 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "npm run dev",
+    command: E2E_PRODUCTION ? "npm run start" : "npm run dev",
     url: `http://localhost:${PORT}`,
-    // ในเครื่องถ้าเปิด npm run dev ค้างไว้แล้วใช้ตัวนั้นเลย
-    reuseExistingServer: !process.env.CI,
+    // TF-68: ไม่ใช้ server ที่เปิดค้างไว้ (เช็กพอร์ตด้านบนแล้ว) — ทุกรอบใช้ server ที่มีค่าทดสอบครบ
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

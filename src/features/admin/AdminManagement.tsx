@@ -1,7 +1,12 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { userRoleLabel, type UserRole, type UserStatus } from "@/lib/domain/roles";
-import { INCIDENT_REGISTRY, UnitCapability, type IncidentType } from "@/lib/domain/incidents";
+import {
+  INCIDENT_REGISTRY,
+  UNIT_CAPABILITY_LABELS,
+  UnitCapability,
+  type IncidentType,
+} from "@/lib/domain/incidents";
 
 type User = { id: string; display_name: string; role: UserRole; status: UserStatus };
 type Unit = {
@@ -10,6 +15,9 @@ type Unit = {
   province: string;
   lead_user_id: string | null;
   is_active: boolean;
+  source: "DEMO" | "OSM" | "ADMIN";
+  location_lat: number | null;
+  location_lng: number | null;
 };
 type Data = {
   currentUserId: string;
@@ -25,15 +33,6 @@ const userStatusLabel: Record<UserStatus, string> = {
   SUSPENDED: "ถูกระงับ",
   REJECTED: "ไม่อนุมัติ",
 };
-const labels: Record<string, string> = {
-  BOAT: "เรือ",
-  EMS: "การแพทย์ฉุกเฉิน",
-  FIRE_SUPPRESSION: "ดับเพลิง",
-  EXTRICATION: "ตัดถ่าง",
-  WATER_RESCUE: "กู้ภัยทางน้ำ",
-  ANIMAL_CAPTURE: "จับสัตว์",
-  EVACUATION: "อพยพ",
-};
 const inputClass =
   "border-border-strong min-h-12 w-full min-w-0 rounded-lg border bg-white px-3 text-base";
 const buttonClass =
@@ -48,6 +47,9 @@ export function AdminManagement() {
   const [leader, setLeader] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
   const [capEdits, setCapEdits] = useState<Record<string, string[]>>({});
+  const [locationEdits, setLocationEdits] = useState<Record<string, { lat: string; lng: string }>>(
+    {},
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -73,6 +75,17 @@ export function AdminManagement() {
     (data?.capabilities ?? [])
       .filter((item) => item.unit_id === selectedUnit)
       .map((item) => item.capability);
+  const unitRow = data?.units.find((unit) => unit.id === selectedUnit);
+  const location = locationEdits[selectedUnit] ?? {
+    lat: unitRow?.location_lat?.toString() ?? "",
+    lng: unitRow?.location_lng?.toString() ?? "",
+  };
+  function editLocation(field: "lat" | "lng", value: string) {
+    setLocationEdits((current) => ({
+      ...current,
+      [selectedUnit]: { ...location, [field]: value },
+    }));
+  }
   async function send(payload: Record<string, unknown>, success: string) {
     setBusy(true);
     setError("");
@@ -256,6 +269,21 @@ export function AdminManagement() {
                 ))}
               </select>
             </label>
+            {/* TF-60: หน่วยที่นำเข้าจาก OpenStreetMap ต้องให้เครดิตตามสัญญา ODbL */}
+            {data.units.some((unit) => unit.source === "OSM") && (
+              <p className="text-text-secondary text-sm">
+                ข้อมูลหน่วยบางส่วน ©{" "}
+                <a
+                  className="underline"
+                  href="https://www.openstreetmap.org/copyright"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  OpenStreetMap contributors
+                </a>{" "}
+                (ODbL)
+              </p>
+            )}
             <label>
               แต่งตั้งหัวหน้า
               <select
@@ -305,7 +333,7 @@ export function AdminManagement() {
                         }))
                       }
                     />
-                    {labels[capability]}
+                    {UNIT_CAPABILITY_LABELS[capability]}
                   </label>
                 ))}
               </div>
@@ -323,6 +351,76 @@ export function AdminManagement() {
             >
               บันทึกความสามารถ
             </button>
+            {/* TF-59: ใช้เรียงหน่วยที่แนะนำตอนส่งต่อ — ไม่ตั้ง = ใช้จุดกลางอำเภอ/จังหวัด (โดยประมาณ) */}
+            <fieldset>
+              <legend className="font-semibold">พิกัดที่ตั้งหน่วย</legend>
+              <p className="text-text-secondary mt-1 text-sm">
+                ใช้เรียงหน่วยตามระยะทางตอนส่งต่อเคส ถ้าไม่ตั้ง ระบบใช้จุดกลางอำเภอหรือจังหวัดแทน
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label>
+                  ละติจูด
+                  <input
+                    className={inputClass}
+                    inputMode="decimal"
+                    placeholder="เช่น 18.7756"
+                    value={location.lat}
+                    onChange={(event) => editLocation("lat", event.target.value)}
+                  />
+                </label>
+                <label>
+                  ลองจิจูด
+                  <input
+                    className={inputClass}
+                    inputMode="decimal"
+                    placeholder="เช่น 100.7730"
+                    value={location.lng}
+                    onChange={(event) => editLocation("lng", event.target.value)}
+                  />
+                </label>
+              </div>
+            </fieldset>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                className={buttonClass}
+                disabled={busy || !location.lat.trim() || !location.lng.trim()}
+                onClick={() => {
+                  const lat = Number(location.lat);
+                  const lng = Number(location.lng);
+                  if (!(lat >= 5 && lat <= 21 && lng >= 97 && lng <= 106)) {
+                    setError("พิกัดต้องอยู่ในประเทศไทย (ละติจูด 5–21, ลองจิจูด 97–106)");
+                    return;
+                  }
+                  void send(
+                    { action: "unit_location", unitId: selectedUnit, lat, lng },
+                    "บันทึกพิกัดหน่วยแล้ว",
+                  );
+                }}
+              >
+                บันทึกพิกัดหน่วย
+              </button>
+              {unitRow?.location_lat != null && (
+                <button
+                  type="button"
+                  className={buttonClass}
+                  disabled={busy}
+                  onClick={() => {
+                    setLocationEdits((current) => {
+                      const next = { ...current };
+                      delete next[selectedUnit];
+                      return next;
+                    });
+                    void send(
+                      { action: "unit_location", unitId: selectedUnit, lat: null, lng: null },
+                      "ล้างพิกัดหน่วยแล้ว",
+                    );
+                  }}
+                >
+                  ล้างพิกัด
+                </button>
+              )}
+            </div>
           </div>
         )}
       </section>

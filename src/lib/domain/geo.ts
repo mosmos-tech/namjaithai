@@ -14,6 +14,61 @@ export const lngSchema = z
   .min(97, "พิกัดอยู่นอกประเทศไทย (ลองจิจูดต้องอยู่ระหว่าง 97–106°)")
   .max(106, "พิกัดอยู่นอกประเทศไทย (ลองจิจูดต้องอยู่ระหว่าง 97–106°)");
 
+// ── ที่มาและความแม่นยำของพิกัด (TF-65) ────────────────────────────────────────
+// เก็บกับเคสให้ทีมกู้ภัยรู้ว่าเชื่อพิกัดได้แค่ไหน
+export const LocationSource = {
+  GPS: "GPS",
+  MANUAL_PIN: "MANUAL_PIN",
+  GMAPS_LINK: "GMAPS_LINK",
+  // TF-36: พิกัดที่อ่านจากข้อความ SMS (อาจพิมพ์เอง ไม่รู้ความแม่นยำ) — ฟอร์มเว็บส่งค่านี้ไม่ได้
+  SMS: "SMS",
+} as const;
+export type LocationSource = (typeof LocationSource)[keyof typeof LocationSource];
+export type WebLocationSource = Exclude<LocationSource, typeof LocationSource.SMS>;
+
+// GPS ที่คลาดเคลื่อนเกินนี้ (เช่น MacBook ที่เดาจาก Wi-Fi ได้ ±16 กม.) ไม่ปักหมุดให้
+// ผู้แจ้งต้องปักเอง วางลิงก์ หรือกด "ส่งพร้อมที่อยู่แทน" (ต้องกรอกที่อยู่) — ไม่บล็อกการขอความช่วยเหลือ
+export const GPS_MAX_ACCEPTABLE_ACCURACY_M = 1000;
+
+// TF-67: ค่าแรกของ GPS มักหยาบ (ยังจับดาวเทียมไม่ครบ) จึงรอให้แม่นขึ้นก่อนตัดสิน
+// ได้ไม่เกินนี้รับทันที / ไม่งั้นรอได้นานสุดเท่านี้ นับจากได้ค่าแรก (หรือ error แรก) แล้วใช้ค่าที่ดีที่สุด
+export const GPS_TARGET_ACCURACY_M = 100;
+export const GPS_REFINE_MAX_WAIT_MS = 15_000;
+
+export const INACCURATE_LOCATION_MESSAGE =
+  "ตำแหน่งจากอุปกรณ์นี้ไม่แม่น กรุณาแตะบนแผนที่ วางลิงก์ Google Maps หรือกรอกที่อยู่";
+
+export const ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE =
+  "ตำแหน่งจากอุปกรณ์ไม่แม่น กรุณากรอกที่อยู่ให้ทีมกู้ภัยหาเจอ";
+
+export function isInaccurateGps(accuracyM: number | null | undefined): boolean {
+  return typeof accuracyM === "number" && accuracyM > GPS_MAX_ACCEPTABLE_ACCURACY_M;
+}
+
+/**
+ * ความคลาดเคลื่อนที่เก็บกับเคสตามวิธีได้พิกัด
+ * ปักเอง/วางลิงก์ = ผู้แจ้งยืนยันจุดเอง ไม่มีค่าความคลาดเคลื่อน (null) แม้ร่างจะมีค่า GPS เก่าค้างอยู่
+ * SMS = ไม่รู้ว่าพิกัดมาจากไหน ไม่มีค่าความคลาดเคลื่อน (null)
+ */
+export function accuracyForLocationSource(
+  source: LocationSource | undefined,
+  accuracyM: number | undefined,
+): number | undefined {
+  return source === LocationSource.MANUAL_PIN ||
+    source === LocationSource.GMAPS_LINK ||
+    source === LocationSource.SMS
+    ? undefined
+    : accuracyM;
+}
+
+export const accuracyMSchema = z.number().min(0, "ค่าความคลาดเคลื่อนต้องไม่ติดลบ");
+
+// ฟอร์มเว็บรับเฉพาะ 3 วิธีนี้ — SMS ตั้งได้จากเซิร์ฟเวอร์เท่านั้น (TF-36)
+export const locationSourceSchema = z.enum(
+  [LocationSource.GPS, LocationSource.MANUAL_PIN, LocationSource.GMAPS_LINK],
+  { error: "ไม่รู้จักวิธีระบุตำแหน่งนี้" },
+);
+
 // ค่าจาก URL เป็นข้อความเสมอ แปลงเป็นตัวเลขก่อน แล้วค่อยใช้กติกาเดียวกับฟอร์ม
 // ข้อความว่างต้องไม่กลายเป็น 0 เลยเช็กก่อนแปลง
 const numberFromString = z
@@ -38,6 +93,7 @@ const codeSchema = (digits: number, label: string) =>
 
 export const provinceCodeSchema = codeSchema(2, "จังหวัด");
 export const districtCodeSchema = codeSchema(4, "อำเภอ");
+export const subdistrictCodeSchema = codeSchema(6, "ตำบล");
 
 // ── รูปแบบข้อมูลที่ API ตอบกลับ ─────────────────────────────────────────────
 export type AdminArea = { code: number; nameTh: string; nameEn: string };
@@ -49,3 +105,6 @@ export type LocatedArea = {
   // 0 = อยู่ในเขตตำบลพอดี, มากกว่า 0 = จุดอยู่นอกเส้นขอบ (เช่น ริมทะเล) เลยเลือกตำบลที่ใกล้สุด
   distanceM: number;
 };
+
+// กรอบสี่เหลี่ยมครอบตำบล ใช้เลื่อนแผนที่ไปที่ตำบลที่ผู้แจ้งเลือก (TF-65)
+export type AreaBounds = { west: number; south: number; east: number; north: number };

@@ -18,6 +18,8 @@ import {
 } from "../server/create-case";
 
 const baseIncomingPayload = {
+  consent: true,
+  healthConsent: true,
   dangerSigns: [],
   canSelfEvacuate: false,
   waterLevel: WaterLevel.ROOF,
@@ -71,7 +73,8 @@ function createDuplicateAwareRpcMock(
         error: {
           code: "SOS49",
           message: "duplicate case candidate detected",
-          details: JSON.stringify(candidate),
+          // TF-74: ฟอร์มเว็บได้แค่ matchReason (ฐานข้อมูลไม่ส่งรหัส/ข้อมูลเคสเดิม)
+          details: JSON.stringify({ matchReason: candidate.matchReason }),
         },
       };
     }
@@ -153,24 +156,17 @@ describe("TF-16: ตรวจเคสซ้ำ (Duplicate Case Check)", () => {
     if (res.status !== 409) throw new Error("Expected 409");
 
     expect(res.body.code).toBe("DUPLICATE_CANDIDATE");
-    expect(res.body.candidate.caseCode).toBe("FL-2610-0040");
-    expect(res.body.candidate.matchReason).toBe(DuplicateMatchReason.SAME_PHONE);
+    expect(res.body.matchReason).toBe(DuplicateMatchReason.SAME_PHONE);
     expect(res.body.options).toEqual(["UPDATE_EXISTING", "CREATE_NEW"]);
-    expect(res.body.optionLabels).toEqual({
-      UPDATE_EXISTING: "อัปเดตเคสเดิม",
-      CREATE_NEW: "สร้างใหม่",
-    });
+    // TF-74: ไม่มีรหัสหรือข้อมูลใดๆ ของเคสเดิม
+    expect(res.body.candidate).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain("FL-2610-0040");
   });
 
   it("เกณฑ์ข้อ 1 (ต่อ): มีเคสเปิดอยู่ห่างไม่ถึง 50 ม. ภายใน 24 ชม. (แม้คนละเบอร์) จะถามผู้แจ้งว่าเป็นการอัปเดตเคสเดิมหรือไม่", async () => {
     // ขยับละติจูด ~0.00027 องศา ≈ ห่างประมาณ 30 เมตร (< 50 ม.)
     const nearbyLat = 13.7563 + 0.00027;
-    const distance = calculateDistanceMeters(
-      13.7563,
-      100.5018,
-      nearbyLat,
-      100.5018,
-    );
+    const distance = calculateDistanceMeters(13.7563, 100.5018, nearbyLat, 100.5018);
     expect(distance).toBeGreaterThan(25);
     expect(distance).toBeLessThan(35);
 
@@ -199,13 +195,11 @@ describe("TF-16: ตรวจเคสซ้ำ (Duplicate Case Check)", () => {
     if (res.status !== 409) throw new Error("Expected 409");
 
     expect(res.body.code).toBe("DUPLICATE_CANDIDATE");
-    expect(res.body.candidate.caseCode).toBe("FL-2610-0040");
-    expect(res.body.candidate.matchReason).toBe(DuplicateMatchReason.NEARBY_50M);
-    expect(res.body.candidate.distanceM).toBeCloseTo(30, 0);
-    expect(res.body.optionLabels).toEqual({
-      UPDATE_EXISTING: "อัปเดตเคสเดิม",
-      CREATE_NEW: "สร้างใหม่",
-    });
+    expect(res.body.matchReason).toBe(DuplicateMatchReason.NEARBY_50M);
+    // TF-74: คนละเบอร์ = เคสของคนอื่น ส่งคำขอของตัวเองได้อย่างเดียว ไม่มีข้อมูลเคสเดิม
+    expect(res.body.options).toEqual(["CREATE_NEW"]);
+    expect(res.body.error).toBe("มีคนแจ้งเหตุใกล้คุณแล้ว ทีมกู้ภัยจะเห็นทั้งสองเคส");
+    expect(JSON.stringify(res.body)).not.toContain("FL-2610-0040");
   });
 
   it('เกณฑ์ข้อ 1 (ต่อ): เมื่อผู้แจ้งเลือก "อัปเดตเคสเดิม" (UPDATE_EXISTING) จะอัปเดตเคสเดิมและคืนรหัสเคสเดิม', async () => {
@@ -235,7 +229,7 @@ describe("TF-16: ตรวจเคสซ้ำ (Duplicate Case Check)", () => {
     });
 
     expect(res.status).toBe(200);
-    if (res.status !== 200) throw new Error("Expected 200");
+    if (res.status !== 200 || "supplemented" in res.body) throw new Error("Expected 200");
 
     expect(res.body.caseId).toBe(existingCase.caseId);
     expect(res.body.caseCode).toBe("FL-2610-0040");

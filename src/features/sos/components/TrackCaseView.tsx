@@ -1,7 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -13,23 +14,58 @@ import {
   Users,
 } from "lucide-react";
 import {
-  TRACK_STEPS,
   caseCodeSchema,
-  formatThaiDateTime,
-  formatThaiTime,
+  trackScreen,
   reporterStatusView,
-  timelineLabel,
   type CaseStatus,
   type StatusTone,
   type TrackedCase,
 } from "@/lib/domain";
 import { useTrackedCase } from "../use-tracked-case";
 import { TrackLookupForm } from "./TrackLookupForm";
+import { ReporterCaseActions } from "./ReporterCaseActions";
+import { WaitingAdvice } from "./WaitingAdvice";
+import { ReporterAccountConfirmation } from "./ReporterAccountConfirmation";
+import { useI18n } from "@/lib/i18n/I18nProvider";
+import { LanguageSwitch } from "@/components/public/LanguageSwitch";
+import { format, localePath } from "@/lib/i18n/locale";
+import {
+  agoLabel,
+  dateTimeLabel,
+  distanceLabel,
+  etaLabel,
+  timeLabel,
+} from "@/lib/i18n/track-format";
+
+// TF-42: แผนที่โหลดแยก (MapLibre หนัก) — ระหว่างโหลด/โหลดไม่ขึ้น แผงล่างใช้ได้ครบ
+const LazyTrackMap = dynamic(() => import("./TrackMap"), {
+  ssr: false,
+  loading: () => <TrackMapLoading />,
+});
+
+function TrackMapLoading() {
+  const { t } = useI18n();
+  return (
+    <div className="bg-bg-subtle text-text-secondary flex h-64 items-center justify-center rounded-[14px] text-base sm:h-80">
+      {t.track.mapLoading}
+    </div>
+  );
+}
+
+/** นาฬิกาเดินทุก 5 วินาที สำหรับข้อความ "x วินาทีที่แล้ว" */
+function useNow(intervalMs = 5_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
 
 /**
  * หน้าติดตามเคส /track/รหัสเคส?t=token (TF-13)
  * แสดงสถานะ แถบขั้นตอน ทีมที่รับเคส และไทม์ไลน์ ดึงข้อมูลใหม่ทุก 20 วินาที
- * (แผนที่สดอยู่ใน TF-42 ปุ่มยกเลิก/ปลอดภัยแล้วอยู่ใน TF-14)
+ * (แผนที่สดอยู่ใน TF-42)
  */
 export function TrackCaseView({
   params,
@@ -39,18 +75,23 @@ export function TrackCaseView({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { code } = use(params);
-  const { t } = use(searchParams);
+  const { t: tokenParam } = use(searchParams);
+  const { t, locale } = useI18n();
   const caseCode = caseCodeSchema.safeParse(code);
-  const token = typeof t === "string" ? t : null;
+  const token = typeof tokenParam === "string" ? tokenParam : null;
 
   // ไม่มี token ในลิงก์ (เช่น พิมพ์ URL เอง) → ให้ยืนยันด้วย 4 ตัวท้าย
   if (!caseCode.success || !token) {
     return (
       <div className="mx-auto max-w-xl px-4 py-8 sm:px-6 sm:py-12">
-        <h1 className="font-heading text-text-primary text-3xl font-bold">ติดตามเคส</h1>
-        <p className="text-text-secondary mt-2 text-lg">
-          ใส่เบอร์โทร 4 ตัวท้ายที่ใช้แจ้ง เพื่อยืนยันว่าเป็นเคสของคุณ
-        </p>
+        <LanguageSwitch
+          locale={locale}
+          path={`/track/${encodeURIComponent(code)}`}
+          label={t.common.languageSwitchLabel}
+          className="mb-4"
+        />
+        <h1 className="font-heading text-text-primary text-3xl font-bold">{t.track.title}</h1>
+        <p className="text-text-secondary mt-2 text-lg">{t.track.lookupHint}</p>
         <TrackLookupForm initialCode={caseCode.success ? caseCode.data : ""} />
       </div>
     );
@@ -60,14 +101,29 @@ export function TrackCaseView({
 }
 
 function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string }) {
-  const state = useTrackedCase(caseCode, token);
+  const [revision, setRevision] = useState(0);
+  const state = useTrackedCase(caseCode, token, revision);
+  const { t, locale } = useI18n();
+  // ข้อความ error จาก API เป็นภาษาไทย — หน้าอังกฤษแปลตามรหัสสถานะ
+  const errorMessage =
+    state.kind !== "error"
+      ? ""
+      : locale === "th"
+        ? state.message
+        : state.status === 404
+          ? t.lookup.notFound
+          : state.status === 0
+            ? t.lookup.offline
+            : state.status === 429
+              ? t.lookup.tooMany
+              : t.lookup.failed;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-10">
       <div className="flex items-center justify-between gap-3">
         <Link
-          href="/track"
-          aria-label="กลับ"
+          href={localePath("/track", locale)}
+          aria-label={t.track.back}
           className="bg-bg-surface text-text-primary hover:bg-bg-subtle flex size-12 items-center justify-center rounded-full shadow-sm"
         >
           <ArrowLeft className="size-6" />
@@ -76,25 +132,50 @@ function TrackedCaseLive({ caseCode, token }: { caseCode: string; token: string 
           {caseCode}
         </span>
       </div>
+      <LanguageSwitch
+        locale={locale}
+        path={`/track/${encodeURIComponent(caseCode)}?t=${encodeURIComponent(token)}`}
+        label={t.common.languageSwitchLabel}
+        className="self-end"
+      />
 
       {state.kind === "loading" && (
-        <p className="text-text-secondary py-12 text-center text-lg">กำลังโหลดสถานะเคส…</p>
+        <p className="text-text-secondary py-12 text-center text-lg">{t.track.loading}</p>
       )}
 
       {state.kind === "error" && (
         <div className="bg-bg-surface rounded-[14px] p-6 text-center">
-          <p className="text-text-primary text-lg">{state.message}</p>
+          <p className="text-text-primary text-lg">{errorMessage}</p>
           <Link
-            href="/track"
+            href={localePath("/track", locale)}
             className="bg-primary-600 font-heading text-text-on-primary hover:bg-primary-700 mt-5 inline-flex min-h-12 items-center rounded-full px-6 text-lg font-semibold"
           >
-            กรอกรหัสเคสใหม่
+            {t.track.enterNewCode}
           </Link>
         </div>
       )}
 
       {state.kind === "ready" && (
-        <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
+        <>
+          {state.data.status === "AWAITING_CONFIRMATION" && (
+            <ReporterAccountConfirmation
+              caseCode={caseCode}
+              trackingToken={token}
+              onChanged={() => setRevision((value) => value + 1)}
+            />
+          )}
+          <TrackedCaseDetail data={state.data} fetchedAt={state.fetchedAt} stale={state.stale} />
+          {/* TF-42: รอทีม = ที่เดิม · กำลังมา = ใต้แผงสถานะ (พับได้) · ถึงแล้วเป็นต้นไป ไม่ต้องแสดง */}
+          {trackScreen(state.data.status) === "waiting" && (
+            <WaitingAdvice incidentType={state.data.incidentType} />
+          )}
+          <ReporterCaseActions
+            caseCode={caseCode}
+            token={token}
+            status={state.data.status}
+            onChanged={() => setRevision((value) => value + 1)}
+          />
+        </>
       )}
     </div>
   );
@@ -116,14 +197,28 @@ function TrackedCaseDetail({
   fetchedAt: Date;
   stale: boolean;
 }) {
-  const view = reporterStatusView(data.status);
+  const { t, locale } = useI18n();
+  const view = { ...reporterStatusView(data.status), ...t.track.status[data.status] };
+  const screen = trackScreen(data.status);
+  const live = screen === "en_route" || screen === "arrived";
+  const now = useNow();
   const area = [data.area.subdistrict, data.area.district, data.area.province]
     .filter(Boolean)
     .join(" · ");
 
   return (
     <>
-      <section className="bg-bg-surface rounded-[14px] p-5 sm:p-8">
+      {live && data.scene && (
+        <section aria-label={t.track.mapRegion}>
+          <LazyTrackMap
+            scene={data.scene}
+            team={
+              data.teamLocation ? { lat: data.teamLocation.lat, lng: data.teamLocation.lng } : null
+            }
+          />
+        </section>
+      )}
+      <section className="bg-bg-surface rounded-[14px] p-5 sm:p-8" data-testid="track-panel">
         <span
           className={`inline-block rounded-[8px] px-3 py-1 text-base font-semibold ${BADGE_TONE[view.tone]}`}
         >
@@ -139,23 +234,46 @@ function TrackedCaseDetail({
         {data.status === "NEW" && (
           <div className="text-text-primary mt-6 flex gap-3 rounded-[12px] bg-amber-50 p-4 text-lg">
             <TriangleAlert className="mt-1 size-6 shrink-0 text-amber-700" aria-hidden="true" />
-            <p>ระหว่างรอ: ขึ้นที่สูง เปิดเสียงโทรศัพท์ไว้ ทีมจะโทรหาก่อนออกเดินทาง</p>
+            <p>{t.track.waitingTip}</p>
           </div>
         )}
 
+        {/* TF-59: ไม่บอกชื่อหน่วยปลายทางจนกว่าจะรับ — ทีมเดิมยังดูแลอยู่ระหว่างนี้ */}
+        {data.transferPending && (
+          <div
+            role="status"
+            data-testid="transfer-pending"
+            className="bg-primary-50 text-text-primary mt-6 rounded-[12px] p-4 text-lg"
+          >
+            <p className="font-semibold">{t.track.transferPending}</p>
+            <p className="mt-1">{t.track.transferStillCaring}</p>
+          </div>
+        )}
+
+        {live && <TeamLiveInfo data={data} screen={screen} now={now} />}
+
         {data.team && <TeamCard team={data.team} />}
 
-        <p className="text-text-secondary mt-6 text-base" aria-live="polite">
+        {data.status === "ON_SITE" && (
+          <p className="text-text-secondary mt-4 text-base">{t.track.onSiteConfirmHint}</p>
+        )}
+
+        <p className="text-text-secondary mt-6 text-base" data-testid="track-last-updated">
           {stale
-            ? "เชื่อมต่อไม่ได้ชั่วคราว กำลังลองใหม่อัตโนมัติ"
-            : `อัปเดตล่าสุด ${formatThaiTime(fetchedAt)}`}
+            ? t.track.stale
+            : format(t.track.lastUpdated, {
+                ago: agoLabel(fetchedAt, now, t.track),
+                time: timeLabel(fetchedAt, locale),
+              })}
         </p>
       </section>
+
+      {screen === "en_route" && <WaitingAdvice incidentType={data.incidentType} collapsible />}
 
       <section className="bg-bg-surface rounded-[14px] p-5 sm:p-8">
         <details className="group">
           <summary className="font-heading text-primary-700 flex min-h-12 cursor-pointer list-none items-center justify-between text-lg font-semibold [&::-webkit-details-marker]:hidden">
-            ดูไทม์ไลน์ทั้งหมด
+            {t.track.timeline}
             <ChevronRight
               className="size-6 transition-transform group-open:rotate-90"
               aria-hidden="true"
@@ -166,9 +284,11 @@ function TrackedCaseDetail({
               <li key={`${event.type}-${event.at}`} className="relative">
                 <span className="bg-primary-600 absolute top-2 -left-[27px] size-3 rounded-full" />
                 <p className="text-text-primary text-lg">
-                  {timelineLabel(event.type, event.toStatus)}
+                  {event.type === "STATUS_CHANGED" && event.toStatus
+                    ? t.track.statusChanged[event.toStatus]
+                    : t.track.events[event.type]}
                 </p>
-                <p className="text-text-secondary text-base">{formatThaiDateTime(event.at)}</p>
+                <p className="text-text-secondary text-base">{dateTimeLabel(event.at, locale)}</p>
               </li>
             ))}
           </ol>
@@ -176,18 +296,18 @@ function TrackedCaseDetail({
       </section>
 
       <section className="bg-bg-surface text-text-secondary rounded-[14px] p-5 text-base sm:p-8">
-        <p>แจ้งเมื่อ {formatThaiDateTime(data.createdAt)}</p>
-        {area && <p className="mt-1">พื้นที่: {area}</p>}
+        <p>{format(t.track.reportedAt, { time: dateTimeLabel(data.createdAt, locale) })}</p>
+        {area && <p className="mt-1">{format(t.track.area, { area })}</p>}
         <p className="mt-3">
-          ฉุกเฉินมาก โทร{" "}
+          {t.track.emergencyBefore}{" "}
           <a href="tel:1669" className="text-primary-700 font-semibold underline">
             1669
           </a>{" "}
-          หรือ{" "}
+          {t.track.emergencyOr}{" "}
           <a href="tel:1784" className="text-primary-700 font-semibold underline">
             1784
           </a>{" "}
-          ได้ตลอดเวลา
+          {t.track.emergencyAfter}
         </p>
       </section>
     </>
@@ -201,9 +321,10 @@ function StatusStepper({
   status: CaseStatus;
   progress: { done: number; active: boolean };
 }) {
+  const { t } = useI18n();
   return (
-    <ol className="mt-6 grid grid-cols-5" aria-label="ขั้นตอนการช่วยเหลือ">
-      {TRACK_STEPS.map((label, i) => {
+    <ol className="mt-6 grid grid-cols-5" aria-label={t.track.stepsLabel}>
+      {t.track.steps.map((label, i) => {
         const done = i < progress.done;
         const active = progress.active && i === progress.done;
         const ActiveIcon = status === "EN_ROUTE" ? Navigation : Clock;
@@ -236,7 +357,7 @@ function StatusStepper({
             >
               {label}
               <span className="sr-only">
-                {done ? " (ผ่านแล้ว)" : active ? " (กำลังดำเนินการ)" : " (ยังไม่ถึง)"}
+                {done ? t.track.stepDone : active ? t.track.stepActive : t.track.stepPending}
               </span>
             </span>
           </li>
@@ -246,27 +367,86 @@ function StatusStepper({
   );
 }
 
+/**
+ * TF-42: ตำแหน่งทีมเป็นตัวหนังสือ (ใช้ได้แม้แผนที่ไม่ขึ้น)
+ * ไม่มีตำแหน่ง/เก่าเกิน 2 นาที → "ไม่มีตำแหน่งล่าสุด" และไม่คำนวณเวลาจากตำแหน่งเก่า
+ */
+function TeamLiveInfo({
+  data,
+  screen,
+  now,
+}: {
+  data: TrackedCase;
+  screen: "en_route" | "arrived" | "waiting" | "closed";
+  now: number;
+}) {
+  const { t } = useI18n();
+  const location = data.teamLocation;
+  if (!location) {
+    return (
+      <div
+        className="bg-bg-subtle text-text-primary mt-6 rounded-[12px] p-4 text-lg"
+        data-testid="team-location-missing"
+        role="status"
+      >
+        <p className="font-semibold">{t.track.noLocationTitle}</p>
+        <p className="text-text-secondary mt-1 text-base">{t.track.noLocationBody}</p>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="bg-primary-50 text-text-primary mt-6 rounded-[12px] p-4 text-lg"
+      data-testid="team-live-info"
+    >
+      {screen === "en_route" && location.etaMinutes !== undefined ? (
+        <p className="font-heading text-2xl font-bold" data-testid="team-eta">
+          {format(t.track.eta, { eta: etaLabel(location.etaMinutes, t.track) })}
+        </p>
+      ) : (
+        <p className="font-heading text-2xl font-bold">{t.track.nearby}</p>
+      )}
+      <p className="mt-1">
+        {format(t.track.distance, { distance: distanceLabel(location.distanceM, t.track) })}
+      </p>
+      <p className="text-text-secondary mt-1 text-base">
+        {format(t.track.teamLocationAt, { ago: agoLabel(location.updatedAt, now, t.track) })}
+      </p>
+    </div>
+  );
+}
+
 function TeamCard({ team }: { team: NonNullable<TrackedCase["team"]> }) {
+  const { t } = useI18n();
+  const name = team.unitName ?? t.track.teamFallback;
   return (
     <div className="bg-bg-subtle mt-6 flex items-center gap-4 rounded-[12px] p-4">
       <span className="bg-primary-100 text-primary-700 flex size-12 shrink-0 items-center justify-center rounded-full">
         <Users className="size-6" aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-text-secondary text-base">ทีมที่รับเคส</p>
-        <p className="font-heading text-text-primary text-xl font-semibold">
-          {team.unitName ?? "ทีมกู้ภัย"}
-        </p>
+        <p className="text-text-secondary text-base">{t.track.teamLabel}</p>
+        <p className="font-heading text-text-primary text-xl font-semibold">{name}</p>
       </div>
-      {team.contactPhone && (
-        <a
-          href={`tel:${team.contactPhone}`}
-          aria-label={`โทรหา ${team.unitName ?? "ทีมกู้ภัย"}`}
-          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-green-700 text-white hover:brightness-110"
-        >
-          <Phone className="size-6" aria-hidden="true" />
-        </a>
-      )}
+      {/* TF-42: เบอร์หน่วย (ไม่ใช่เบอร์ส่วนตัวกู้ภัย) หน่วยไม่มีเบอร์ใช้ 1669 — ลิงก์ tel: กดได้เสมอ */}
+      <a
+        href={`tel:${team.contactPhone ?? "1669"}`}
+        aria-label={team.contactPhone ? format(t.track.callTeam, { name }) : t.common.call1669}
+        data-testid="team-call"
+        className="flex size-14 shrink-0 items-center justify-center rounded-full bg-green-700 text-white hover:brightness-110"
+      >
+        <Phone className="size-6" aria-hidden="true" />
+      </a>
+    </div>
+  );
+}
+
+/** ระหว่างรอ params ของหน้า /track/[code] (Suspense fallback) — TF-63 แสดงตามภาษาของหน้า */
+export function TrackLoading() {
+  const { t } = useI18n();
+  return (
+    <div className="text-text-secondary mx-auto max-w-2xl px-4 py-12 text-center text-lg sm:px-6">
+      {t.track.loading}
     </div>
   );
 }

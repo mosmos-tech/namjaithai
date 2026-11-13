@@ -86,8 +86,22 @@ test.describe("TF-30 admin", () => {
     const user = await createAccount({ displayName: `User TF30 ${tag}`, role: "USER" });
     const name = `หน่วย TF30 ${tag}`;
     let unitId: string | undefined;
-    const incidentCode = isMobile ? "FIRE" : "MEDICAL";
-    const incidentName = isMobile ? "ไฟไหม้" : "เจ็บป่วยฉุกเฉิน";
+    // TF-68: test นี้ต้องการประเภทเหตุที่ "ปิด" อยู่ จึงตั้งสถานะเองตอนเริ่มและคืนค่าเดิมตอนจบ
+    // เลือกประเภทที่ไม่มี test อื่นเปิด/ปิด (เดิมมือถือใช้ FIRE ซึ่ง sos-non-flood เปิดอยู่พร้อมกัน → ล้ม 5 ใน 10 รอบ)
+    // มือถือกับจอคอมรันพร้อมกันจึงใช้คนละประเภท
+    const incidentCode = isMobile ? "WATER_RESCUE" : "MEDICAL";
+    const incidentName = isMobile ? "ตกน้ำ / จมน้ำ" : "เจ็บป่วยฉุกเฉิน";
+    const { data: originalIncident } = await db
+      .from("incident_types")
+      .select("is_enabled")
+      .eq("code", incidentCode)
+      .single()
+      .throwOnError();
+    await db
+      .from("incident_types")
+      .update({ is_enabled: false })
+      .eq("code", incidentCode)
+      .throwOnError();
     try {
       await applySession(context, user);
       await page.goto("/admin");
@@ -126,8 +140,13 @@ test.describe("TF-30 admin", () => {
         .getByRole("listitem")
         .filter({ hasText: admin.displayName });
       await expect(ownRow.getByRole("button", { name: "ระงับผู้ใช้" })).toBeDisabled();
+      // รอผลค้นหาแรกจริง ๆ ก่อนเริ่มค้นหาอีกคน เพื่อไม่ให้ response เก่ามาทับผลใหม่
+      const userList = page.getByRole("list", { name: "รายการผู้ใช้" });
+      await expect(userList).not.toContainText(user.displayName);
       await page.getByLabel("ค้นหาผู้ใช้").fill(user.displayName);
       await page.getByRole("button", { name: "ค้นหา" }).click();
+      await expect(userList).toContainText(user.displayName);
+      await expect(ownRow).toHaveCount(0);
       await expect(page.getByLabel("หัวหน้าหน่วย", { exact: true })).toContainText(
         user.displayName,
       );
@@ -177,6 +196,10 @@ test.describe("TF-30 admin", () => {
       await expect(page).toHaveURL(/\/login\?error=inactive/);
       expect((await page.request.get("/api/admin/manage")).status()).toBe(403);
     } finally {
+      await db
+        .from("incident_types")
+        .update({ is_enabled: originalIncident!.is_enabled })
+        .eq("code", incidentCode);
       if (unitId) await db.from("units").delete().eq("id", unitId);
       for (const account of [admin, user]) {
         await db

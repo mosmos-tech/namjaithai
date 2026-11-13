@@ -1,6 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { useHydrated } from "@/lib/use-hydrated";
+import { HydrationPending } from "./HydrationPending";
 
 const ITEMS = [
   { id: "water", label: "น้ำดื่มสำรอง 3 ลิตร/คน/วัน (อย่างน้อย 3 วัน)" },
@@ -73,6 +75,8 @@ function writeChecked(next: Set<string>): void {
 
 export function SurvivalChecklist() {
   const checked = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // TF-68: ติ๊กก่อน hydrate เสร็จ หน้าจอขึ้นว่าติ๊กแล้วแต่ไม่ได้บันทึก (รีโหลดแล้วหาย) จึงปิดไว้จนพร้อม
+  const hydrated = useHydrated();
 
   const done = checked.size;
   const total = ITEMS.length;
@@ -108,6 +112,12 @@ export function SurvivalChecklist() {
         />
       </div>
 
+      {!hydrated && (
+        <div className="mb-3">
+          <HydrationPending />
+        </div>
+      )}
+
       {/* Items */}
       <ul className="flex flex-col gap-2">
         {ITEMS.map(({ id, label }) => {
@@ -118,6 +128,7 @@ export function SurvivalChecklist() {
                 <input
                   type="checkbox"
                   checked={isChecked}
+                  disabled={!hydrated}
                   onChange={() => toggle(id)}
                   className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-primary-600"
                 />

@@ -53,7 +53,7 @@ export function Logo({ size = "default", tone = "default" }: LogoProps) {
         <p
           className={`mt-px leading-tight ${onBlue ? "text-text-on-primary" : "text-text-secondary"} ${size === "lg" ? "text-sm" : "text-xs"}`}
         >
-          ศูนย์ประสานงานช่วยเหลือน้ำท่วม
+          ศูนย์ประสานงานช่วยเหลือเหตุฉุกเฉิน
         </p>
       </div>
     </div>

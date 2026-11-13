@@ -166,3 +166,21 @@
     @apply font-sans;
   }
 }
+
+/* Keep the first public page readable with the fonts already on the device. */
+html:has([data-lightweight-home]) {
+  --font-sans: system-ui, sans-serif;
+  --font-heading: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+}
+
+/* TF-68: ข้อความ "ถ้าเว็บโหลดช้า" โผล่เองหลัง 5 วินาทีด้วย CSS ล้วน (ตอนนั้น JS อาจยังโหลดไม่เสร็จ ตั้งเวลาด้วย JS ไม่ได้) */
+@keyframes reveal-after-delay {
+  to {
+    visibility: visible;
+  }
+}
+.reveal-after-5s {
+  visibility: hidden;
+  animation: reveal-after-delay 0s linear 5s forwards;
+}

@@ -18,6 +18,7 @@ select plan(20);
 -- ---------- create_sos_case(): บันทึกผลจาก computeTriage ----------
 create function pg_temp.sos_payload(extra jsonb) returns jsonb language sql as $$
   select jsonb_build_object(
+    'consent', true, 'healthConsent', true, 'consentVersion', '2026-11-06',
     'urgency', 'RED', 'triageReasons', '["DANGER_SIGN"]'::jsonb,
     'canSelfEvacuate', false, 'lat', 14.55, 'lng', 100.95, 'landmark', 'หน้าวัด',
     'phone', '0899990055', 'name', 'ทดสอบ TF-55', 'adults', 1, 'needs', '[]'::jsonb
@@ -87,7 +88,8 @@ exception when sqlstate 'SOS49' then
   return v_detail::jsonb;
 end $$;
 select ok(
-  (select d ? 'caseCode' and not d ? 'urgency' from pg_temp.sos49_detail() d),
+  -- TF-74: ฟอร์มเว็บได้แค่ matchReason — ไม่มีรหัสเคสเดิมด้วย
+  (select d ? 'matchReason' and not d ? 'urgency' and not d ? 'caseCode' from pg_temp.sos49_detail() d),
   'ข้อมูลเคสซ้ำ (SOS49) ที่ส่งกลับไปให้ผู้แจ้งไม่มี urgency'
 );
 
