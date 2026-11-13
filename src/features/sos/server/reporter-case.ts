@@ -2,6 +2,8 @@ import { z } from "zod";
 import { extractClientIp } from "./create-case";
 import {
   caseCodeSchema,
+  normalizePhoneInput,
+  THAI_PHONE_REGEX,
   trackingTokenSchema,
   step3BaseSchema,
   priorityScore,
@@ -82,8 +84,9 @@ export async function handleReporterCase(input: {
   const token = trackingTokenSchema.safeParse(input.token);
   if (!code.success || !token.success)
     return { status: 400, body: { error: "รหัสเคสหรือลิงก์ติดตามไม่ถูกต้อง" }, headers };
-  const phone = input.phone.replace(/[\s-]/g, "");
-  if (!/^(0[6-9]\d{8}|0[2-5]\d{7,8})$/.test(phone))
+  // TF-63: แปลงเบอร์แบบเดียวกับฟอร์ม SOS (+66 → 0) ก่อนเทียบกับเบอร์ที่เก็บไว้
+  const phone = normalizePhoneInput(input.phone);
+  if (!THAI_PHONE_REGEX.test(phone))
     return { status: 400, body: { error: "กรุณาระบุเบอร์โทรเต็มที่ใช้แจ้งเคส" }, headers };
   const parsed =
     input.mutation === undefined ? null : reporterMutationSchema.safeParse(input.mutation);
