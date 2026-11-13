@@ -26,6 +26,8 @@ const NAV_LINKS = [
 const subscribeHydration = () => () => {};
 const browserReady = () => true;
 const serverNotReady = () => false;
+const browserPath = () => window.location.pathname;
+const serverPath = () => "";
 
 const CurrentPath = lazy(() => import("./NavbarPath"));
 
@@ -61,6 +63,7 @@ export function Navbar({
   const [accountPending, setAccountPending] = useState(resolveAccount);
   const [accountUnknown, setAccountUnknown] = useState(false);
   const [pathname, setPathname] = useState<string | null>(null);
+  const initialPath = useSyncExternalStore(subscribeHydration, browserPath, serverPath);
   useEffect(() => {
     if (!resolveAccount) return;
     const controller = new AbortController();
@@ -104,7 +107,8 @@ export function Navbar({
         ? "Check account"
         : "ตรวจสอบบัญชี"
       : (text?.signIn ?? "เข้าสู่ระบบ");
-  const activePath = pathname === "/rescue" ? "/rescue/map" : pathname;
+  const path = pathname ?? initialPath;
+  const activePath = path === "/rescue" ? "/rescue/map" : path;
   const currentHref = [...navLinks]
     .sort((a, b) => b.href.length - a.href.length)
     .find(({ href }) => activePath === href || activePath?.startsWith(`${href}/`))?.href;
