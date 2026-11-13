@@ -1,6 +1,7 @@
 import { getCurrentAppUser } from "@/features/auth/server/app-user";
 import { listProvinces } from "@/features/geo/queries";
-import { INCIDENT_REGISTRY, type IncidentType } from "@/lib/domain/incidents";
+import { INCIDENT_REGISTRY, INCIDENT_TYPE_ORDER, type IncidentType } from "@/lib/domain/incidents";
+import { CASE_EXPORT_MAX_DAYS, caseExportErrorMessage } from "@/lib/domain/case-export";
 import { createClient } from "@/lib/supabase/server";
 import { parseStatsFilters } from "./filters";
 
@@ -23,6 +24,7 @@ export async function AdminStats({
   const user = await getCurrentAppUser();
   if (user?.role !== "ADMIN" || user.status !== "ACTIVE") return null;
   const filters = parseStatsFilters(await searchParams);
+  const exportError = caseExportErrorMessage(filters.exportError);
   const [provinces, db] = await Promise.all([listProvinces(), createClient()]);
   const { data, error } = filters.error
     ? { data: null, error: null }
@@ -30,6 +32,7 @@ export async function AdminStats({
         p_province: filters.province || null,
         p_from: filters.from || null,
         p_to: filters.to || null,
+        p_incident_type: filters.incident || null,
       });
   const stats = data as Stats | null;
   const cards = stats
@@ -58,7 +61,7 @@ export async function AdminStats({
     : [];
   return (
     <section aria-label="สถิติห้องสั่งการ" className="flex min-w-0 flex-col gap-5">
-      <form method="get" className="grid gap-3 sm:grid-cols-3">
+      <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1 font-semibold">
           จังหวัดของสถิติ
           <select
@@ -70,6 +73,22 @@ export async function AdminStats({
             {provinces.map((p) => (
               <option key={p.code} value={p.nameTh}>
                 {p.nameTh}
+              </option>
+            ))}
+          </select>
+        </label>
+        {/* TF-38: ตัวกรองประเภทเหตุ ใช้ทั้งสถิติและ CSV */}
+        <label className="flex flex-col gap-1 font-semibold">
+          ประเภทเหตุ
+          <select
+            name="incident"
+            defaultValue={filters.incident}
+            className="min-h-12 w-full rounded-lg border bg-white px-3 font-normal"
+          >
+            <option value="">ทุกประเภท</option>
+            {INCIDENT_TYPE_ORDER.map((type) => (
+              <option key={type} value={type}>
+                {INCIDENT_REGISTRY[type].label.th}
               </option>
             ))}
           </select>
@@ -92,10 +111,28 @@ export async function AdminStats({
             className="min-h-12 min-w-0 rounded-lg border bg-white px-3 font-normal"
           />
         </label>
-        <button className="bg-primary-600 min-h-12 rounded-full px-6 font-semibold text-white sm:col-span-3 sm:justify-self-start">
-          แสดงสถิติ
-        </button>
+        <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center lg:col-span-4">
+          <button className="bg-primary-600 min-h-12 rounded-full px-6 font-semibold text-white">
+            แสดงสถิติ
+          </button>
+          {/* TF-38: ส่งตัวกรองชุดเดียวกันไปดาวน์โหลด (ปุ่มในฟอร์ม GET ธรรมดา ไม่ต้องใช้ JS) */}
+          <button
+            formAction="/api/admin/cases/export"
+            data-testid="case-export-button"
+            className="border-primary-600 text-primary-700 min-h-12 rounded-full border-2 bg-white px-6 font-semibold"
+          >
+            ดาวน์โหลด CSV
+          </button>
+          <p className="text-text-secondary text-sm">
+            CSV ต้องเลือกช่วงวันที่ ไม่เกิน {CASE_EXPORT_MAX_DAYS} วัน · ไม่มีชื่อ เบอร์โทร หรือพิกัดผู้แจ้ง
+          </p>
+        </div>
       </form>
+      {exportError && (
+        <p role="alert" data-testid="case-export-error" className="text-red-700">
+          {exportError}
+        </p>
+      )}
       {(filters.error || error) && (
         <p role="alert" className="text-red-700">
           {filters.error ?? "ไม่สามารถโหลดสถิติได้ กรุณาลองใหม่"}

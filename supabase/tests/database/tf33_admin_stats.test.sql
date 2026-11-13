@@ -33,6 +33,6 @@ select is((select (x->>'count')::int from jsonb_array_elements(public.admin_case
 select is((select (x->>'count')::int from jsonb_array_elements(public.admin_case_statistics('TF33 Bulk',null,null)->'incidents') x where x->>'name'='FLOOD'),1001,'นับครบแม้เกิน 1000 เคส');
 select is(jsonb_array_length(public.admin_case_statistics('TF33 Missing',null,null)->'provinces'),0,'ไม่มีเคสแสดงรายการว่าง');
 select throws_ok($$select public.admin_case_statistics(null,'2020-02-01','2020-01-01')$$,'22023',null,'ปฏิเสธช่วงวันที่กลับด้าน');
-select ok(not has_function_privilege('anon','public.admin_case_statistics(text,date,date)','execute'),'ผู้ไม่ล็อกอินเรียกไม่ได้');
+select ok(not has_function_privilege('anon','public.admin_case_statistics(text,date,date,text)','execute'),'ผู้ไม่ล็อกอินเรียกไม่ได้ (TF-38: เพิ่มพารามิเตอร์ประเภทเหตุ)');
 select * from finish();
 rollback;

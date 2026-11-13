@@ -1,3 +1,4 @@
+import { toCsv } from "./csv";
 import { INCIDENT_REGISTRY, INCIDENT_TYPE_ORDER, type IncidentType } from "./incidents";
 
 // ── TF-57 ผลงานหน่วย: แปลงแถวจาก unit_monthly_stats / unit_daily_stats เป็นกราฟ ตัวเลขสรุป และ CSV ──
@@ -241,10 +242,6 @@ export function incidentTypesIn(bars: readonly UnitPeriodBar[]): IncidentType[] 
   return INCIDENT_TYPE_ORDER.filter((type) => bars.some((b) => (b.helpedByType[type] ?? 0) > 0));
 }
 
-function csvCell(value: string | number): string {
-  const text = String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
 
 /**
  * CSV ของช่วงที่เลือก (ชุดเดียวกับกราฟและตาราง) — ใส่ BOM ให้ Excel เปิดภาษาไทยไม่เพี้ยน
@@ -276,7 +273,8 @@ export function unitStatsCsv(
     bar.peopleHelped,
     ...types.map((type) => bar.helpedByType[type] ?? 0),
   ]);
-  return `﻿${[header, ...lines].map((line) => line.map(csvCell).join(",")).join("\r\n")}\r\n`;
+  // TF-38: ใช้ฟังก์ชันกลาง (BOM + escape เดิม + กันสูตร Excel)
+  return toCsv([header, ...lines]);
 }
 
 /** ชื่อหน่วยแบบเต็ม "องค์กร · ศูนย์ (อำเภอ จังหวัด)" — หน่วยชื่อเดียวกันต่างเขตแยกกันได้ */
