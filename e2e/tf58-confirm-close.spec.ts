@@ -182,7 +182,14 @@ test("ส่ง SOS ได้โทเค็นยืนยันแยก แ�
   const first = await send();
   expect(first.ok()).toBeTruthy();
   const body = await first.json();
-  createdCaseId = body.caseId;
+  // TF-74: API ไม่ส่ง id ภายในของเคสกลับไป หา id จากรหัสเคสไว้ปิดเคสตอนจบ
+  const { data: created } = await adminDb()
+    .from("cases")
+    .select("id")
+    .eq("case_code", body.caseCode)
+    .single()
+    .throwOnError();
+  createdCaseId = created!.id;
   expect(body.confirmationToken).toMatch(/^[0-9a-f]{32}$/);
   expect(body.confirmationToken).not.toBe(body.trackingToken);
   const replay = await send();

@@ -118,7 +118,12 @@ describe("handleCreateSosCase (TF-12)", () => {
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(200);
-    if (first.status !== 201 || second.status !== 200) {
+    if (
+      first.status !== 201 ||
+      second.status !== 200 ||
+      "supplemented" in first.body ||
+      "supplemented" in second.body
+    ) {
       throw new Error("Unexpected status");
     }
 

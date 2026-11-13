@@ -3,10 +3,19 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { rememberSentCase } from "../sent-case";
 import { saveOfflineSos } from "../offline-queue-core";
 import { WaitingAdvice } from "./WaitingAdvice";
-import { IncidentType, Need, type LocatedArea, type WaterLevel } from "../../../lib/domain";
+import { DuplicateCasePrompt } from "./DuplicateCasePrompt";
+import {
+  IncidentType,
+  Need,
+  trackPath,
+  type DuplicateMatchReason,
+  type LocatedArea,
+  type WaterLevel,
+} from "../../../lib/domain";
 import { buildSosSmsLink } from "../../../lib/domain/sms-format";
 import {
   SOS_SLOW_SUBMIT_NOTICE_MS,
@@ -34,6 +43,7 @@ import {
   type Step3ValidationErrors,
   type Step4ValidationErrors,
   type Step5ValidationErrors,
+  type DuplicateChoice,
 } from "../draft-storage";
 import { MAX_SOS_PHOTOS } from "../image-compression";
 import { SosProgressBar, SosProgressSegments } from "./SosProgressBar";
@@ -125,6 +135,15 @@ export function SosWizard() {
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
   const [submittedType, setSubmittedType] = useState<IncidentType | null>(null);
   const [hasSentDetails, setHasSentDetails] = useState(false);
+  // TF-74: พบเคสที่อาจซ้ำ → ถามผู้แจ้ง แล้วส่งใหม่ด้วย idempotency key เดิมตามทางที่เลือก
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    matchReason: DuplicateMatchReason;
+    options: DuplicateChoice[];
+  } | null>(null);
+  const [pendingDuplicateAction, setPendingDuplicateAction] = useState<DuplicateChoice | null>(
+    null,
+  );
+  const router = useRouter();
 
   useEffect(() => {
     return () => {
@@ -341,6 +360,8 @@ export function SosWizard() {
   function handleChangeContactField(field: "name" | "phone" | "lineId" | "notes", value: string) {
     setSubmitError(null);
     setSubmitSuccessMessage(null);
+    // แก้ข้อมูลแล้ว (เช่น เปลี่ยนเบอร์) ให้ระบบตรวจเคสซ้ำใหม่ตอนกดส่ง
+    setDuplicatePrompt(null);
 
     const next = updateDraft((prev) => ({
       ...prev,
@@ -380,10 +401,12 @@ export function SosWizard() {
     }
   }
 
-  async function handleStep5Submit() {
+  async function handleStep5Submit(duplicateAction?: DuplicateChoice) {
     if (isSubmittingRef.current) {
       return;
     }
+    if (duplicateAction) setPendingDuplicateAction(duplicateAction);
+    else setDuplicatePrompt(null);
 
     setStep5Attempted(true);
     setSubmitError(null);
@@ -400,9 +423,15 @@ export function SosWizard() {
         text: t.sos,
         draft,
         inFlightRef: isSubmittingRef,
+        duplicateAction,
       });
 
       if (result.status === "duplicate_in_flight") {
+        return;
+      }
+
+      if (result.status === "duplicate_candidate") {
+        setDuplicatePrompt({ matchReason: result.matchReason, options: result.options });
         return;
       }
 
@@ -478,10 +507,19 @@ export function SosWizard() {
         return;
       }
 
-      if (result.status === "submitted") {
+      setDuplicatePrompt(null);
+
+      // TF-74: อัปเดตเคสเดิมจากเครื่องที่ส่งเคสนั้น → ไปหน้าติดตามเคสนั้นต่อ
+      if (result.status === "submitted" && result.updatedExisting && result.trackingToken) {
+        router.push(localePath(trackPath(result.caseCode, result.trackingToken), locale));
+        return;
+      }
+
+      if (result.status === "submitted" || result.status === "supplemented") {
         const incidentType = draft.incidentType ?? IncidentType.FLOOD;
         setSubmittedType(incidentType);
-        if (result.caseCode && result.trackingToken) {
+        // TF-74: รายงานเพิ่มเติม (เครื่องอื่นของเบอร์เดิม) ไม่มีรหัสเคส/ลิงก์ติดตาม
+        if (result.status === "submitted" && result.caseCode && result.trackingToken) {
           rememberSentCase({
             caseCode: result.caseCode,
             trackingToken: result.trackingToken,
@@ -504,6 +542,7 @@ export function SosWizard() {
         setSubmitSuccessMessage(result.successMessage);
       }
     } finally {
+      setPendingDuplicateAction(null);
       if (slowTimerRef.current !== null) {
         clearTimeout(slowTimerRef.current);
         slowTimerRef.current = null;
@@ -718,11 +757,22 @@ export function SosWizard() {
                 slowSmsToSystem={slowSms.toSystem}
                 submitError={submitError}
                 submitSuccessMessage={submitSuccessMessage}
+                duplicatePrompt={
+                  duplicatePrompt && (
+                    <DuplicateCasePrompt
+                      matchReason={duplicatePrompt.matchReason}
+                      options={duplicatePrompt.options}
+                      pendingAction={pendingDuplicateAction}
+                      onSelectAction={(action) => void handleStep5Submit(action)}
+                      onCancel={() => setDuplicatePrompt(null)}
+                    />
+                  )
+                }
                 onChangeField={handleChangeContactField}
                 onAddPhoto={handleAddPhoto}
                 onRemovePhoto={handleRemovePhoto}
                 onPrev={() => handleGoToStep(4)}
-                onSubmit={handleStep5Submit}
+                onSubmit={() => void handleStep5Submit()}
               />
             );
           })()}

@@ -82,8 +82,12 @@ select lives_ok(
   format($$select * from public.create_sos_case('tf65-pin-update',
       pg_temp.sos_payload(14.61, '0899996501',
         jsonb_build_object('locationSource', 'MANUAL_PIN', 'duplicateAction', 'UPDATE_EXISTING',
-          'targetCaseId', %L)), 100)$$,
-    (select id from public.cases where idempotency_key = 'tf65-gps')),
+          'targetCaseId', %L,
+          -- TF-74: อัปเดตข้อมูลเคสได้เฉพาะเครื่องที่ส่งเคสเดิม (มี token ยืนยันของเคสนั้น)
+          'deviceConfirmationTokens', jsonb_build_array(%L))), 100)$$,
+    (select id from public.cases where idempotency_key = 'tf65-gps'),
+    (select s.secret from rls.case_confirmation_secrets s
+       join public.cases c on c.id = s.case_id where c.idempotency_key = 'tf65-gps')),
   'อัปเดตเคสเดิมด้วยหมุดที่ปักเองได้'
 );
 select ok(

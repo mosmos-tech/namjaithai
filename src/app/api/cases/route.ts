@@ -117,22 +117,57 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
+  // TF-74: 409 ส่งแค่ว่าพบเคสที่อาจซ้ำแบบไหน + ทางเลือก — ไม่มีรหัส/ลิงก์/ข้อมูลใดๆ ของเคสเดิม
+  if (result.status === 409) {
+    const { code, error, matchReason, options } = result.body;
+    return Response.json({ code, error, matchReason, options }, { status: 409 });
+  }
+  if (result.status !== 200 && result.status !== 201) {
+    return Response.json(result.body, { status: result.status, headers: result.headers });
+  }
+
+  const body = result.body;
+  // TF-74: เบอร์เดิมจากเครื่องอื่น — บันทึกเป็นรายงานเพิ่มเติมให้ทีมแล้ว ไม่คืนรหัสเคส/ลิงก์ติดตาม
+  if ("supplemented" in body) {
+    if (photos.length) {
+      try {
+        await saveCasePhotos(admin, body.caseId, photos);
+      } catch {
+        return Response.json(
+          { error: "ส่งข้อมูลเพิ่มให้ทีมแล้ว แต่รูปยังส่งไม่สำเร็จ กรุณากดส่งอีกครั้งเพื่อส่งรูป" },
+          { status: 503 },
+        );
+      }
+    }
+    return Response.json(
+      { supplemented: true, replayed: body.replayed },
+      { status: 200, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  // TF-74: ส่งกลับเฉพาะเคสของผู้แจ้งเอง — ไม่มี id ภายในหรือรหัส/ระยะของเคสที่อาจซ้ำ
+  const publicBody = {
+    caseCode: body.caseCode,
+    trackingToken: body.trackingToken,
+    status: body.status,
+    createdAt: body.createdAt,
+    replayed: body.replayed,
+    ...(body.updatedExisting !== undefined ? { updatedExisting: body.updatedExisting } : {}),
+  };
+
   // The separate confirmation capability is returned only on a newly created case or its
   // authenticated idempotent replay; updating somebody else's duplicate must never disclose it.
   let confirmationToken: string | undefined;
-  if (
-    (result.status === 201 || (result.status === 200 && result.body.replayed)) &&
-    !result.body.updatedExisting
-  ) {
+  if ((result.status === 201 || body.replayed) && !body.updatedExisting) {
     const secret = await admin.rpc("confirmation_secret_for_case", {
-      p_case_code: result.body.caseCode,
+      p_case_code: body.caseCode,
     });
     if (secret.error || typeof secret.data !== "string") {
       return Response.json(
         {
-          error: `คำขอ ${result.body.caseCode} ถึงระบบแล้ว แต่ยังเตรียมสิทธิ์ยืนยันไม่สำเร็จ กรุณากดส่งอีกครั้ง`,
-          caseCode: result.body.caseCode,
-          trackingToken: result.body.trackingToken,
+          error: `คำขอ ${body.caseCode} ถึงระบบแล้ว แต่ยังเตรียมสิทธิ์ยืนยันไม่สำเร็จ กรุณากดส่งอีกครั้ง`,
+          caseCode: body.caseCode,
+          trackingToken: body.trackingToken,
         },
         { status: 503, headers: { "Cache-Control": "no-store" } },
       );
@@ -140,13 +175,13 @@ export async function POST(request: Request): Promise<Response> {
     confirmationToken = secret.data;
   }
 
-  if ((result.status === 200 || result.status === 201) && photos.length) {
+  if (photos.length) {
     try {
-      const outcome = await saveCasePhotos(admin, result.body.caseId, photos);
+      const outcome = await saveCasePhotos(admin, body.caseId, photos);
       if (outcome === "limit")
         return Response.json(
           {
-            ...result.body,
+            ...publicBody,
             confirmationToken,
             photoWarning: "ส่งรูปบางส่วนไม่ได้ เพราะเคสมีรูปครบ 3 รูปแล้ว",
           },
@@ -155,9 +190,9 @@ export async function POST(request: Request): Promise<Response> {
     } catch {
       return Response.json(
         {
-          error: `คำขอ ${result.body.caseCode} ถึงระบบแล้ว แต่รูปยังส่งไม่สำเร็จ กรุณากดส่งอีกครั้งเพื่อส่งรูป`,
-          caseCode: result.body.caseCode,
-          trackingToken: result.body.trackingToken,
+          error: `คำขอ ${body.caseCode} ถึงระบบแล้ว แต่รูปยังส่งไม่สำเร็จ กรุณากดส่งอีกครั้งเพื่อส่งรูป`,
+          caseCode: body.caseCode,
+          trackingToken: body.trackingToken,
           confirmationToken,
           photosPending: true,
         },
@@ -166,7 +201,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  return Response.json(confirmationToken ? { ...result.body, confirmationToken } : result.body, {
+  return Response.json(confirmationToken ? { ...publicBody, confirmationToken } : publicBody, {
     status: result.status,
     headers: result.headers,
   });

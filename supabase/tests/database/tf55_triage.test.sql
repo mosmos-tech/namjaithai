@@ -88,7 +88,8 @@ exception when sqlstate 'SOS49' then
   return v_detail::jsonb;
 end $$;
 select ok(
-  (select d ? 'caseCode' and not d ? 'urgency' from pg_temp.sos49_detail() d),
+  -- TF-74: ฟอร์มเว็บได้แค่ matchReason — ไม่มีรหัสเคสเดิมด้วย
+  (select d ? 'matchReason' and not d ? 'urgency' and not d ? 'caseCode' from pg_temp.sos49_detail() d),
   'ข้อมูลเคสซ้ำ (SOS49) ที่ส่งกลับไปให้ผู้แจ้งไม่มี urgency'
 );
 

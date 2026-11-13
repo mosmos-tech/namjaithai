@@ -65,6 +65,24 @@ type Event = {
   created_at: string;
 };
 
+// TF-74: รายงานเพิ่มเติม (case_reporter_supplements.report)
+type Supplement = {
+  id: string;
+  created_at: string;
+  report: {
+    adults?: number;
+    elderly?: number;
+    bedridden?: number;
+    children?: number;
+    pets?: number;
+    needs?: Need[];
+    otherDetail?: string;
+    landmark?: string;
+    notes?: string;
+    distanceM?: number;
+  };
+};
+
 export default function Page({ params }: PageProps<"/rescue/cases/[id]">) {
   return (
     <Suspense fallback={<p className="p-8 text-center">กำลังโหลด…</p>}>
@@ -91,8 +109,15 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
     .eq("id", id)
     .maybeSingle<CaseRow>();
   if (!item) notFound();
-  const [permissionResult, eventsResult, sensitiveResult, mediaResult, peopleResult, needsResult] =
-    await Promise.all([
+  const [
+    permissionResult,
+    eventsResult,
+    sensitiveResult,
+    mediaResult,
+    peopleResult,
+    needsResult,
+    supplementsResult,
+  ] = await Promise.all([
       supabase.rpc("case_detail_permissions", { p_case_id: id }),
       supabase
         .from("case_events")
@@ -117,6 +142,12 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
           pets: number;
         }>(),
       supabase.from("case_needs").select("need, other_detail").eq("case_id", id),
+      // TF-74: รายงานเพิ่มเติมจากเบอร์เดิมที่ส่งจากเครื่องอื่น — RLS ให้เห็นเฉพาะทีมที่รับเคสและแอดมิน
+      supabase
+        .from("case_reporter_supplements")
+        .select("id, report, created_at")
+        .eq("case_id", id)
+        .order("created_at", { ascending: true }),
     ]);
   if (permissionResult.error || !permissionResult.data) notFound();
   const permissions = permissionResult.data as {
@@ -310,6 +341,46 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
               </a>
             ))}
           </div>
+        </section>
+      )}
+      {(supplementsResult.data ?? []).length > 0 && (
+        <section
+          className="rounded-[14px] border border-amber-500/40 bg-amber-50 p-4"
+          data-testid="reporter-supplements"
+        >
+          <h2 className="font-heading mb-1 text-xl font-semibold">รายงานเพิ่มเติมจากผู้แจ้ง</h2>
+          <p className="text-text-secondary mb-3 text-sm">
+            เบอร์เดียวกับผู้แจ้งส่งข้อมูลใหม่จากอีกเครื่อง ข้อมูลหลักของเคสไม่เปลี่ยน
+          </p>
+          <ol className="space-y-3">
+            {(supplementsResult.data as Supplement[]).map(({ id: supplementId, report, created_at }) => (
+              <li key={supplementId} className="rounded-lg bg-white p-3">
+                <time className="text-text-secondary text-sm" dateTime={created_at}>
+                  {new Date(created_at).toLocaleString("th-TH", {
+                    timeZone: "Asia/Bangkok",
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </time>
+                <p>
+                  ผู้ใหญ่ {report.adults ?? 0} · ผู้สูงอายุ {report.elderly ?? 0} · ผู้ป่วยติดเตียง{" "}
+                  {report.bedridden ?? 0} · เด็กเล็ก {report.children ?? 0} · สัตว์เลี้ยง{" "}
+                  {report.pets ?? 0}
+                </p>
+                {(report.needs ?? []).length > 0 && (
+                  <p>ต้องการ: {(report.needs ?? []).map((need) => needLabel[need]).join(", ")}</p>
+                )}
+                {report.otherDetail && <p>อื่นๆ: {report.otherDetail}</p>}
+                {report.landmark && <p>จุดสังเกต: {report.landmark}</p>}
+                {report.notes && <p>ข้อความ: {report.notes}</p>}
+                {typeof report.distanceM === "number" && (
+                  <p className="text-text-secondary text-sm">
+                    ส่งจากจุดที่ห่างจากเคสนี้ {report.distanceM.toLocaleString("th-TH")} ม.
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
         </section>
       )}
       <section className="rounded-[14px] border p-4">
