@@ -721,10 +721,6 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     page,
     baseURL,
   }) => {
-    test.fail(
-      true,
-      "บั๊ก E2E-2: API ตอบ 409 แต่หน้าเว็บไม่แสดงปุ่มเลือก (DuplicateCasePrompt ไม่ได้ถูกใช้)",
-    );
     const existing = await createCaseViaApi(baseURL!);
     await seedLocationIntoDraft(page);
     await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ เบอร์ซ้ำ");
@@ -732,8 +728,10 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await submit(page).click();
+    // TF-74 (เดิมคือบั๊ก E2E-2): ขึ้นกล่องถามพร้อม 2 ปุ่ม โดยไม่แสดงรหัสเคสเดิม
     await expect(page.getByRole("button", { name: /อัปเดตเคสเดิม/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /สร้างใหม่/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /สร้างเคสใหม่/ })).toBeVisible();
+    await expect(page.getByText(existing.caseCode)).toHaveCount(0);
   });
 });
 

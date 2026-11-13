@@ -118,5 +118,19 @@ export const SOS_TEXT_EN: SosText = {
       "Photos could not be attached right now, but the rescue team has received your request.",
     success: "Request sent. Your case code is {code}",
     successWithWarning: "Request sent. Your case code is {code} — {warning}",
+    supplemented:
+      "Your new details were sent to the team. To track the case, use the case code you received when you first asked for help.",
+  },
+  duplicate: {
+    samePhoneTitle: "This phone number already has an open request",
+    samePhoneBody:
+      "If this is the same emergency, tap “Update my earlier request” to send the new details to the team. If it is a new emergency, tap “Create a new request”.",
+    nearbyTitle: "Someone nearby has already asked for help",
+    nearbyBody: "Rescue teams will see both requests. You can send yours now.",
+    updateExisting: "Update my earlier request",
+    createNew: "Create a new request",
+    sendMine: "Send my request",
+    sending: "Sending…",
+    back: "Go back and edit",
   },
 };

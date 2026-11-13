@@ -8,7 +8,7 @@ import {
   IncidentType,
   WaterLevel,
   duplicateResolutionSchema,
-  duplicateActionLabels,
+  duplicateOptionsFor,
   formatAdminDuplicateNotice,
   SMS_CONSENT_VERSION,
   type SosFormData,
@@ -17,6 +17,7 @@ import {
   type Urgency,
   type DuplicateAction,
   type DuplicateCandidateMatch,
+  type DuplicateMatchReason,
   type IncidentDetailValue,
 } from "../../../lib/domain";
 
@@ -39,12 +40,15 @@ export type CreateSosCasePayload = Omit<SosFormData, SensitiveAnswerKey> & {
   };
   duplicateAction?: DuplicateAction;
   targetCaseId?: string;
+  // TF-74: ส่งเฉพาะตอน "อัปเดตเคสเดิม" — ฐานข้อมูลใช้เทียบอย่างเดียว ไม่บันทึก
+  deviceConfirmationTokens?: string[];
 };
 
 export interface CreateSosCaseRpcRow {
   case_id: string;
-  case_code: string;
-  tracking_token: string;
+  // TF-74: null = รายงานเพิ่มเติมจากเครื่องอื่นของเบอร์เดิม (ไม่คืนรหัสเคส/ลิงก์ติดตาม)
+  case_code: string | null;
+  tracking_token: string | null;
   status: CaseStatus;
   created_at: string;
   replayed: boolean;
@@ -98,6 +102,13 @@ export interface CreateSosCaseSuccessResponse {
   adminDuplicateNotice?: string | null;
 }
 
+/** TF-74: เบอร์เดิมส่งจากเครื่องอื่น — บันทึกเป็นรายงานเพิ่มเติมให้ทีม ไม่มีรหัสเคส/ลิงก์ติดตาม */
+export interface CreateSosCaseSupplementResponse {
+  supplemented: true;
+  caseId: string;
+  replayed: boolean;
+}
+
 export interface CreateSosCaseValidationErrorResponse {
   error: string;
   fieldErrors: Record<string, string[] | undefined>;
@@ -108,12 +119,11 @@ export interface CreateSosCaseValidationErrorResponse {
 export interface CreateSosCaseDuplicatePromptResponse {
   code: "DUPLICATE_CANDIDATE";
   error: string;
-  candidate: DuplicateCandidateMatch;
-  options: ["UPDATE_EXISTING", "CREATE_NEW"];
-  optionLabels: {
-    UPDATE_EXISTING: string;
-    CREATE_NEW: string;
-  };
+  // TF-74: ฟอร์มเว็บได้แค่ว่าพบเคสที่อาจซ้ำแบบไหน + ทางเลือก ไม่มีรหัส/ข้อมูลใดๆ ของเคสเดิม
+  matchReason: DuplicateMatchReason;
+  options: Exclude<DuplicateAction, "ASK">[];
+  // TF-36: เฉพาะช่องทาง SMS (ตอบรหัสเคสเดิมกลับไปยังเบอร์เดียวกัน) — /api/cases ไม่ส่งออกไป
+  candidate?: DuplicateCandidateMatch;
 }
 
 export interface CreateSosCaseRateLimitErrorResponse {
@@ -125,6 +135,11 @@ export type CreateSosCaseResult =
   | {
       status: 200 | 201;
       body: CreateSosCaseSuccessResponse;
+      headers?: Record<string, string>;
+    }
+  | {
+      status: 200;
+      body: CreateSosCaseSupplementResponse;
       headers?: Record<string, string>;
     }
   | {
@@ -358,6 +373,10 @@ export async function handleCreateSosCase(params: {
       ? { duplicateAction: dupResolution.data.duplicateAction }
       : {}),
     ...(dupResolution.data.targetCaseId ? { targetCaseId: dupResolution.data.targetCaseId } : {}),
+    ...(dupResolution.data.duplicateAction === "UPDATE_EXISTING" &&
+    dupResolution.data.deviceConfirmationTokens?.length
+      ? { deviceConfirmationTokens: dupResolution.data.deviceConfirmationTokens }
+      : {}),
   };
 
   // 4. คำนวณคะแนนจัดลำดับด้วยฟังก์ชันกลาง priorityScore() โดยใช้ระดับที่ระบบคำนวณ
@@ -401,25 +420,42 @@ export async function handleCreateSosCase(params: {
     // กรณีพบเคสเปิดอยู่จากเบอร์เดียวกัน หรือห่างไม่ถึง 50 ม. ภายใน 24 ชม. (รหัส SOS49 จาก TF-16)
     if (error.code === "SOS49" && error.details) {
       try {
-        const candidate = JSON.parse(error.details) as DuplicateCandidateMatch;
+        // TF-74: ฟอร์มเว็บได้แค่ matchReason · SMS ได้ข้อมูลเคสเดิมครบ (ฐานข้อมูลแยกตามช่องทาง)
+        const detail = JSON.parse(error.details) as Partial<DuplicateCandidateMatch> & {
+          matchReason: DuplicateMatchReason;
+        };
+        const matchReason = detail.matchReason;
         const promptMessage =
-          candidate.matchReason === "SAME_PHONE" || candidate.matchReason === "BOTH"
-            ? `เบอร์โทรศัพท์นี้มีเคสที่ยังเปิดอยู่ (${candidate.caseCode}) คุณต้องการอัปเดตเคสเดิมหรือสร้างเคสใหม่?`
-            : `พบเคสที่ยังเปิดอยู่ใกล้ตำแหน่งของคุณในระยะ ${Math.round(candidate.distanceM)} เมตร (${candidate.caseCode}) เป็นการอัปเดตเคสเดิมหรือไม่?`;
+          matchReason === "NEARBY_50M"
+            ? "มีคนแจ้งเหตุใกล้คุณแล้ว ทีมกู้ภัยจะเห็นทั้งสองเคส"
+            : "เบอร์โทรศัพท์นี้มีคำขอที่ยังเปิดอยู่ ต้องการอัปเดตเคสเดิม หรือสร้างเคสใหม่?";
 
         return {
           status: 409,
           body: {
             code: "DUPLICATE_CANDIDATE",
             error: promptMessage,
-            candidate,
-            options: ["UPDATE_EXISTING", "CREATE_NEW"],
-            optionLabels: duplicateActionLabels,
+            matchReason,
+            options: duplicateOptionsFor(matchReason),
+            ...(detail.caseCode ? { candidate: detail as DuplicateCandidateMatch } : {}),
           },
         };
       } catch {
         // กรณีแปลง JSON ไม่ได้ ให้ตกไปตอบ 500 ด้านล่าง
       }
+    }
+
+    // TF-74: เคสใกล้กันแต่คนละเบอร์เป็นของคนอื่น อัปเดตไม่ได้ (SOS48)
+    if (error.code === "SOS48") {
+      return {
+        status: 400,
+        body: {
+          error: "อัปเดตเคสเดิมได้เฉพาะเบอร์โทรเดียวกับที่แจ้งไว้ กรุณาส่งเป็นคำขอใหม่",
+          fieldErrors: {},
+          formErrors: [],
+          fields: [],
+        },
+      };
     }
 
     // กรณีส่งถี่เกินกำหนด (รหัส SOS29 จากฟังก์ชัน create_sos_case)
@@ -456,6 +492,14 @@ export async function handleCreateSosCase(params: {
       body: {
         error: "ไม่ได้รับข้อมูลเคสกลับมาจากฐานข้อมูล",
       },
+    };
+  }
+
+  // TF-74: เบอร์เดิมจากเครื่องอื่น = รายงานเพิ่มเติม ฐานข้อมูลไม่คืนรหัสเคส/ลิงก์ติดตาม
+  if (!row.case_code || !row.tracking_token) {
+    return {
+      status: 200,
+      body: { supplemented: true, caseId: row.case_id, replayed: row.replayed },
     };
   }
 

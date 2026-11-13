@@ -20,10 +20,12 @@ import {
   type LocatedArea,
   type IncidentDetailValue,
   type WebLocationSource,
+  type DuplicateMatchReason,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
 import { format, pickText } from "../../lib/i18n/locale";
 import { SOS_TEXT_TH, type SosText } from "./sos-text";
+import { readDeviceCases } from "./device-cases";
 
 /**
  * ข้อความจาก zod schema ใน src/lib/domain เป็นภาษาไทย — หน้าไทยใช้ตามเดิม หน้าอังกฤษใช้ข้อความจาก dictionary
@@ -1234,6 +1236,19 @@ export function formatStepProgressText(step: SosStepNumber, t: SosText = SOS_TEX
 export type SubmitSosDraftResult =
   | { status: "duplicate_in_flight" }
   | {
+      // TF-74: พบเคสที่อาจซ้ำ — ให้ผู้แจ้งเลือก แล้วส่งใหม่ด้วย idempotency key เดิม
+      status: "duplicate_candidate";
+      matchReason: DuplicateMatchReason;
+      options: DuplicateChoice[];
+      idempotencyKey: string;
+    }
+  | {
+      // TF-74: เบอร์เดิมจากเครื่องอื่น — ส่งเป็นรายงานเพิ่มเติมแล้ว ไม่มีรหัสเคส
+      status: "supplemented";
+      idempotencyKey: string;
+      successMessage: string;
+    }
+  | {
       status: "invalid_step";
       step: 1;
       step1Errors: Step1ValidationErrors;
@@ -1284,6 +1299,8 @@ export type SubmitSosDraftResult =
       confirmationToken?: string;
       idempotencyKey: string;
       successMessage: string;
+      /** TF-74: อัปเดตเคสเดิมจากเครื่องที่ส่งเคสนั้น — พาไปหน้าติดตามเคสนั้น */
+      updatedExisting?: boolean;
     };
 
 /** เวลารอสูงสุดของคำขอส่ง SOS หลัก (12 วิ) เพื่อไม่ให้ปุ่มหมุนค้างหลายนาทีบนเน็ตช้าแล้วส่งเข้าคิว TF-15 */
@@ -1305,9 +1322,20 @@ export interface SubmitSosDraftOptions {
   photoTimeoutMs?: number;
   /** TF-63: ข้อความตามภาษาของหน้า และภาษาผู้แจ้งที่เก็บกับเคส (reporter_locale) */
   text?: SosText;
+  /** TF-74: ทางที่ผู้แจ้งเลือกหลังพบเคสที่อาจซ้ำ (ไม่ส่ง = ให้ระบบถามก่อน) */
+  duplicateAction?: DuplicateChoice;
 }
 
+/** TF-74: ทางเลือกเมื่อพบเคสที่อาจซ้ำ */
+export type DuplicateChoice = "UPDATE_EXISTING" | "CREATE_NEW";
+
 interface CaseSubmitApiResponse {
+  // TF-74: 409 พบเคสที่อาจซ้ำ / 200 รายงานเพิ่มเติม / อัปเดตเคสเดิม
+  code?: string;
+  matchReason?: DuplicateMatchReason;
+  options?: DuplicateChoice[];
+  supplemented?: boolean;
+  updatedExisting?: boolean;
   caseCode?: string;
   trackingToken?: string;
   confirmationToken?: string;
@@ -1523,6 +1551,15 @@ export async function submitSosDraft(
       healthConsent: nextDraft.healthConsent,
       // TF-63: ภาษาของฟอร์มที่ผู้แจ้งใช้ (กู้ภัยเห็นป้าย / ลิงก์ติดตามพาไปภาษานี้)
       reporterLocale: t.locale,
+      ...(options.duplicateAction ? { duplicateAction: options.duplicateAction } : {}),
+      // TF-74: token ยืนยันของเครื่องนี้ (TF-58) — เซิร์ฟเวอร์ใช้เทียบว่าเป็นเครื่องที่ส่งเคสเดิมไหม
+      ...(options.duplicateAction === "UPDATE_EXISTING" && storage
+        ? {
+            deviceConfirmationTokens: readDeviceCases(storage as Storage).map(
+              (item) => item.confirmationToken,
+            ),
+          }
+        : {}),
     };
     const hasPhotos = nextDraft.photos.length > 0;
     const caseRequestBody = JSON.stringify(basePayload);
@@ -1544,6 +1581,14 @@ export async function submitSosDraft(
       );
 
       if (!response.ok) {
+        if (response.status === 409 && data.code === "DUPLICATE_CANDIDATE" && data.matchReason) {
+          return {
+            status: "duplicate_candidate",
+            matchReason: data.matchReason,
+            options: data.options?.length ? data.options : ["CREATE_NEW"],
+            idempotencyKey,
+          };
+        }
         if (data.photosPending && data.caseCode && data.trackingToken) {
           return {
             status: "photo_pending",
@@ -1633,6 +1678,14 @@ export async function submitSosDraft(
     // ส่งสำเร็จแล้วต้องล้างข้อมูลร่างในเครื่องทันทีเพื่อไม่ให้ค้างหรือส่งซ้ำ
     clearSosDraft(storage);
 
+    if (finalCaseData.supplemented) {
+      return {
+        status: "supplemented",
+        idempotencyKey,
+        successMessage: t.submit.supplemented,
+      };
+    }
+
     const finalCode = finalCaseData.caseCode ?? caseCode;
     return {
       status: "submitted",
@@ -1640,6 +1693,7 @@ export async function submitSosDraft(
       trackingToken: finalCaseData.trackingToken,
       confirmationToken: finalCaseData.confirmationToken,
       idempotencyKey,
+      ...(finalCaseData.updatedExisting ? { updatedExisting: true } : {}),
       successMessage: photoWarning
         ? format(t.submit.successWithWarning, {
             code: finalCode,

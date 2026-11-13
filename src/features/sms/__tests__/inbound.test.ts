@@ -40,8 +40,8 @@ function duplicate(matchReason: "SAME_PHONE" | "BOTH" | "NEARBY_50M"): CreateSos
         matchReason,
         distanceM: 10,
       },
+      matchReason,
       options: ["UPDATE_EXISTING", "CREATE_NEW"],
-      optionLabels: { UPDATE_EXISTING: "อัปเดต", CREATE_NEW: "สร้างใหม่" },
     },
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Camera, Trash2, ShieldCheck, Loader2, CheckCircle2 } from "lucide-react";
 import {
   compressImageForSos,
@@ -29,6 +29,8 @@ interface Step5ContactProps {
   slowSmsToSystem?: boolean;
   submitError?: string | null;
   submitSuccessMessage?: string | null;
+  /** TF-74: กล่องถามเมื่อพบเคสที่อาจซ้ำ (DuplicateCasePrompt) แสดงใต้ข้อความแจ้งผล */
+  duplicatePrompt?: ReactNode;
   onChangeField: (field: "name" | "phone" | "lineId" | "notes", value: string) => void;
   onAddPhoto: (photo: SosDraftPhoto) => void;
   onRemovePhoto: (photoId: string) => void;
@@ -60,6 +62,7 @@ export function Step5Contact({
   slowSmsToSystem = false,
   submitError = null,
   submitSuccessMessage = null,
+  duplicatePrompt = null,
   onChangeField,
   onAddPhoto,
   onRemovePhoto,
@@ -437,6 +440,8 @@ export function Step5Contact({
             {submitError}
           </div>
         )}
+
+        {duplicatePrompt}
 
         {submitSuccessMessage && (
           <div

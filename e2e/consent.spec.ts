@@ -65,7 +65,8 @@ test("API ปฏิเสธคำขอไร้ความยินยอม 
   const { data, error } = await adminDb()
     .from("cases")
     .select("consent_version, consented_at, health_consented_at")
-    .eq("id", body.caseId)
+    // TF-74: API ไม่ส่ง id ภายในของเคสกลับไป ใช้รหัสเคสแทน
+    .eq("case_code", body.caseCode)
     .single();
   expect(error).toBeNull();
   expect(data?.consent_version).toBe("2026-11-06");

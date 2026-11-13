@@ -38,8 +38,19 @@ export const duplicateActionLabels: Record<
   string
 > = {
   UPDATE_EXISTING: "อัปเดตเคสเดิม",
-  CREATE_NEW: "สร้างใหม่",
+  CREATE_NEW: "สร้างเคสใหม่",
 };
+
+/**
+ * TF-74: ทางเลือกที่ผู้แจ้งเลือกได้เมื่อพบเคสที่อาจซ้ำ
+ * - เบอร์เดียวกัน: อัปเดตเคสเดิม (ฐานข้อมูลตัดสินต่อว่าเป็นเครื่องเดิมหรือรายงานเพิ่มเติม) หรือสร้างเคสใหม่
+ * - ใกล้กัน 50 ม. แต่คนละเบอร์: เป็นเคสของคนอื่น สร้างเคสของตัวเองได้อย่างเดียว
+ */
+export function duplicateOptionsFor(
+  matchReason: DuplicateMatchReason,
+): Exclude<DuplicateAction, "ASK">[] {
+  return matchReason === "NEARBY_50M" ? ["CREATE_NEW"] : ["UPDATE_EXISTING", "CREATE_NEW"];
+}
 
 const duplicateActionValues = Object.values(DuplicateAction) as [
   DuplicateAction,
@@ -53,6 +64,8 @@ export const duplicateResolutionSchema = z.object({
     })
     .optional(),
   targetCaseId: z.string().uuid("รหัสอ้างอิงเคสเดิมไม่ถูกต้อง").optional(),
+  // TF-74: token ยืนยันของเครื่องนี้ (TF-58) ส่งมาตอนเลือก "อัปเดตเคสเดิม" ให้ฐานข้อมูลเทียบว่าเป็นเครื่องที่ส่งเคสเดิมไหม
+  deviceConfirmationTokens: z.array(z.string().min(1).max(200)).max(20).optional(),
 });
 
 export type DuplicateResolutionInput = z.infer<typeof duplicateResolutionSchema>;

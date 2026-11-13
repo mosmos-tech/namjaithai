@@ -103,8 +103,8 @@ export async function handleInboundSms(input: {
     // พบเคสใกล้กันแต่เป็นเบอร์อื่น: SMS ถามผู้แจ้งไม่ได้ จึงสร้างเคสใหม่ (ระบบติดป้าย "อาจซ้ำ" ให้แอดมินเอง)
     if (
       created.status === 409 &&
-      created.body.candidate.matchReason !== "SAME_PHONE" &&
-      created.body.candidate.matchReason !== "BOTH"
+      created.body.matchReason !== "SAME_PHONE" &&
+      created.body.matchReason !== "BOTH"
     ) {
       created = await input.createCase({
         rawBody: { ...rawBody, duplicateAction: "CREATE_NEW" },
@@ -112,13 +112,14 @@ export async function handleInboundSms(input: {
       });
     }
 
-    if (created.status === 200 || created.status === 201) {
+    // SMS อัปเดตเคสเดิมไม่ได้ จึงไม่มีผลแบบ "รายงานเพิ่มเติม" (TF-74)
+    if ((created.status === 200 || created.status === 201) && !("supplemented" in created.body)) {
       result = "CREATED";
       reply = "CREATED";
       caseId = created.body.caseId;
       caseCode = created.body.caseCode;
       trackingToken = created.body.trackingToken;
-    } else if (created.status === 409) {
+    } else if (created.status === 409 && created.body.candidate) {
       // เบอร์เดิมมีเคสเปิดอยู่: ตอบรหัสเคสเดิม ไม่สร้างเคสใหม่
       result = "REPEAT";
       reply = "REPEAT";
