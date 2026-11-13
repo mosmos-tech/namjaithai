@@ -1,6 +1,12 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { adminDb, randomPhone, uniqueTestPoint } from "./helpers/db";
-import { expectStep, goToLocationStep, nextButton, openFreshSosForm } from "./helpers/sos";
+import {
+  expectStep,
+  goToLocationStep,
+  nextButton,
+  openFreshSosForm,
+  expectSentCase,
+} from "./helpers/sos";
 
 /**
  * TF-65: GPS จากอุปกรณ์ที่ไม่มี GPS จริง (เช่น MacBook ได้ ±16 กม.) ต้องไม่ถูกปักหมุดให้เหมือนถูก
@@ -88,9 +94,7 @@ test.describe("TF-65 ความแม่นยำของตำแหน่�
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
-    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
-      timeout: 15_000,
-    });
+    await expectSentCase(page);
 
     const { data, error } = await adminDb()
       .from("case_contacts")

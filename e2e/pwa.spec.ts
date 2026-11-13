@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { saveEvidence } from "./helpers/evidence";
 import { gzipSync } from "node:zlib";
 import { goToStep5 } from "./helpers/sos";
@@ -651,3 +651,68 @@ test("TF-15 ส่งคิวที่ยินยอมแล้วเข้�
   await expect(page.getByText(result.data![0].case_code)).toBeVisible();
   await closeTestCases([result.data![0].id]);
 });
+
+// TF-80: ส่งสำเร็จแล้วเน็ตหลุดพอดีก่อนเปลี่ยนไปหน้ารหัสเคส — ผู้แจ้งต้องเห็นรหัสเคสเสมอ ไม่เห็นหน้า error
+async function submitThenGoOffline(page: Page, context: BrowserContext) {
+  await page.goto("/request");
+  await page.evaluate(() => localStorage.removeItem("namjaithai-sos-draft-v2"));
+  await page.reload();
+  await expect(page.getByTestId("hydration-pending")).toHaveCount(0);
+  await goToStep5(page);
+  await page.getByPlaceholder("เช่น สมชาย ใจดี (หรือชื่อเล่น)").fill("ทดสอบ เน็ตหลุดหลังส่ง");
+  await page.getByPlaceholder("เช่น 0812345678 หรือ 081-234-5678").fill(randomPhone());
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
+  await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
+  let caseCode = "";
+  await page.route("**/api/cases", async (route) => {
+    // ส่งถึงเซิร์ฟเวอร์จริง แล้วตัดเน็ตก่อนคำตอบกลับมาถึงหน้าเว็บ
+    const response = await route.fetch({
+      headers: {
+        ...route.request().headers(),
+        "x-forwarded-for": `10.80.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+      },
+    });
+    caseCode = ((await response.json()) as { caseCode: string }).caseCode;
+    await context.setOffline(true);
+    await route.fulfill({ response });
+  });
+  await page.getByTestId("step5-submit-button").click();
+  await expect.poll(() => caseCode).toMatch(/^FL-/);
+  return caseCode;
+}
+
+test("TF-80 ส่งสำเร็จแล้วเน็ตหลุดก่อนเปลี่ยนหน้า: เปิดหน้ารหัสเคสจากแคชได้", async ({
+  page,
+  context,
+}) => {
+  await offlineReady(page);
+  const caseCode = await submitThenGoOffline(page, context);
+  await expect(page).toHaveURL(/\/sos\/sent$/);
+  await expect(page.getByTestId("sent-case-code")).toHaveText(caseCode);
+  await expect(page.getByText("จดรหัสนี้ไว้ หรือแคปหน้าจอเก็บไว้")).toBeVisible();
+  await context.setOffline(false);
+  await closeCaseByCode(caseCode);
+});
+
+test("TF-80 ส่งสำเร็จแล้วเน็ตหลุดและไม่มีแคช: แสดงรหัสเคสใหญ่บนหน้าฟอร์มแทน", async ({
+  browser,
+}) => {
+  // ไม่มี service worker (เช่น เปิดเว็บครั้งแรกแล้วส่งเลย) — ไปหน้า /sos/sent ไม่ได้
+  const context = await browser.newContext({
+    ...test.info().project.use,
+    serviceWorkers: "block",
+  });
+  const page = await context.newPage();
+  const caseCode = await submitThenGoOffline(page, context);
+  await expect(page.getByTestId("sent-case-code")).toHaveText(caseCode);
+  await expect(page).toHaveURL(/\/request$/);
+  await expect(page.getByText("จดรหัสนี้ไว้ หรือแคปหน้าจอเก็บไว้")).toBeVisible();
+  await context.setOffline(false);
+  await closeCaseByCode(caseCode);
+  await context.close();
+});
+
+async function closeCaseByCode(caseCode: string) {
+  const { data } = await adminDb().from("cases").select("id").eq("case_code", caseCode).single();
+  if (data) await closeTestCases([data.id]);
+}

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { rememberSentCase } from "../sent-case";
+import { rememberSentCase, sentPageAvailability, type SentCase } from "../sent-case";
+import { SentCaseCard } from "./SentCaseView";
 import { saveOfflineSos } from "../offline-queue-core";
 import { WaitingAdvice } from "./WaitingAdvice";
 import { DuplicateCasePrompt } from "./DuplicateCasePrompt";
@@ -144,6 +145,16 @@ export function SosWizard() {
     null,
   );
   const router = useRouter();
+  // TF-80: ส่งสำเร็จแล้วแต่เปิดหน้า /sos/sent ไม่ได้ (เน็ตหลุด) — แสดงรหัสเคสใหญ่บนหน้านี้แทน
+  const [sentFallback, setSentFallback] = useState<SentCase | null>(null);
+
+  async function openSentPage(sent: SentCase) {
+    const path = localePath("/sos/sent", locale);
+    const availability = await sentPageAvailability(path);
+    if (availability === "network") router.replace(path);
+    else if (availability === "cache") window.location.replace(path);
+    else setSentFallback(sent);
+  }
 
   useEffect(() => {
     return () => {
@@ -520,14 +531,18 @@ export function SosWizard() {
         setSubmittedType(incidentType);
         // TF-74: รายงานเพิ่มเติม (เครื่องอื่นของเบอร์เดิม) ไม่มีรหัสเคส/ลิงก์ติดตาม
         if (result.status === "submitted" && result.caseCode && result.trackingToken) {
-          rememberSentCase({
+          const sent: SentCase = {
             caseCode: result.caseCode,
             trackingToken: result.trackingToken,
             confirmationToken: result.confirmationToken,
             phoneLast4: draft.phone.replace(/\D/g, "").slice(-4),
             incidentType,
-          });
+            ...(result.photoWarning ? { photoWarning: result.photoWarning } : {}),
+          };
+          rememberSentCase(sent);
           setHasSentDetails(true);
+          // TF-80: พาไปหน้ารหัสเคสใหญ่ทันที (ไม่ต้องกดลิงก์เล็กเอง)
+          void openSentPage(sent);
         } else setHasSentDetails(false);
         setStep1Attempted(false);
         setStep1Errors({ missingSummary: [] });
@@ -611,6 +626,8 @@ export function SosWizard() {
     draft.currentStep > 1
       ? () => handleGoToStep((draft.currentStep - 1) as SosStepNumber)
       : undefined;
+
+  if (sentFallback) return <SentCaseCard sent={sentFallback} />;
 
   return (
     <div className="lg:mx-auto lg:flex lg:max-w-[1200px] lg:items-start lg:gap-10 lg:px-10 lg:pt-14 lg:pb-24">

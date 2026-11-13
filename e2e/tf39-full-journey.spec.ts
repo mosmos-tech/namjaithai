@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
 import { adminDb, closeTestCases, randomPhone } from "./helpers/db";
 import { saveEvidence } from "./helpers/evidence";
-import { goToStep5, openFreshSosForm } from "./helpers/sos";
+import { goToStep5, openFreshSosForm, expectSentCase } from "./helpers/sos";
 
 /**
  * TF-39 เกณฑ์ขอบเขตข้อ 8: เส้นทางเต็มผ่านหน้าจอจริงทั้งสองฝั่ง
@@ -58,11 +58,12 @@ test("ส่ง SOS → รับเคส → เดินทาง → ถึ�
     .throwOnError();
   caseId = created!.id;
 
+  // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่เอง แล้วกด "ติดตามเคส"
+  await expectSentCase(page, caseCode);
   await page
-    .getByTestId("step5-submit-success")
-    .getByRole("link", { name: "ดูรายละเอียดการแจ้งและติดตามเคส" })
+    .getByTestId("sent-case-card")
+    .getByRole("link", { name: "ติดตามเคส", exact: true })
     .click();
-  await page.getByRole("link", { name: "ติดตามสถานะเคส" }).click();
   await expect(page).toHaveURL(new RegExp(`/track/${caseCode}\\?t=`));
   await expect(page.getByTestId("track-panel").getByRole("heading", { level: 1 })).toHaveText(
     "กำลังหาทีมกู้ภัยที่ใกล้คุณที่สุด",

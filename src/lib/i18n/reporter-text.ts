@@ -350,9 +350,12 @@ export const REPORTER_TEXT_TH = {
     useWithLast4After: "เพื่อติดตามเคส",
     copied: "คัดลอกแล้ว",
     copyCode: "คัดลอกรหัสเคส",
-    trackStatus: "ติดตามสถานะเคส",
+    // TF-80
+    saveHint: "จดรหัสนี้ไว้ หรือแคปหน้าจอเก็บไว้",
+    trackStatus: "ติดตามเคส",
     shareLine: "แชร์ให้ญาติทาง LINE",
-    backHome: "กลับหน้าแรก",
+    backHome: "กลับหน้าหลัก",
+    editCase: "แก้ไขเคส",
     lineShareLines: [
       "ฉันแจ้งขอความช่วยเหลือแล้ว รหัสเคส {code}",
       "ติดตามสถานะได้ที่ {url}",

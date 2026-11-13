@@ -333,9 +333,11 @@ export const REPORTER_TEXT_EN: ReporterText = {
     useWithLast4After: "to track the case",
     copied: "Copied",
     copyCode: "Copy case code",
-    trackStatus: "Track case status",
+    saveHint: "Write this code down or take a screenshot",
+    trackStatus: "Track my case",
     shareLine: "Share with family on LINE",
     backHome: "Back to start",
+    editCase: "Edit my request",
     lineShareLines: [
       "I have requested help. Case code {code}",
       "Track the status at {url}",
