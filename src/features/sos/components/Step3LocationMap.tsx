@@ -108,7 +108,8 @@ export default function Step3LocationMap({
           style: OSM_RASTER_STYLE,
           center: [initialLng, initialLat],
           zoom: typeof lat === "number" && typeof lng === "number" ? 16 : 12,
-          attributionControl: false,
+          // TF-77: นโยบาย OSM บังคับแสดง "© OpenStreetMap contributors" บนแผนที่ทุกแผ่น
+          attributionControl: { compact: false },
         });
 
         map.addControl(

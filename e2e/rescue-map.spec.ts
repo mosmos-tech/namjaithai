@@ -183,6 +183,10 @@ test.describe("TF-22 แผนที่กู้ภัย (/rescue/map)", () => 
     expect(Number(await cluster.getAttribute("data-cluster-count"))).toBeGreaterThanOrEqual(2);
     await cluster.click();
     await expect(page.getByTestId(`map-pin-${tag}-C1`)).toBeVisible();
+    // TF-77: นโยบาย OSM บังคับแสดงเครดิตบนแผนที่
+    await expect(
+      page.getByTestId("rescue-map-container").getByText("© OpenStreetMap contributors"),
+    ).toBeVisible();
   });
 
   test("หมุดสีถูกต้องตามความเร่งด่วน: แดง (#C62828), เหลือง (#F2A516), เขียว (#1B7A3A)", async ({
