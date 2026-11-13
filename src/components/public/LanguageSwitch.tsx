@@ -4,18 +4,21 @@ import { stripLocale, type Locale } from "@/lib/i18n/locale";
  * ปุ่มสลับ ไทย / EN ของหน้าฝั่งผู้แจ้ง (TF-63)
  * เป็นลิงก์ธรรมดา (กดได้ก่อน JS โหลด) ผ่าน /api/lang ซึ่งจำภาษาใน cookie แล้วพาไปหน้าเดียวกันอีกภาษา
  * path = path ปัจจุบัน (รวม ?query) จะเป็นภาษาไหนก็ได้
+ * compactOnMobile: จอเล็กซ่อนภาษาปัจจุบัน เหลือแค่ปุ่มอีกภาษา (Navbar หน้าแรกที่ที่แคบ)
  */
 export function LanguageSwitch({
   locale,
   path,
   label,
   className = "",
+  compactOnMobile = false,
 }: {
   locale: Locale;
   path: string;
   /** ข้อความอ่านออกเสียง เช่น "เปลี่ยนภาษา" / "Change language" */
   label: string;
   className?: string;
+  compactOnMobile?: boolean;
 }) {
   const plain = stripLocale(path).path;
   const href = (to: Locale) => `/api/lang?locale=${to}&next=${encodeURIComponent(plain)}`;
@@ -23,7 +26,7 @@ export function LanguageSwitch({
     to === locale ? (
       <span
         aria-current="true"
-        className="bg-primary-600 text-text-on-primary rounded-full px-3 py-1.5 font-semibold"
+        className={`bg-primary-600 text-text-on-primary rounded-full px-3 py-1.5 font-semibold ${compactOnMobile ? "hidden sm:inline" : ""}`}
       >
         {text}
       </span>

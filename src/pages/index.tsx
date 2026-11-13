@@ -4,6 +4,7 @@ import { EnvBanner } from "@/components/EnvBanner";
 import { FooterContent } from "@/components/public/FooterContent";
 import { Navbar } from "@/components/public/Navbar";
 import { HotlineBar } from "@/components/public/HotlineBar";
+import { LanguageSwitch } from "@/components/public/LanguageSwitch";
 import { HomeContent } from "@/features/home/HomeContent";
 import { getSessionUserRow } from "@/features/auth/server/session-user";
 import { PwaSupport } from "@/features/pwa/PwaSupport";
@@ -38,7 +39,13 @@ export default function HomePage({ account, yearBE }: HomeProps) {
       <EnvBanner />
       <header className="sticky top-0 z-50">
         <HotlineBar />
-        <Navbar account={account} />
+        {/* TF-63: หน้าแรกไม่แปล มีแค่ปุ่ม EN พาไปฟอร์มภาษาอังกฤษ (/api/lang จำภาษาแล้วพาไป /en/request) */}
+        <Navbar
+          account={account}
+          languageSwitch={
+            <LanguageSwitch locale="th" path="/request" label="เปลี่ยนภาษา" compactOnMobile />
+          }
+        />
       </header>
       <main className="flex-1">
         <HomeContent />
