@@ -40,11 +40,11 @@ export const UNIT_CAPABILITY_LABELS: Record<UnitCapability, string> = {
 };
 
 /**
- * ข้อความ 2 ภาษา: ใส่ th ก่อน, en เติมทีหลังตอนทำฟอร์มภาษาอังกฤษ (TF-63)
+ * ข้อความ 2 ภาษา (TF-63): ต้องมีทั้งไทยและอังกฤษ — ขาดภาษาอังกฤษ typecheck ล้ม
  */
 export interface LocalizedText {
   th: string;
-  en?: string;
+  en: string;
 }
 
 export interface QuestionCondition {
@@ -124,22 +124,22 @@ export const TF55_TRIAGE_TABLE_SOURCE =
 export const UNIVERSAL_DANGER_SIGNS: readonly DangerSign[] = [
   {
     key: "UNCONSCIOUS",
-    label: { th: "มีคนหมดสติ" },
+    label: { th: "มีคนหมดสติ", en: "Someone is unconscious" },
     source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
   },
   {
     key: "ABNORMAL_BREATHING",
-    label: { th: "มีคนหายใจผิดปกติ" },
+    label: { th: "มีคนหายใจผิดปกติ", en: "Someone is breathing abnormally" },
     source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
   },
   {
     key: "SEVERE_BLEEDING",
-    label: { th: "มีคนเลือดออกมาก" },
+    label: { th: "มีคนเลือดออกมาก", en: "Someone is bleeding heavily" },
     source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
   },
   {
     key: "CHEST_PAIN",
-    label: { th: "มีคนเจ็บหน้าอก" },
+    label: { th: "มีคนเจ็บหน้าอก", en: "Someone has chest pain" },
     source: "https://www.niems.go.th/1/UploadAttachFile/2025/EBook/410634_20250717133908.pdf",
   },
 ];

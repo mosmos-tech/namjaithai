@@ -140,6 +140,21 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
     expect(validLandline.valid).toBe(true);
     expect(validLandline.normalizedPhone).toBe("021234567");
 
+    // TF-63: นักท่องเที่ยวพิมพ์รหัสประเทศ +66 (ทั้งติดกันและเว้นวรรค) -> ผ่าน และเก็บเป็น 0812345678
+    for (const phone of ["+66812345678", "+66 81 234 5678"]) {
+      const withCountryCode = validateStep5Draft({
+        name: "Tourist",
+        phone,
+        lineId: "",
+        notes: "",
+        consent: true,
+        healthConsent: true,
+        photos: [],
+      });
+      expect(withCountryCode.valid, phone).toBe(true);
+      expect(withCountryCode.normalizedPhone, phone).toBe("0812345678");
+    }
+
     // เบอร์ผิดรูปแบบ (เช่น ขึ้นต้นด้วย 01 หรือสั้นเกินไป) -> ไม่ผ่าน
     const invalidPhone = validateStep5Draft({
       name: "สมชาย ใจดี",

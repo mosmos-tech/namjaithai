@@ -135,6 +135,37 @@ describe("TF-14 reporter mutations", () => {
       expect.objectContaining({ p_action: "read", p_payload: {} }),
     );
   });
+  it.each(["+66812345678", "+66 81 234 5678"])(
+    "TF-63: เบอร์ %s ยืนยันเคสที่เก็บเป็น 0812345678 ได้ (แปลงก่อนเทียบเหมือนฟอร์ม SOS)",
+    async (phone) => {
+      const db = client();
+      const result = await handleReporterCase({
+        caseCode: "FL-2611-0001",
+        token: "a".repeat(32),
+        phone,
+        headers: new Headers(),
+        mutation: { action: "cancel", version: 1 },
+        supabase: db,
+      });
+      expect(result.status).toBe(200);
+      expect(db.rpc).toHaveBeenCalledWith(
+        "reporter_case_verified",
+        expect.objectContaining({ p_phone: "0812345678", p_action: "cancel" }),
+      );
+    },
+  );
+  it("TF-63: เบอร์ต่างประเทศอื่นยังไม่ผ่าน และไม่ถามฐานข้อมูล", async () => {
+    const db = client();
+    const result = await handleReporterCase({
+      caseCode: "FL-2611-0001",
+      token: "a".repeat(32),
+      phone: "+447911123456",
+      headers: new Headers(),
+      supabase: db,
+    });
+    expect(result.status).toBe(400);
+    expect(db.rpc).not.toHaveBeenCalled();
+  });
   it("requires the full reporter phone even with a valid shared token", async () => {
     const db = client();
     const result = await handleReporterCase({

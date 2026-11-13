@@ -1,4 +1,8 @@
+"use client";
+
 import { ChevronDown } from "lucide-react";
+import { useI18n } from "@/lib/i18n/I18nProvider";
+import { format, pickText } from "@/lib/i18n/locale";
 import {
   INCIDENT_REGISTRY,
   IncidentType,
@@ -45,22 +49,21 @@ export function WaitingAdvice({
   incidentType?: string;
   collapsible?: boolean;
 }) {
+  const { t, locale } = useI18n();
   const type = Object.values(IncidentType).find((code) => code === incidentType);
   const advice = type ? INCIDENT_REGISTRY[type].waitingAdvice : [];
   const hotlines = type ? HOTLINES[type] : HOTLINES.OTHER;
-  const heading = "ระหว่างรอทีม ควรทำอะไร";
+  const heading = t.advice.heading;
   const body = (
     <>
       {advice.length ? (
         <ul className="mt-4 list-disc space-y-2 pl-6 text-lg">
           {advice.map((item) => (
-            <li key={item.text.th}>{item.text.th}</li>
+            <li key={item.text.th}>{pickText(item.text, locale)}</li>
           ))}
         </ul>
       ) : (
-        <p className="text-text-secondary mt-3">
-          คำแนะนำเฉพาะเหตุอยู่ระหว่างตรวจสอบ กรุณาปฏิบัติตามคำแนะนำของเจ้าหน้าที่สายด่วน
-        </p>
+        <p className="text-text-secondary mt-3">{t.advice.underReview}</p>
       )}
       <div className="mt-4 flex flex-wrap gap-3">
         {hotlines.map((line) => (
@@ -69,7 +72,10 @@ export function WaitingAdvice({
             href={`tel:${line.number}`}
             className="border-border-strong text-primary-700 inline-flex min-h-12 items-center rounded-full border px-4 font-semibold"
           >
-            โทร {line.number} {line.label}
+            {format(t.advice.callLine, {
+              number: line.number,
+              label: t.advice.hotlineLabels[line.number as keyof typeof t.advice.hotlineLabels],
+            })}
           </a>
         ))}
       </div>

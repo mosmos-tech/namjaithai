@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { trackLookupSchema, trackPath, type TrackedCase } from "@/lib/domain";
+import { useI18n } from "@/lib/i18n/I18nProvider";
+import { localePath } from "@/lib/i18n/locale";
 
 /**
  * ฟอร์มเปิดหน้าติดตามด้วย รหัสเคส + เบอร์ 4 ตัวท้าย
@@ -10,6 +12,7 @@ import { trackLookupSchema, trackPath, type TrackedCase } from "@/lib/domain";
  */
 export function TrackLookupForm({ initialCode = "" }: { initialCode?: string }) {
   const router = useRouter();
+  const { t, locale } = useI18n();
   const [caseCode, setCaseCode] = useState(initialCode);
   const [phoneLast4, setPhoneLast4] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +22,14 @@ export function TrackLookupForm({ initialCode = "" }: { initialCode?: string }) 
     event.preventDefault();
     const parsed = trackLookupSchema.safeParse({ caseCode, phoneLast4 });
     if (!parsed.success) {
-      setError(parsed.error.issues[0].message);
+      const issue = parsed.error.issues[0];
+      setError(
+        locale === "th"
+          ? issue.message
+          : issue.path[0] === "caseCode"
+            ? t.lookup.invalidCode
+            : t.lookup.invalidLast4,
+      );
       return;
     }
 
@@ -33,12 +43,23 @@ export function TrackLookupForm({ initialCode = "" }: { initialCode?: string }) 
       });
       const data = (await res.json()) as TrackedCase | { error: string };
       if (!res.ok || "error" in data) {
-        setError("error" in data ? data.error : "ดึงข้อมูลเคสไม่สำเร็จ กรุณาลองใหม่");
+        // ข้อความจาก API เป็นภาษาไทย — หน้าอังกฤษแปลตามรหัสสถานะ
+        setError(
+          locale === "th"
+            ? "error" in data
+              ? data.error
+              : t.lookup.failed
+            : res.status === 404
+              ? t.lookup.notFound
+              : res.status === 429
+                ? t.lookup.tooMany
+                : t.lookup.failed,
+        );
         return;
       }
-      router.replace(trackPath(data.caseCode, data.trackingToken));
+      router.replace(localePath(trackPath(data.caseCode, data.trackingToken), locale));
     } catch {
-      setError("เชื่อมต่ออินเทอร์เน็ตไม่ได้ กรุณาลองใหม่อีกครั้ง");
+      setError(t.lookup.offline);
     } finally {
       setSubmitting(false);
     }
@@ -47,7 +68,7 @@ export function TrackLookupForm({ initialCode = "" }: { initialCode?: string }) 
   return (
     <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5" noValidate>
       <label className="flex flex-col gap-2">
-        <span className="text-text-primary text-base font-medium">รหัสเคส</span>
+        <span className="text-text-primary text-base font-medium">{t.lookup.caseCode}</span>
         <input
           value={caseCode}
           onChange={(e) => setCaseCode(e.target.value)}
@@ -60,7 +81,7 @@ export function TrackLookupForm({ initialCode = "" }: { initialCode?: string }) 
       </label>
 
       <label className="flex flex-col gap-2">
-        <span className="text-text-primary text-base font-medium">เบอร์โทร 4 ตัวท้าย</span>
+        <span className="text-text-primary text-base font-medium">{t.lookup.last4}</span>
         <input
           value={phoneLast4}
           onChange={(e) => setPhoneLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
@@ -83,7 +104,7 @@ export function TrackLookupForm({ initialCode = "" }: { initialCode?: string }) 
         disabled={submitting}
         className="bg-primary-600 font-heading text-text-on-primary hover:bg-primary-700 min-h-14 rounded-full px-6 text-[19px] font-semibold transition-colors disabled:opacity-60"
       >
-        {submitting ? "กำลังค้นหา…" : "ดูสถานะเคส"}
+        {submitting ? t.lookup.searching : t.lookup.submit}
       </button>
     </form>
   );

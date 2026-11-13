@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GeoJSONSource, Map as MapLibreMap, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { OSM_RASTER_STYLE } from "../../../lib/map/osm-style";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
 
 type Point = { lat: number; lng: number };
 
@@ -36,6 +37,8 @@ function lineFeature(a: Point, b: Point | null): GeoJSON.FeatureCollection<GeoJS
  * แผนที่เป็นของเสริม — โหลดไม่ขึ้นหรือ tile ล่ม แผงล่างยังบอกสถานะ ทีม เวลาที่คาดว่าจะถึง และปุ่มโทรครบ
  */
 export default function TrackMap({ scene, team }: { scene: Point; team: Point | null }) {
+  const { t } = useI18n();
+  const pinLabels = useRef({ reporter: t.track.reporterPin, team: t.track.teamPin });
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const teamMarkerRef = useRef<Marker | null>(null);
@@ -63,14 +66,14 @@ export default function TrackMap({ scene, team }: { scene: Point; team: Point | 
         });
         const reporter = document.createElement("div");
         reporter.dataset.testid = "track-reporter-pin";
-        reporter.innerHTML = `<img src="/brand/icon-map-pin-red.svg" alt="จุดของคุณ" width="44" height="44" />`;
+        reporter.innerHTML = `<img src="/brand/icon-map-pin-red.svg" alt="${pinLabels.current.reporter}" width="44" height="44" />`;
         new maplibregl.Marker({ element: reporter, anchor: "bottom" })
           .setLngLat([sceneLng, sceneLat])
           .addTo(map);
 
         const teamElement = document.createElement("div");
         teamElement.dataset.testid = "track-team-pin";
-        teamElement.innerHTML = `<div class="flex size-10 items-center justify-center rounded-full border-[3px] border-white bg-primary-600 shadow-md"><img src="/brand/icon-navigation.svg" alt="ทีมกู้ภัย" width="20" height="20" class="size-5 invert" /></div>`;
+        teamElement.innerHTML = `<div class="flex size-10 items-center justify-center rounded-full border-[3px] border-white bg-primary-600 shadow-md"><img src="/brand/icon-navigation.svg" alt="${pinLabels.current.team}" width="20" height="20" class="size-5 invert" /></div>`;
         teamMarkerRef.current = new maplibregl.Marker({ element: teamElement });
 
         map.on("error", () => setTilesFailed(true));
@@ -131,7 +134,7 @@ export default function TrackMap({ scene, team }: { scene: Point; team: Point | 
         className="bg-bg-subtle text-text-secondary rounded-[14px] p-4 text-base"
         data-testid="track-map-failed"
       >
-        โหลดแผนที่ไม่ได้ ดูสถานะและเวลาที่คาดว่าจะถึงด้านล่างแทน
+        {t.track.mapFailed}
       </p>
     );
   }
@@ -141,13 +144,13 @@ export default function TrackMap({ scene, team }: { scene: Point; team: Point | 
         ref={containerRef}
         data-testid="track-map"
         data-ready={ready}
-        aria-label="แผนที่ตำแหน่งของคุณและทีมกู้ภัย"
+        aria-label={t.track.mapLabel}
         role="img"
         className="bg-bg-subtle h-64 w-full overflow-hidden rounded-[14px] sm:h-80"
       />
       {tilesFailed && (
         <p className="text-text-secondary bg-bg-surface/90 absolute right-2 bottom-2 left-2 rounded-[8px] px-3 py-1 text-sm">
-          แผนที่โหลดไม่ครบ ข้อมูลด้านล่างยังอัปเดตตามปกติ
+          {t.track.mapTilesFailed}
         </p>
       )}
     </div>

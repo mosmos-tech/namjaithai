@@ -11,7 +11,7 @@ const ROAD_ACCIDENT_OFFICIAL_SOURCE =
 
 export const roadAccident: IncidentDefinition = {
   code: IncidentType.ROAD_ACCIDENT,
-  label: { th: "อุบัติเหตุทางถนน" },
+  label: { th: "อุบัติเหตุทางถนน", en: "Road accident" },
   // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
   peopleLabel: { th: "จำนวนผู้บาดเจ็บหรือผู้ป่วย", en: "Injured or sick people" },
   icon: "CarFront",
@@ -51,7 +51,7 @@ export const roadAccident: IncidentDefinition = {
     ...UNIVERSAL_DANGER_SIGNS,
     {
       key: "TRAPPED_IN_VEHICLE",
-      label: { th: "มีผู้ติดค้างอัดก๊อปปี้ในยานพาหนะ" },
+      label: { th: "มีผู้ติดค้างอยู่ในยานพาหนะ", en: "Someone is trapped inside a vehicle" },
       source: ROAD_ACCIDENT_OFFICIAL_SOURCE,
     },
   ],
@@ -64,16 +64,16 @@ export const roadAccident: IncidentDefinition = {
   waitingAdvice: [
     {
       text: {
-        th: "ห้ามเคลื่อนย้ายผู้บาดเจ็บเองโดยไม่จำเป็น เพราะอาจทำให้กระดูกคอหรือไขสันหลังบาดเจ็บรุนแรงขึ้น",
+        th: "ห้ามเคลื่อนย้ายผู้บาดเจ็บเองโดยไม่จำเป็น เพราะอาจทำให้กระดูกคอหรือไขสันหลังบาดเจ็บรุนแรงขึ้น", en: "Do not move the injured person yourself unless necessary, as it may make neck or spinal injuries worse.",
       },
       source: ROAD_ACCIDENT_OFFICIAL_SOURCE,
     },
     {
-      text: { th: "เปิดไฟฉุกเฉินหรือวางสิ่งกีดขวางเตือนระยะไกล ป้องกันการเกิดอุบัติเหตุซ้ำซ้อน" },
+      text: { th: "เปิดไฟฉุกเฉินหรือวางสิ่งกีดขวางเตือนระยะไกล ป้องกันการเกิดอุบัติเหตุซ้ำซ้อน", en: "Turn on hazard lights or place warning objects far ahead to prevent another accident." },
       source: ROAD_ACCIDENT_OFFICIAL_SOURCE,
     },
     {
-      text: { th: "ดับเครื่องยนต์ และห้ามสูบบุหรี่หรือจุดไฟในบริเวณที่เกิดเหตุเด็ดขาด" },
+      text: { th: "ดับเครื่องยนต์ และห้ามสูบบุหรี่หรือจุดไฟในบริเวณที่เกิดเหตุเด็ดขาด", en: "Turn off the engine, and never smoke or light a fire at the scene." },
       source: ROAD_ACCIDENT_OFFICIAL_SOURCE,
     },
   ],

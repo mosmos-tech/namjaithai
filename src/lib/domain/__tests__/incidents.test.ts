@@ -237,7 +237,7 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     it("คำถามที่ไม่มี dependsOn จะแสดงเสมอ", () => {
       const q: IncidentQuestion = {
         key: "testNoDep",
-        label: { th: "ไม่มีเงื่อนไข" },
+        label: { th: "ไม่มีเงื่อนไข", en: "No condition" },
         required: true,
         kind: "boolean",
       };
@@ -248,7 +248,7 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     it("คำถามที่มี dependsOn จะแสดงเฉพาะเมื่อคำตอบตรงกับเงื่อนไข", () => {
       const qSingle: IncidentQuestion = {
         key: "subQuestion",
-        label: { th: "คำถามย่อย" },
+        label: { th: "คำถามย่อย", en: "Sub-question" },
         required: true,
         kind: "number",
         min: 1,
@@ -264,7 +264,7 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     it("รองรับ dependsOn ที่ตรวจสอบค่า boolean, array value, และ multi-select answer", () => {
       const qBool: IncidentQuestion = {
         key: "subTrappedCount",
-        label: { th: "จำนวนคนติด" },
+        label: { th: "จำนวนคนติด", en: "Number trapped" },
         required: true,
         kind: "number",
         min: 1,
@@ -276,7 +276,7 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
 
       const qMultiDep: IncidentQuestion = {
         key: "helmetQuestion",
-        label: { th: "สวมหมวกกันน็อกไหม" },
+        label: { th: "สวมหมวกกันน็อกไหม", en: "Wearing a helmet?" },
         required: false,
         kind: "boolean",
         dependsOn: { key: "vehicleTypes", value: "MOTORCYCLE" },
@@ -288,7 +288,7 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     it("รองรับ kind: 'text' พร้อม maxLength และ kind: 'choice' พร้อม multiple: true", () => {
       const textQ: IncidentQuestion = {
         key: "otherDetailText",
-        label: { th: "รายละเอียดเพิ่มเติม" },
+        label: { th: "รายละเอียดเพิ่มเติม", en: "More details" },
         required: false,
         kind: "text",
         maxLength: 200,
@@ -298,11 +298,11 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
 
       const choiceQ: IncidentQuestion = {
         key: "multiChoice",
-        label: { th: "เลือกได้หลายข้อ" },
+        label: { th: "เลือกได้หลายข้อ", en: "Pick any" },
         required: true,
         kind: "choice",
         multiple: true,
-        options: [{ value: "A", label: { th: "ข้อ A" } }],
+        options: [{ value: "A", label: { th: "ข้อ A", en: "Option A" } }],
       };
       expect(choiceQ.multiple).toBe(true);
     });

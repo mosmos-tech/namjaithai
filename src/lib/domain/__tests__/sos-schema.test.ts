@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  normalizePhoneInput,
   sosSchema,
   step2Schema,
   step3Schema,
@@ -181,8 +182,22 @@ describe("step5Schema — ชื่อและเบอร์", () => {
     expect(step5Schema.safeParse({ name: "สมชาย", phone: "081234" }).success).toBe(false);
   });
 
-  it("เบอร์ต่างประเทศ +66 ไม่ผ่าน", () => {
-    expect(step5Schema.safeParse({ name: "สมชาย", phone: "+66812345678" }).success).toBe(false);
+  it("TF-63: รหัสประเทศไทย +66 แปลงเป็น 0 ก่อนตรวจและเก็บ", () => {
+    for (const phone of ["+66812345678", "+66 81 234 5678", "+66-81-234-5678"]) {
+      const r = step5Schema.safeParse({ name: "Tourist", phone });
+      expect(r.success, phone).toBe(true);
+      if (r.success) expect(r.data.phone, phone).toBe("0812345678");
+    }
+    // เบอร์บ้านกรุงเทพ +66 2 123 4567 → 021234567
+    const landline = step5Schema.safeParse({ name: "Tourist", phone: "+66 2 123 4567" });
+    expect(landline.success && landline.data.phone).toBe("021234567");
+  });
+
+  it("TF-63: เบอร์ต่างประเทศอื่น และ +66 ที่ใส่ 0 ซ้ำ ยังไม่ผ่าน", () => {
+    expect(step5Schema.safeParse({ name: "Tourist", phone: "+447911123456" }).success).toBe(false);
+    expect(step5Schema.safeParse({ name: "Tourist", phone: "+660812345678" }).success).toBe(false);
+    expect(normalizePhoneInput("+66 81 234 5678")).toBe("0812345678");
+    expect(normalizePhoneInput("081-234-5678")).toBe("0812345678");
   });
 
   it("ชื่อที่มีช่องว่างขอบถูก trim แล้วผ่าน", () => {

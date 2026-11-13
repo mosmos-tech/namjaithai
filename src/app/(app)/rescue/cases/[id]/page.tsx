@@ -56,6 +56,7 @@ type CaseRow = {
   subdistrict: string | null;
   landmark: string;
   details: Record<string, unknown>;
+  reporter_locale: "th" | "en";
 };
 type Event = {
   id: string;
@@ -85,7 +86,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
   const { data: item } = await supabase
     .from("cases")
     .select(
-      "id, case_code, status, incident_type, urgency, triage_reasons, system_urgency, urgency_override_reason, version, created_at, lat, lng, accuracy_m, location_source, province, district, subdistrict, landmark, details",
+      "id, case_code, status, incident_type, urgency, triage_reasons, system_urgency, urgency_override_reason, version, created_at, lat, lng, accuracy_m, location_source, province, district, subdistrict, landmark, details, reporter_locale",
     )
     .eq("id", id)
     .maybeSingle<CaseRow>();
@@ -179,6 +180,15 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
           {incident?.label.th ?? "เหตุฉุกเฉิน"}
         </h2>
         <p className="font-mono">{item.case_code}</p>
+        {/* TF-63: ผู้แจ้งกรอกฟอร์มภาษาอังกฤษ (นักท่องเที่ยว) — โทรหาควรเตรียมพูดภาษาอังกฤษ */}
+        {item.reporter_locale === "en" && (
+          <p
+            data-testid="reporter-locale-badge"
+            className="w-fit rounded-full bg-amber-100 px-3 py-1 font-semibold text-amber-900"
+          >
+            ผู้แจ้งใช้ภาษาอังกฤษ
+          </p>
+        )}
         <p>สถานะ: {openCaseStatusLabel[item.status] ?? reporterStatusView(item.status).badge}</p>
         <TriageTag
           urgency={item.urgency}

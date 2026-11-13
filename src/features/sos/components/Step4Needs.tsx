@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { INCIDENT_REGISTRY, IncidentType, Need, needLabel } from "../../../lib/domain";
 import type { Step4ValidationErrors } from "../draft-storage";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { format } from "../../../lib/i18n/locale";
 
 export interface NeedOptionConfig {
   value: Need;
@@ -135,6 +137,7 @@ export function Step4Needs({
   onPrev,
   onNext,
 }: Step4NeedsProps) {
+  const { t } = useI18n();
   const isOtherSelected = needs.includes(Need.OTHER);
   const visibleNeedOptions = getNeedOptionsForIncident(incidentType);
 
@@ -150,21 +153,22 @@ export function Step4Needs({
               id="step4-needs-heading"
               className="font-heading text-xl font-bold text-text-primary sm:text-[22px]"
             >
-              4. สิ่งที่ต้องการความช่วยเหลือ
+              {t.step4.heading}
             </h2>
             <p className="mt-1 text-base text-text-secondary">
-              แตะเลือกได้มากกว่า 1 ข้อ เพื่อให้ทีมกู้ภัยเตรียมอุปกรณ์และสิ่งของมาได้ตรงจุด
+              {t.step4.hint}
             </p>
           </div>
 
           <span className="rounded-full bg-bg-subtle px-3.5 py-1 font-heading text-sm font-semibold text-primary-700">
-            เลือกแล้ว <span className="font-mono font-bold">{needs.length}</span> รายการ
+            {format(t.step4.selectedCount, { count: needs.length })}
           </span>
         </div>
 
         {/* ตัวเลือกความต้องการตามประเภทเหตุ + อื่นๆ */}
         <div data-testid="step4-needs-grid" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {visibleNeedOptions.map((option) => {
+          {visibleNeedOptions.map((config) => {
+            const option = { ...config, ...t.step4.needs[config.value] };
             const isSelected = needs.includes(option.value);
             const isOtherOption = option.value === Need.OTHER;
 
@@ -228,13 +232,13 @@ export function Step4Needs({
                 htmlFor="other-detail-input"
                 className="font-heading text-base font-bold text-text-primary"
               >
-                โปรดระบุสิ่งที่ต้องการอื่นๆ <span className="text-red-600">*</span>
+                {t.step4.otherLabel} <span className="text-red-600">*</span>
               </label>
               <span
                 data-testid="other-detail-counter"
                 className="font-mono text-xs font-semibold text-text-secondary"
               >
-                {otherDetail.length}/200 ตัวอักษร
+                {format(t.step4.charCount, { count: otherDetail.length })}
               </span>
             </div>
 
@@ -245,7 +249,7 @@ export function Step4Needs({
               maxLength={200}
               value={otherDetail}
               onChange={(e) => onChangeOtherDetail(e.target.value.slice(0, 200))}
-              placeholder="เช่น ต้องการอินซูลินแช่เย็น, ออกซิเจนถัง, หรืออุปกรณ์ช่วยหายใจ..."
+              placeholder={t.step4.otherPlaceholder}
               className="mt-2 w-full rounded-[10px] border border-border-strong bg-bg-surface p-3 text-base text-text-primary placeholder:text-text-secondary/70 focus:border-primary-600 focus:outline-none"
             />
 
@@ -269,10 +273,10 @@ export function Step4Needs({
             className="mt-4 rounded-[12px] border border-red-600/30 bg-red-50 p-4 text-base text-red-600"
           >
             <p className="font-heading font-bold">
-              ยังไปขั้นถัดไปไม่ได้ กรุณากรอกข้อมูลที่ขาด:
+              {t.step4.cannotContinue}
             </p>
             <p className="mt-1 font-medium">
-              ขาด: {errors.missingSummary.join(", ")}
+              {format(t.step4.missing, { items: errors.missingSummary.join(t.sos.listComma) })}
             </p>
           </div>
         )}
@@ -286,7 +290,7 @@ export function Step4Needs({
           onClick={onPrev}
           className="flex h-14 min-h-[48px] w-full items-center justify-center rounded-full border border-border-strong bg-bg-surface px-6 font-heading text-[19px] font-semibold text-text-primary transition-colors hover:bg-bg-subtle sm:w-auto sm:min-w-[160px]"
         >
-          ← ย้อนกลับ
+          {t.step4.prev}
         </button>
 
         <button
@@ -295,7 +299,7 @@ export function Step4Needs({
           onClick={onNext}
           className="flex h-14 min-h-[48px] w-full items-center justify-center rounded-full bg-primary-600 px-8 font-heading text-[19px] font-semibold text-text-on-primary transition-colors hover:bg-primary-700 active:bg-primary-700 sm:w-auto sm:min-w-[220px]"
         >
-          ถัดไป: ข้อมูลติดต่อ →
+          {t.step4.nextDesktop}
         </button>
       </div>
     </div>

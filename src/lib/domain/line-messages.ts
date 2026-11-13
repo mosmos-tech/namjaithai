@@ -27,7 +27,14 @@ type CaseRef = {
   district: string | null;
   province: string | null;
   origin: string;
+  /** TF-63: ภาษาฟอร์มที่ผู้แจ้งใช้ — ลิงก์ติดตามพาไปหน้าภาษาเดียวกัน */
+  locale?: "th" | "en";
 };
+
+function trackUrl(input: CaseRef): string {
+  const path = trackPath(input.caseCode, input.trackingToken);
+  return new URL(input.locale === "en" ? `/en${path}` : path, input.origin).href;
+}
 
 /**
  * TF-25: สถานะกลับเป็น NEW ได้ทางเดียวคือทีมปล่อยเคส (ตอนแจ้งครั้งแรกไม่มีข้อความ LINE สถานะ)
@@ -49,7 +56,7 @@ export function formatCaseStatusLine(
     [incidentText(input.incidentType), areaText(input.district, input.province)]
       .filter(Boolean)
       .join(" · "),
-    `ดูสถานะ: ${new URL(trackPath(input.caseCode, input.trackingToken), input.origin).href}`,
+    `ดูสถานะ: ${trackUrl(input)}`,
   ].join("\n");
 }
 
@@ -58,7 +65,7 @@ export function formatCloseConfirmationLine(input: CaseRef): string {
   return [
     `${HEADER} · เคส ${input.caseCode}`,
     "ทีมกู้ภัยแจ้งว่าช่วยเหลือเสร็จแล้ว กรุณากดยืนยันที่ลิงก์ โดยเข้าสู่ระบบด้วยบัญชี LINE ที่ใช้แจ้งเคส",
-    new URL(trackPath(input.caseCode, input.trackingToken), input.origin).href,
+    trackUrl(input),
   ].join("\n");
 }
 

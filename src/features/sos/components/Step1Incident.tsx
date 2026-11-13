@@ -17,6 +17,8 @@ import { INCIDENT_REGISTRY, IncidentType } from "../../../lib/domain";
 import type { Step1ValidationErrors } from "../draft-storage";
 import type { EnabledIncidentsState } from "../enabled-incidents";
 import { SosStepActions } from "./SosStepActions";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { format, pickText } from "../../../lib/i18n/locale";
 
 interface Step1IncidentProps {
   incidentType?: IncidentType;
@@ -40,37 +42,13 @@ const INCIDENT_ICONS: Record<IncidentType, LucideIcon> = {
   OTHER: CircleHelp,
 };
 
+// ชื่อและคำอธิบายของแต่ละเบอร์อยู่ใน t.step1.hotlines (ลำดับเดียวกัน) — TF-63
 const EMERGENCY_HOTLINES = [
-  {
-    number: "1669",
-    name: "สถาบันการแพทย์ฉุกเฉินแห่งชาติ (กู้ชีพ)",
-    description: "เจ็บป่วยฉุกเฉิน บาดเจ็บ หมดสติ ส่งโรงพยาบาลฟรี 24 ชม.",
-    urgent: true,
-  },
-  {
-    number: "1784",
-    name: "กรมป้องกันและบรรเทาสาธารณภัย (ปภ.)",
-    description: "แจ้งอุทกภัย วาตภัย อัคคีภัย ขอความช่วยเหลือสาธารณภัย 24 ชม.",
-    urgent: true,
-  },
-  {
-    number: "199",
-    name: "ศูนย์วิทยุพระราม / ดับเพลิงและกู้ภัย",
-    description: "แจ้งเหตุไฟไหม้ กู้ภัยทางน้ำ อาคารถล่ม สัตว์มีพิษเข้าบ้าน",
-    urgent: false,
-  },
-  {
-    number: "191",
-    name: "สายด่วนตำรวจ",
-    description: "แจ้งเหตุด่วนเหตุร้าย อุบัติเหตุทางถนน ขอความช่วยเหลือเร่งด่วน",
-    urgent: false,
-  },
-  {
-    number: "1182",
-    name: "การไฟฟ้าส่วนภูมิภาค (กฟภ.)",
-    description: "แจ้งไฟฟ้ารั่ว สายไฟขาด ตัดกระแสไฟฟ้าในพื้นที่ประสบภัย",
-    urgent: false,
-  },
+  { number: "1669", urgent: true },
+  { number: "1784", urgent: true },
+  { number: "199", urgent: false },
+  { number: "191", urgent: false },
+  { number: "1182", urgent: false },
 ] as const;
 
 const headingClass =
@@ -100,15 +78,16 @@ export function Step1Incident({
   onSelectAtScene,
   onNext,
 }: Step1IncidentProps) {
+  const { t, locale } = useI18n();
   return (
     <>
       {/* 1. กริดไอคอนประเภทเหตุที่เปิดรับแจ้ง (TF-50: ปุ่มสูงอย่างน้อย 56px รองรับ ?type=FLOOD) */}
       <section aria-labelledby="incident-type-heading" className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h2 id="incident-type-heading" className={headingClass}>
-            เกิดเหตุอะไรขึ้น?
+            {t.step1.heading}
           </h2>
-          <p className="text-text-secondary text-base">เลือกประเภทเหตุที่ต้องการความช่วยเหลือ</p>
+          <p className="text-text-secondary text-base">{t.step1.subheading}</p>
           {errors.incidentType && (
             <p role="alert" className="text-base font-medium text-red-600">
               {errors.incidentType}
@@ -146,7 +125,7 @@ export function Step1Incident({
                     selected ? "text-primary-600" : "text-text-secondary"
                   }`}
                 />
-                <span className="min-w-0 flex-1 leading-snug">{def.label.th}</span>
+                <span className="min-w-0 flex-1 leading-snug">{pickText(def.label, locale)}</span>
               </button>
             );
           })}
@@ -158,9 +137,7 @@ export function Step1Incident({
             data-testid="incident-fallback-hotlines"
             className="border-border-default bg-bg-subtle flex flex-col gap-3 rounded-[12px] border p-4"
           >
-            <p className="text-text-primary text-base font-medium">
-              เหตุอื่นโทร 1669 (เจ็บป่วย/อุบัติเหตุ) หรือ 199 (ไฟไหม้)
-            </p>
+            <p className="text-text-primary text-base font-medium">{t.step1.otherIncidentsHint}</p>
             <div className="grid grid-cols-2 gap-3">
               {["1669", "199"].map((number) => (
                 <a
@@ -169,7 +146,7 @@ export function Step1Incident({
                   className="font-heading flex min-h-14 items-center justify-center gap-2 rounded-full bg-red-600 text-base font-semibold text-white transition-colors hover:bg-red-600/90"
                 >
                   <PhoneCall className="size-5 shrink-0" aria-hidden="true" />
-                  <span>โทร {number}</span>
+                  <span>{format(t.common.callNumber, { number })}</span>
                 </a>
               ))}
             </div>
@@ -181,11 +158,9 @@ export function Step1Incident({
       <section aria-labelledby="at-scene-heading" className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h2 id="at-scene-heading" className={headingClass}>
-            ตอนนี้คุณอยู่ที่จุดเกิดเหตุไหม?
+            {t.step1.atSceneHeading}
           </h2>
-          <p className="text-text-secondary text-base">
-            ต้องอยู่ที่จุดเกิดเหตุด้วยตัวเองเพื่อให้ปักหมุดพิกัดได้ตรงจุด (แจ้งแทนคนอื่นไม่ได้)
-          </p>
+          <p className="text-text-secondary text-base">{t.step1.atSceneHint}</p>
           {errors.atScene && (
             <p role="alert" className="text-base font-medium text-red-600">
               {errors.atScene}
@@ -199,13 +174,13 @@ export function Step1Incident({
           className="grid grid-cols-1 gap-3 sm:grid-cols-2"
         >
           {[
-            { value: true, label: "อยู่ที่จุดเกิดเหตุ" },
-            { value: false, label: "ไม่ได้อยู่ที่จุดเกิดเหตุ" },
+            { value: true, label: t.step1.atSceneYes },
+            { value: false, label: t.step1.atSceneNo },
           ].map((option) => {
             const selected = atScene === option.value;
             return (
               <button
-                key={option.label}
+                key={String(option.value)}
                 type="button"
                 role="radio"
                 aria-checked={selected}
@@ -234,17 +209,13 @@ export function Step1Incident({
         >
           <div className="flex flex-col gap-1.5">
             <h3 id="not-at-scene-heading" className="font-heading text-xl font-bold text-red-700">
-              แจ้งแทนคนอื่นไม่ได้ — กรุณาโทรสายด่วนฉุกเฉินแทน
+              {t.step1.notAtSceneTitle}
             </h3>
-            <p className="text-text-primary text-base leading-relaxed">
-              ระบบต้องใช้พิกัด GPS และข้อมูลจากผู้ที่อยู่ในจุดเกิดเหตุโดยตรง
-              จึงไม่สามารถสร้างเคสแทนกันได้ กรุณาโทรแจ้งสายด่วนด้านล่าง
-              หรือส่งลิงก์เว็บนี้ให้ผู้ประสบภัยกรอกด้วยตัวเอง
-            </p>
+            <p className="text-text-primary text-base leading-relaxed">{t.step1.notAtSceneBody}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {EMERGENCY_HOTLINES.map((hotline) => (
+            {EMERGENCY_HOTLINES.map((hotline, index) => (
               <div
                 key={hotline.number}
                 className="border-border-default bg-bg-surface flex flex-col justify-between gap-3 rounded-[12px] border p-4"
@@ -252,10 +223,10 @@ export function Step1Incident({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-heading text-text-primary text-base font-bold">
-                      {hotline.name}
+                      {t.step1.hotlines[index].name}
                     </p>
                     <p className="text-text-secondary mt-1 text-sm leading-snug">
-                      {hotline.description}
+                      {t.step1.hotlines[index].description}
                     </p>
                   </div>
                   <span
@@ -275,7 +246,7 @@ export function Step1Incident({
                   }`}
                 >
                   <PhoneCall className="size-5 shrink-0" aria-hidden="true" />
-                  <span>โทร {hotline.number}</span>
+                  <span>{format(t.common.callNumber, { number: hotline.number })}</span>
                 </a>
               </div>
             ))}
@@ -285,8 +256,8 @@ export function Step1Incident({
         <>
           <SosStepActions
             onNext={onNext}
-            mobileLabel="ถัดไป"
-            desktopLabel="ถัดไป: รายละเอียดเหตุ"
+            mobileLabel={t.common.next}
+            desktopLabel={t.step1.nextDesktop}
           />
         </>
       )}

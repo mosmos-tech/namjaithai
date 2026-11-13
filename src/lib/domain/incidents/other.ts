@@ -10,7 +10,7 @@ const OTHER_OFFICIAL_SOURCE =
 
 export const other: IncidentDefinition = {
   code: IncidentType.OTHER,
-  label: { th: "เหตุอื่นๆ" },
+  label: { th: "เหตุอื่นๆ", en: "Other emergency" },
   // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
   peopleLabel: { th: "จำนวนคนที่ต้องการความช่วยเหลือ", en: "People who need help" },
   icon: "CircleHelp",
@@ -49,7 +49,7 @@ export const other: IncidentDefinition = {
     ...UNIVERSAL_DANGER_SIGNS,
     {
       key: "SEVERE_HAZARD",
-      label: { th: "มีอันตรายร้ายแรงต่อชีวิตหรือสารเคมีอันตราย" },
+      label: { th: "มีอันตรายร้ายแรงต่อชีวิตหรือสารเคมีอันตราย", en: "Serious danger to life or hazardous chemicals" },
       source: OTHER_OFFICIAL_SOURCE,
     },
   ],
@@ -65,19 +65,19 @@ export const other: IncidentDefinition = {
   waitingAdvice: [
     {
       text: {
-        th: "ตั้งสติ อยู่ในพื้นที่ปลอดภัย และแจ้งข้อมูลตำแหน่งและสถานการณ์แก่เจ้าหน้าที่อย่างชัดเจน",
+        th: "ตั้งสติ อยู่ในพื้นที่ปลอดภัย และแจ้งข้อมูลตำแหน่งและสถานการณ์แก่เจ้าหน้าที่อย่างชัดเจน", en: "Stay calm, stay in a safe area, and clearly tell the responders your location and the situation.",
       },
       source: OTHER_OFFICIAL_SOURCE,
     },
     {
       text: {
-        th: "หากมีผู้บาดเจ็บ ให้สังเกตสัญญาณชีพและอาการ ห้ามเคลื่อนย้ายผู้บาดเจ็บหากไม่จำเป็น",
+        th: "หากมีผู้บาดเจ็บ ให้สังเกตสัญญาณชีพและอาการ ห้ามเคลื่อนย้ายผู้บาดเจ็บหากไม่จำเป็น", en: "If someone is injured, watch their vital signs and symptoms. Do not move the injured person unless necessary.",
       },
       source: OTHER_OFFICIAL_SOURCE,
     },
     {
       text: {
-        th: "หากมีสายไฟขาดหรือวัตถุอันตราย ให้อยู่ห่างอย่างน้อย 8–10 เมตร และกันผู้อื่นออกจากพื้นที่",
+        th: "หากมีสายไฟขาดหรือวัตถุอันตราย ให้อยู่ห่างอย่างน้อย 8–10 เมตร และกันผู้อื่นออกจากพื้นที่", en: "If there are broken power lines or hazardous objects, stay at least 8–10 meters away and keep others out of the area.",
       },
       source: OTHER_OFFICIAL_SOURCE,
     },

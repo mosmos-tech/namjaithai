@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 
+import type { ReporterText } from "@/lib/i18n/reporter-text";
 import { Logo } from "./Logo";
 
 const NAV_LINKS = [
@@ -18,9 +19,19 @@ const browserReady = () => true;
 const serverNotReady = () => false;
 
 // account: คนที่ล็อกอินอยู่ (ส่งมาจาก NavbarWithAccount) — ไม่มี = ปุ่ม "เข้าสู่ระบบ"
-export function Navbar({ account }: { account?: { href: string } | null }) {
+// text: ข้อความของหน้า /en (TF-63) ส่งมาจาก layout — ไม่ส่งมา = ภาษาไทย (ไม่ต้องโหลด dictionary)
+export function Navbar({
+  account,
+  text,
+  homeHref = "/",
+}: {
+  account?: { href: string } | null;
+  text?: ReporterText["chrome"];
+  homeHref?: string;
+}) {
+  const navLinks = text?.nav ?? NAV_LINKS;
   const accountHref = account?.href ?? "/login";
-  const accountLabel = account ? "หน้าของฉัน" : "เข้าสู่ระบบ";
+  const accountLabel = account ? (text?.myPage ?? "หน้าของฉัน") : (text?.signIn ?? "เข้าสู่ระบบ");
 
   const [open, setOpen] = useState(false);
   const ready = useSyncExternalStore(subscribeHydration, browserReady, serverNotReady);
@@ -29,13 +40,13 @@ export function Navbar({ account }: { account?: { href: string } | null }) {
     <nav className="bg-bg-nav rounded-b-[20px] sm:rounded-b-3xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
         {/* Logo */}
-        <Link prefetch={false} href="/" onClick={() => setOpen(false)}>
+        <Link prefetch={false} href={homeHref} onClick={() => setOpen(false)}>
           <Logo />
         </Link>
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-1 md:flex">
-          {NAV_LINKS.map(({ label, href }) => (
+          {navLinks.map(({ label, href }) => (
             <Link
               prefetch={false}
               key={href}
@@ -62,7 +73,7 @@ export function Navbar({ account }: { account?: { href: string } | null }) {
         <button
           type="button"
           disabled={!ready}
-          aria-label={open ? "ปิดเมนู" : "เปิดเมนู"}
+          aria-label={open ? (text?.closeMenu ?? "ปิดเมนู") : (text?.openMenu ?? "เปิดเมนู")}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
           className="text-text-primary hover:bg-primary-50 flex h-12 w-12 items-center justify-center rounded-full transition-colors md:hidden"
@@ -93,7 +104,7 @@ export function Navbar({ account }: { account?: { href: string } | null }) {
       {open && (
         <div className="border-border-default border-t px-4 pb-4 md:hidden">
           <div className="flex flex-col gap-1 pt-2">
-            {NAV_LINKS.map(({ label, href }) => (
+            {navLinks.map(({ label, href }) => (
               <Link
                 prefetch={false}
                 key={href}

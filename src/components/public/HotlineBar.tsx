@@ -11,18 +11,25 @@ const HOTLINES = [
   { label: "กู้ชีพ", number: "1669" },
   { label: "กู้ภัย", number: "199" },
 ];
+const BAR_LABEL = "สายด่วนฉุกเฉิน โทรได้ไม่ต้องใช้เน็ต";
 
-export function HotlineBar() {
+/** text: ข้อความของหน้า /en (TF-63) — ไม่ส่งมา = ภาษาไทย (หน้าแรกไม่ต้องโหลด dictionary) */
+export function HotlineBar({
+  text,
+}: {
+  text?: { label: string; items: readonly { label: string; number: string }[] };
+}) {
+  const items = text?.items ?? HOTLINES;
   return (
     <div className="bg-primary-700 px-4 py-2.5">
       <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 sm:gap-4">
         {/* ซ่อนบนมือถือ */}
         <span className="hidden font-heading text-xs font-semibold text-white/80 sm:block sm:text-sm">
-          สายด่วนฉุกเฉิน โทรได้ไม่ต้องใช้เน็ต
+          {text?.label ?? BAR_LABEL}
         </span>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {HOTLINES.map(({ label, number }) => (
+          {items.map(({ label, number }) => (
             <a
               key={number}
               href={`tel:${number}`}

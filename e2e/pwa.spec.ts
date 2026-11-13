@@ -72,6 +72,30 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
   );
 });
 
+test("TF-63 หน้าภาษาอังกฤษ /en/request และ /en/hotlines เปิดได้ตอนออฟไลน์", async ({
+  page,
+  context,
+}) => {
+  await offlineReady(page);
+  await context.setOffline(true);
+  const form = await context.newPage();
+  await form.goto("/en/request");
+  await expect(form.getByText("Step 1 of 5")).toBeVisible();
+  await expect(form.getByRole("radio", { name: "Flood" })).toBeVisible();
+  // แถบโทรของหน้าอังกฤษเป็นลิงก์ tel: ธรรมดา ใช้ได้แม้ออฟไลน์
+  await expect(form.locator('a[href="tel:1669"]:visible').first()).toBeVisible();
+  const hotlines = await context.newPage();
+  await hotlines.goto("/en/hotlines");
+  await expect(
+    hotlines.getByRole("heading", { name: "Emergency hotlines in Thailand" }),
+  ).toBeVisible();
+  await expect(hotlines.getByTestId("hotline-1155")).toContainText("Tourist Police");
+  await expect(hotlines.getByRole("link", { name: "Call 1155" })).toHaveAttribute(
+    "href",
+    "tel:1155",
+  );
+});
+
 test("TF-46 เปิดหน้าแรกและเลือก SOS ขณะออฟไลน์", async ({ page, context }) => {
   await offlineReady(page);
   await context.setOffline(true);
@@ -100,9 +124,13 @@ test("ไม่แคชข้อมูลบัญชี เคส หรือ
     }
     return result;
   });
-  expect(urls).toEqual(expect.arrayContaining(["/request", "/hotlines", "/survival"]));
+  expect(urls).toEqual(
+    expect.arrayContaining(["/request", "/hotlines", "/survival", "/en/request", "/en/hotlines"]),
+  );
   expect(urls.some((url) => /\.(?:woff2?|ttf|otf)$/i.test(url))).toBe(false);
-  expect(urls.some((url) => /^\/(api|auth|track|admin|unit|my-cases)(\/|$)/.test(url))).toBe(false);
+  expect(urls.some((url) => /^(\/en)?\/(api|auth|track|admin|unit|my-cases)(\/|$)/.test(url))).toBe(
+    false,
+  );
 });
 
 test("Android กดติดตั้งได้ และการปิดแถบจำไว้ครบ 7 วัน", async ({ browser, baseURL }) => {

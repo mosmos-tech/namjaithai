@@ -11,7 +11,7 @@ const COLLAPSE_OFFICIAL_SOURCE =
 
 export const collapse: IncidentDefinition = {
   code: IncidentType.COLLAPSE,
-  label: { th: "อาคารถล่ม / ติดใต้ซาก" },
+  label: { th: "อาคารถล่ม / ติดใต้ซาก", en: "Building collapse / trapped under debris" },
   // TF-66: หัวข้อตัวนับคนในขั้นรายละเอียดเหตุ
   peopleLabel: { th: "จำนวนผู้ติดค้าง", en: "People trapped" },
   icon: "Building2",
@@ -65,7 +65,10 @@ export const collapse: IncidentDefinition = {
     ...UNIVERSAL_DANGER_SIGNS,
     {
       key: "TRAPPED_UNDER_DEBRIS",
-      label: { th: "มีคนติดอยู่ใต้ซากอาคารหรือดินถล่ม" },
+      label: {
+        th: "มีคนติดอยู่ใต้ซากอาคารหรือดินถล่ม",
+        en: "Someone is trapped under building debris or a landslide",
+      },
       source: COLLAPSE_OFFICIAL_SOURCE,
     },
   ],
@@ -80,18 +83,21 @@ export const collapse: IncidentDefinition = {
     {
       text: {
         th: "ประเมินความปลอดภัยก่อนเข้าช่วย ระวังโครงสร้างทรุดตัวซ้ำ เสาไฟ หรือสายไฟที่ขาด",
+        en: "Check that it is safe before helping. Watch for further collapse, electric poles, or broken power lines.",
       },
       source: COLLAPSE_OFFICIAL_SOURCE,
     },
     {
       text: {
         th: "หากติดใต้ซาก ให้ใช้ผ้าปิดจมูกและปาก เคาะท่อหรือผนังเป็นจังหวะเพื่อให้สัญญาณ หลีกเลี่ยงการตะโกนต่อเนื่องเพื่อไม่ให้สูดฝุ่น",
+        en: "If you are trapped under debris, cover your nose and mouth with cloth and tap on a pipe or wall in a rhythm to signal. Avoid shouting continuously so you do not breathe in dust.",
       },
       source: COLLAPSE_OFFICIAL_SOURCE,
     },
     {
       text: {
         th: "ห้ามจุดไฟแช็กหรือไม้ขีดไฟเด็ดขาด เพราะอาจมีแก๊สรั่วไหลใต้ซากปรักหักพัง",
+        en: "Never light a lighter or a match, because gas may be leaking under the debris.",
       },
       source: COLLAPSE_OFFICIAL_SOURCE,
     },

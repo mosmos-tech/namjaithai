@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { trackPath } from "@/lib/domain";
 import { readDeviceCases } from "../device-cases";
 import { ConfirmationActions } from "./ConfirmationActions";
+import { useI18n } from "../../../lib/i18n/I18nProvider";
+import { localePath } from "../../../lib/i18n/locale";
 
 type AccountState = "loading" | "device" | "owner" | "signed_out" | "other" | "error";
 
@@ -18,6 +20,7 @@ export function ReporterAccountConfirmation({
   onChanged: () => void;
 }) {
   const [state, setState] = useState<AccountState>("loading");
+  const { t, locale } = useI18n();
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -49,34 +52,33 @@ export function ReporterAccountConfirmation({
 
   if (state === "loading" || state === "device") return null;
   if (state === "owner") return <ConfirmationActions caseCode={caseCode} onChanged={onChanged} />;
-  if (state === "error")
-    return <p role="alert">ตรวจสอบสิทธิ์ยืนยันไม่สำเร็จ กรุณาโหลดหน้าอีกครั้ง</p>;
-  const next = trackPath(caseCode, trackingToken);
+  if (state === "error") return <p role="alert">{t.confirm.checkFailed}</p>;
+  const next = localePath(trackPath(caseCode, trackingToken), locale);
   return (
     <section
       className="rounded-[14px] border border-amber-400 bg-amber-50 p-5"
-      aria-label="ยืนยันด้วยบัญชี LINE"
+      aria-label={t.confirm.lineRegionLabel}
     >
-      <h2 className="font-heading text-xl font-bold">ยืนยันการช่วยเหลือ</h2>
+      <h2 className="font-heading text-xl font-bold">{t.confirm.lineHeading}</h2>
       {state === "signed_out" ? (
         <>
-          <p className="mt-2">หากแจ้งเคสขณะเข้าสู่ระบบ LINE ให้ใช้บัญชีเดียวกันเพื่อยืนยัน</p>
+          <p className="mt-2">{t.confirm.lineSignedOut}</p>
           <Link
             className="mt-4 inline-flex min-h-12 items-center rounded-full bg-green-700 px-6 font-bold text-white"
             href={`/auth/line?next=${encodeURIComponent(next)}`}
           >
-            เข้าสู่ระบบด้วย LINE
+            {t.confirm.lineLogin}
           </Link>
         </>
       ) : (
         <>
-          <p className="mt-2">บัญชีนี้ไม่ใช่บัญชีที่ใช้แจ้งเคส กรุณาใช้บัญชี LINE ที่แจ้งเคส</p>
+          <p className="mt-2">{t.confirm.lineOtherAccount}</p>
           <form action="/auth/logout" method="post">
             <button className="mt-4 min-h-12 rounded-full border px-6 font-bold" type="submit">
-              ออกจากระบบ
+              {t.confirm.logout}
             </button>
           </form>
-          <p className="mt-2">หลังออกจากระบบ ให้เปิดลิงก์จาก LINE อีกครั้ง</p>
+          <p className="mt-2">{t.confirm.reopenFromLine}</p>
         </>
       )}
     </section>

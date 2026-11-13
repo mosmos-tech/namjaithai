@@ -30,6 +30,8 @@ type Job = {
   district?: string | null;
   province?: string | null;
   created_at: string;
+  /** TF-63: ภาษาฟอร์มที่ผู้แจ้งใช้ (แถวรุ่นก่อน TF-63 ไม่มี = ไทย) */
+  reporter_locale?: "th" | "en" | null;
 };
 
 type MemberJob = {
@@ -162,6 +164,7 @@ export async function deliverLineNotifications(config: LineWorkerConfig): Promis
         district: job.district ?? null,
         province: job.province ?? null,
         origin,
+        locale: job.reporter_locale === "en" ? ("en" as const) : ("th" as const),
       };
       return {
         to: job.line_user_id,

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { TrackCaseView } from "@/features/sos/components/TrackCaseView";
+import { TrackCaseView, TrackLoading } from "@/features/sos/components/TrackCaseView";
 
 export const metadata: Metadata = {
   title: "สถานะเคส — น้ำใจไทย SOS",
@@ -15,13 +15,5 @@ export default function TrackCasePage({ params, searchParams }: PageProps<"/trac
     <Suspense fallback={<TrackLoading />}>
       <TrackCaseView params={params} searchParams={searchParams} />
     </Suspense>
-  );
-}
-
-function TrackLoading() {
-  return (
-    <div className="text-text-secondary mx-auto max-w-2xl px-4 py-12 text-center text-lg sm:px-6">
-      กำลังโหลดสถานะเคส…
-    </div>
   );
 }

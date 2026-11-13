@@ -12,17 +12,25 @@ import {
   INCIDENT_REGISTRY,
   UNIVERSAL_DANGER_SIGNS,
   LocationSource,
-  INACCURATE_LOCATION_MESSAGE,
-  ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE,
   accuracyForLocationSource,
   isInaccurateGps,
   isQuestionVisible,
   locationSourceSchema,
+  normalizePhoneInput,
   type LocatedArea,
   type IncidentDetailValue,
   type WebLocationSource,
 } from "../../lib/domain";
 import { MAX_PHOTO_BYTES, MAX_SOS_PHOTOS } from "./image-compression";
+import { format, pickText } from "../../lib/i18n/locale";
+import { SOS_TEXT_TH, type SosText } from "./sos-text";
+
+/**
+ * ข้อความจาก zod schema ใน src/lib/domain เป็นภาษาไทย — หน้าไทยใช้ตามเดิม หน้าอังกฤษใช้ข้อความจาก dictionary
+ */
+function schemaMessage(thMessage: string | undefined, fallback: string, t: SosText): string {
+  return t.locale === "th" ? (thMessage ?? fallback) : fallback;
+}
 
 export const SOS_DRAFT_STORAGE_KEY = "namjaithai-sos-draft-v2";
 
@@ -260,6 +268,7 @@ export interface Step1ValidationErrors {
 export function validateStep1Draft(
   draft: Pick<SosDraft, "incidentType" | "atScene">,
   enabledTypes?: readonly IncidentType[],
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   errors: Step1ValidationErrors;
@@ -274,16 +283,16 @@ export function validateStep1Draft(
   if (!result.success) {
     for (const issue of result.error.issues) {
       if (issue.path[0] === "atScene" && !errors.atScene) {
-        errors.atScene = issue.message;
-        errors.missingSummary.push("อยู่ที่จุดเกิดเหตุ");
+        errors.atScene = schemaMessage(issue.message, t.v.atSceneOnly, t);
+        errors.missingSummary.push(t.v.sumAtScene);
       } else if (issue.path[0] === "incidentType" && !errors.incidentType) {
-        errors.incidentType = issue.message;
-        errors.missingSummary.push("ประเภทเหตุ");
+        errors.incidentType = schemaMessage(issue.message, t.v.incidentInvalid, t);
+        errors.missingSummary.push(t.v.sumIncident);
       }
     }
   } else if (enabledTypes && !enabledTypes.includes(draft.incidentType ?? IncidentType.FLOOD)) {
-    errors.incidentType = "กรุณาเลือกประเภทเหตุ";
-    errors.missingSummary.push("ประเภทเหตุ");
+    errors.incidentType = t.v.incidentRequired;
+    errors.missingSummary.push(t.v.sumIncident);
   }
 
   return {
@@ -308,23 +317,24 @@ export interface Step2ValidationErrors {
 function validateDangerAnswers(
   draft: Pick<SosDraft, "dangerSigns" | "canSelfEvacuate" | "waterLevel">,
   errors: Step2ValidationErrors,
+  t: SosText,
 ): void {
   const validWaterLevels = Object.values(WaterLevel) as string[];
 
   if (!Array.isArray(draft.dangerSigns)) {
-    errors.dangerSigns = 'กรุณาเลือกข้อที่ตรง หรือกด "ไม่มีข้อใดเลย"';
-    errors.missingSummary.push("สัญญาณอันตราย");
+    errors.dangerSigns = t.v.dangerRequired;
+    errors.missingSummary.push(t.v.sumDanger);
   }
 
   if (typeof draft.canSelfEvacuate !== "boolean") {
-    errors.canSelfEvacuate = "กรุณาตอบว่าออกจากที่นั่นเองได้ไหม";
-    errors.missingSummary.push("ออกเองได้ไหม");
+    errors.canSelfEvacuate = t.v.selfEvacRequired;
+    errors.missingSummary.push(t.v.sumSelfEvac);
   }
 
   // ระดับน้ำไม่บังคับ ผิดได้แค่กรณีค่าไม่อยู่ในรายการ
   if (draft.waterLevel && !validWaterLevels.includes(draft.waterLevel)) {
-    errors.waterLevel = "ไม่มีตัวเลือกระดับน้ำนี้";
-    errors.missingSummary.push("ระดับน้ำ");
+    errors.waterLevel = t.v.waterLevelInvalid;
+    errors.missingSummary.push(t.v.sumWaterLevel);
   }
 
   if (errors.missingSummary.length === 0) {
@@ -336,8 +346,8 @@ function validateDangerAnswers(
         waterLevel: draft.waterLevel,
       });
     if (!result.success) {
-      errors.dangerSigns = result.error.issues[0]?.message ?? "ไม่มีตัวเลือกนี้";
-      errors.missingSummary.push("สัญญาณอันตราย");
+      errors.dangerSigns = schemaMessage(result.error.issues[0]?.message, t.v.dangerInvalid, t);
+      errors.missingSummary.push(t.v.sumDanger);
     }
   }
 }
@@ -368,6 +378,7 @@ export function validateStep3Draft(
     | "subdistrict"
     | "landmark"
   >,
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   errors: Step3ValidationErrors;
@@ -403,31 +414,32 @@ export function validateStep3Draft(
   };
 
   if (typeof draft.lat !== "number" || typeof draft.lng !== "number") {
-    errors.location = "กรุณาดึงพิกัด GPS หรือแตะปักหมุดตำแหน่งบนแผนที่";
-    errors.missingSummary.push("พิกัดตำแหน่ง");
+    errors.location = t.v.locationRequired;
+    errors.missingSummary.push(t.v.sumLocation);
   } else if (needsPinOrFallback) {
-    errors.location = INACCURATE_LOCATION_MESSAGE;
-    errors.missingSummary.push("พิกัดตำแหน่ง");
+    errors.location = t.v.locationInaccurate;
+    errors.missingSummary.push(t.v.sumLocation);
   } else {
     const latCheck = latSchema.safeParse(draft.lat);
     const lngCheck = lngSchema.safeParse(draft.lng);
     if (!latCheck.success || !lngCheck.success) {
-      errors.location =
-        latCheck.error?.issues[0]?.message ??
-        lngCheck.error?.issues[0]?.message ??
-        "พิกัดอยู่นอกประเทศไทย";
-      errors.missingSummary.push("พิกัดตำแหน่ง");
+      errors.location = schemaMessage(
+        latCheck.error?.issues[0]?.message ?? lngCheck.error?.issues[0]?.message,
+        t.v.locationOutsideThailand,
+        t,
+      );
+      errors.missingSummary.push(t.v.sumLocation);
     }
   }
 
   if (needsAddress) {
-    errors.addressLine = ADDRESS_REQUIRED_FOR_INACCURATE_GPS_MESSAGE;
-    errors.missingSummary.push("ที่อยู่");
+    errors.addressLine = t.v.addressRequired;
+    errors.missingSummary.push(t.v.sumAddress);
   }
 
   if (!draft.landmark || draft.landmark.trim().length === 0) {
-    errors.landmark = "กรุณาระบุจุดสังเกต เช่น สีหลังคา จำนวนชั้น หรือสถานที่ใกล้เคียง";
-    errors.missingSummary.push("จุดสังเกต");
+    errors.landmark = t.v.landmarkRequired;
+    errors.missingSummary.push(t.v.sumLandmark);
   }
 
   return {
@@ -521,31 +533,35 @@ export function getGpsStatusMessage(params: {
   lng?: number;
   accuracyM?: number;
   gpsError?: GpsErrorCode | null;
-}): GpsStatusBanner | null {
+}, t: SosText = SOS_TEXT_TH): GpsStatusBanner | null {
   if (params.gpsError === "PERMISSION_DENIED") {
     return {
       tone: "warning",
-      desktopText:
-        "ไม่ได้รับอนุญาตให้ใช้ GPS · คุณยังสามารถแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเองได้",
-      mobileText: "ไม่อนุญาต GPS · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+      desktopText: t.gps.deniedDesktop,
+      mobileText: t.gps.deniedMobile,
     };
   }
 
   if (params.gpsError) {
     return {
       tone: "warning",
-      desktopText: "ดึงพิกัด GPS ไม่สำเร็จ · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดตำแหน่งเอง",
-      mobileText: "ดึง GPS ไม่สำเร็จ · แตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเองได้",
+      desktopText: t.gps.failedDesktop,
+      mobileText: t.gps.failedMobile,
     };
   }
 
   if (typeof params.lat === "number" && typeof params.lng === "number") {
     if (isInaccurateGps(params.accuracyM)) {
-      const rounded = Math.round(params.accuracyM!).toLocaleString("th-TH");
+      const rounded = Math.round(params.accuracyM!).toLocaleString(
+        t.locale === "en" ? "en-US" : "th-TH",
+      );
       return {
         tone: "error",
-        desktopText: `${INACCURATE_LOCATION_MESSAGE} (คลาดเคลื่อน ±${rounded} เมตร)`,
-        mobileText: INACCURATE_LOCATION_MESSAGE,
+        desktopText: format(t.gps.inaccurateDesktop, {
+          message: t.v.locationInaccurate,
+          meters: rounded,
+        }),
+        mobileText: t.v.locationInaccurate,
       };
     }
 
@@ -553,8 +569,8 @@ export function getGpsStatusMessage(params: {
       const rounded = Math.round(params.accuracyM!);
       return {
         tone: "warning",
-        desktopText: `ความแม่นยำ ±${rounded} เมตร (คลาดเคลื่อนเกิน 100 ม.) · กรุณาแตะหรือลากหมุดบนแผนที่เพื่อปักหมุดเพิ่มให้ตรงจุด`,
-        mobileText: `ความแม่นยำ ±${rounded} ม. (เกิน 100 ม.) กรุณาเลื่อนหมุดปักหมุดเพิ่มบนแผนที่`,
+        desktopText: format(t.gps.lowDesktop, { meters: rounded }),
+        mobileText: format(t.gps.lowMobile, { meters: rounded }),
       };
     }
 
@@ -562,15 +578,15 @@ export function getGpsStatusMessage(params: {
       const rounded = Math.round(params.accuracyM);
       return {
         tone: "success",
-        desktopText: `ได้ตำแหน่งแล้ว · แม่นยำ ±${rounded} เมตร · ลากหมุดบนแผนที่เพื่อปรับได้`,
-        mobileText: `ได้ตำแหน่งแล้ว (แม่นยำ ±${rounded} ม.)`,
+        desktopText: format(t.gps.okDesktop, { meters: rounded }),
+        mobileText: format(t.gps.okMobile, { meters: rounded }),
       };
     }
 
     return {
       tone: "success",
-      desktopText: "ปักหมุดตำแหน่งแล้ว · ลากหมุดบนแผนที่เพื่อปรับได้",
-      mobileText: "ปักหมุดตำแหน่งแล้ว",
+      desktopText: t.gps.pinnedDesktop,
+      mobileText: t.gps.pinnedMobile,
     };
   }
 
@@ -606,6 +622,7 @@ export function validateStep2Draft(
         "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured" | "dangerSigns"
       >
     >,
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   totalPeople: number;
@@ -614,8 +631,8 @@ export function validateStep2Draft(
   const errors: Step2ValidationErrors = {
     missingSummary: [],
   };
-  validateDangerAnswers(draft, errors);
-  const people = validatePeopleAndQuestions(draft);
+  validateDangerAnswers(draft, errors, t);
+  const people = validatePeopleAndQuestions(draft, t);
   errors.missingSummary.push(...people.errors.missingSummary);
   if (people.errors.totalPeople) errors.totalPeople = people.errors.totalPeople;
   if (people.errors.questionErrors) errors.questionErrors = people.errors.questionErrors;
@@ -635,6 +652,7 @@ function validatePeopleAndQuestions(
     Partial<
       Pick<SosDraft, "incidentType" | "details" | "canSelfEvacuate" | "waterLevel" | "hasInjured">
     >,
+  t: SosText,
 ): {
   valid: boolean;
   totalPeople: number;
@@ -695,8 +713,9 @@ function validatePeopleAndQuestions(
     const isEmpty = val === undefined || val === "" || (Array.isArray(val) && val.length === 0);
 
     if (q.required && isEmpty) {
-      questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
-      errors.missingSummary.push(q.label.th);
+      const label = pickText(q.label, t.locale);
+      questionErrors[q.key] = format(t.v.questionRequired, { label });
+      errors.missingSummary.push(label);
       continue;
     }
 
@@ -708,37 +727,44 @@ function validatePeopleAndQuestions(
             val.length === 0 ||
             !val.every((v) => typeof v === "string" && q.options.some((o) => o.value === v))
           ) {
-            questionErrors[q.key] = `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`;
-            errors.missingSummary.push(q.label.th);
+            questionErrors[q.key] = format(t.v.questionChoiceInvalid, { label: pickText(q.label, t.locale) });
+            errors.missingSummary.push(pickText(q.label, t.locale));
           }
         } else {
           if (typeof val !== "string" || !q.options.some((o) => o.value === val)) {
-            questionErrors[q.key] = `ตัวเลือกของ "${q.label.th}" ไม่ถูกต้อง`;
-            errors.missingSummary.push(q.label.th);
+            questionErrors[q.key] = format(t.v.questionChoiceInvalid, { label: pickText(q.label, t.locale) });
+            errors.missingSummary.push(pickText(q.label, t.locale));
           }
         }
       } else if (q.kind === "number") {
         if (typeof val !== "number" || !Number.isInteger(val) || val < q.min || val > q.max) {
-          questionErrors[q.key] = `กรุณาระบุ "${q.label.th}" เป็นตัวเลขระหว่าง ${q.min}–${q.max}`;
-          errors.missingSummary.push(q.label.th);
+          questionErrors[q.key] = format(t.v.questionNumberRange, {
+            label: pickText(q.label, t.locale),
+            min: q.min,
+            max: q.max,
+          });
+          errors.missingSummary.push(pickText(q.label, t.locale));
         }
       } else if (q.kind === "boolean") {
         if (typeof val !== "boolean") {
-          questionErrors[q.key] = `กรุณาตอบคำถาม "${q.label.th}"`;
-          errors.missingSummary.push(q.label.th);
+          questionErrors[q.key] = format(t.v.questionRequired, { label: pickText(q.label, t.locale) });
+          errors.missingSummary.push(pickText(q.label, t.locale));
         }
       } else if (q.kind === "text") {
         if (typeof val !== "string" || val.length > q.maxLength) {
-          questionErrors[q.key] = `"${q.label.th}" ต้องไม่เกิน ${q.maxLength} ตัวอักษร`;
-          errors.missingSummary.push(q.label.th);
+          questionErrors[q.key] = format(t.v.questionTextTooLong, {
+            label: pickText(q.label, t.locale),
+            max: q.maxLength,
+          });
+          errors.missingSummary.push(pickText(q.label, t.locale));
         }
       }
     }
   }
 
   if (!result.success) {
-    errors.totalPeople = "ต้องมีผู้ติดค้างอย่างน้อย 1 คน (ไม่นับรวมสัตว์เลี้ยง)";
-    errors.missingSummary.push("จำนวนผู้ติดค้างอย่างน้อย 1 คน");
+    errors.totalPeople = t.v.peopleRequired;
+    errors.missingSummary.push(t.v.sumPeople);
   }
 
   if (Object.keys(questionErrors).length > 0) {
@@ -769,7 +795,10 @@ export interface Step4ValidationErrors {
  * ตรวจสอบข้อมูลขั้นที่ 4 (สิ่งที่ต้องการ) ด้วย step4Schema จาก src/lib/domain
  * เกณฑ์ผ่าน: เมื่อเลือก "อื่นๆ (พิมพ์เอง)" ต้องพิมพ์รายละเอียด (1–200 ตัวอักษร) ก่อนไปขั้นถัดไป
  */
-export function validateStep4Draft(draft: Pick<SosDraft, "needs" | "otherDetail">): {
+export function validateStep4Draft(
+  draft: Pick<SosDraft, "needs" | "otherDetail">,
+  t: SosText = SOS_TEXT_TH,
+): {
   valid: boolean;
   errors: Step4ValidationErrors;
 } {
@@ -780,8 +809,8 @@ export function validateStep4Draft(draft: Pick<SosDraft, "needs" | "otherDetail"
       return {
         valid: false,
         errors: {
-          otherDetail: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ก่อนไปขั้นถัดไป",
-          missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ"],
+          otherDetail: t.v.otherDetailRequired,
+          missingSummary: [t.v.sumOtherDetail],
         },
       };
     }
@@ -790,8 +819,8 @@ export function validateStep4Draft(draft: Pick<SosDraft, "needs" | "otherDetail"
       return {
         valid: false,
         errors: {
-          otherDetail: "รายละเอียดสิ่งที่ต้องการอื่นๆ ต้องไม่เกิน 200 ตัวอักษร",
-          missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ ไม่เกิน 200 ตัวอักษร"],
+          otherDetail: t.v.otherDetailTooLong,
+          missingSummary: [t.v.sumOtherDetailTooLong],
         },
       };
     }
@@ -812,8 +841,8 @@ export function validateStep4Draft(draft: Pick<SosDraft, "needs" | "otherDetail"
   return {
     valid: false,
     errors: {
-      otherDetail: "กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ก่อนไปขั้นถัดไป",
-      missingSummary: ["รายละเอียดสิ่งที่ต้องการอื่นๆ"],
+      otherDetail: t.v.otherDetailRequired,
+      missingSummary: [t.v.sumOtherDetail],
     },
   };
 }
@@ -841,6 +870,7 @@ export function validateStep5Draft(
     consent?: boolean;
     healthConsent?: boolean;
   },
+  t: SosText = SOS_TEXT_TH,
 ): {
   valid: boolean;
   normalizedPhone?: string;
@@ -852,19 +882,19 @@ export function validateStep5Draft(
 
   const trimmedName = draft.name?.trim() ?? "";
   if (trimmedName.length === 0) {
-    errors.name = "กรุณาระบุชื่อผู้แจ้งหรือผู้ติดต่อ";
-    errors.missingSummary.push("ชื่อผู้แจ้ง");
+    errors.name = t.v.nameRequired;
+    errors.missingSummary.push(t.v.sumName);
   }
 
   const cleanedPhone = (draft.phone ?? "").replace(/[\s\-]/g, "");
   if (cleanedPhone.length === 0) {
-    errors.phone = "กรุณาระบุเบอร์โทรศัพท์สำหรับติดต่อกลับ";
-    errors.missingSummary.push("เบอร์โทรศัพท์");
+    errors.phone = t.v.phoneRequired;
+    errors.missingSummary.push(t.v.sumPhone);
   }
 
   if ((draft.notes ?? "").length > 500) {
-    errors.notes = "รายละเอียดเพิ่มเติมต้องไม่เกิน 500 ตัวอักษร";
-    errors.missingSummary.push("รายละเอียดเพิ่มเติมไม่เกิน 500 ตัวอักษร");
+    errors.notes = t.v.notesTooLong;
+    errors.missingSummary.push(t.v.sumNotesTooLong);
   }
 
   const parsed = step5Schema.safeParse({
@@ -878,34 +908,34 @@ export function validateStep5Draft(
     for (const issue of parsed.error.issues) {
       const field = issue.path[0];
       if (field === "name" && !errors.name) {
-        errors.name = issue.message;
-        errors.missingSummary.push("ชื่อผู้แจ้ง");
+        errors.name = schemaMessage(issue.message, t.v.nameRequired, t);
+        errors.missingSummary.push(t.v.sumName);
       } else if (field === "phone" && !errors.phone) {
-        errors.phone = issue.message;
-        errors.missingSummary.push("เบอร์โทรศัพท์ไทยที่ถูกต้อง");
+        errors.phone = schemaMessage(issue.message, t.v.phoneInvalid, t);
+        errors.missingSummary.push(t.v.sumPhoneInvalid);
       } else if (field === "notes" && !errors.notes) {
-        errors.notes = issue.message;
-        errors.missingSummary.push("รายละเอียดเพิ่มเติม");
+        errors.notes = schemaMessage(issue.message, t.v.notesTooLong, t);
+        errors.missingSummary.push(t.v.sumNotes);
       }
     }
   }
 
   if (draft.consent !== true) {
-    errors.consent = "กรุณายินยอมก่อนส่งคำขอ";
-    errors.missingSummary.push("ความยินยอมในการใช้ข้อมูล");
+    errors.consent = t.v.consentRequired;
+    errors.missingSummary.push(t.v.sumConsent);
   }
   if (draft.healthConsent !== true) {
-    errors.healthConsent = "กรุณายินยอมให้ใช้ข้อมูลสุขภาพ";
-    errors.missingSummary.push("ความยินยอมข้อมูลสุขภาพ");
+    errors.healthConsent = t.v.healthConsentRequired;
+    errors.missingSummary.push(t.v.sumHealthConsent);
   }
 
   const photos = draft.photos ?? [];
   if (photos.length > MAX_SOS_PHOTOS) {
-    errors.photos = `แนบรูปได้ไม่เกิน ${MAX_SOS_PHOTOS} รูป`;
-    errors.missingSummary.push(`รูปถ่ายไม่เกิน ${MAX_SOS_PHOTOS} รูป`);
+    errors.photos = format(t.v.photosTooMany, { max: MAX_SOS_PHOTOS });
+    errors.missingSummary.push(format(t.v.sumPhotosTooMany, { max: MAX_SOS_PHOTOS }));
   } else if (photos.some((p) => p.compressedBytes > MAX_PHOTO_BYTES)) {
-    errors.photos = "มีรูปถ่ายที่ขนาดเกิน 500 KB กรุณาลบแล้วเลือกใหม่";
-    errors.missingSummary.push("ขนาดรูปไม่เกิน 500 KB");
+    errors.photos = t.v.photoTooLarge;
+    errors.missingSummary.push(t.v.sumPhotoTooLarge);
   }
 
   const valid =
@@ -1197,8 +1227,8 @@ export function subscribeSosDraft(listener: () => void): () => void {
 /**
  * สร้างข้อความแสดงความคืบหน้า เช่น "ขั้นที่ 1 จาก 5"
  */
-export function formatStepProgressText(step: SosStepNumber): string {
-  return `ขั้นที่ ${step} จาก ${SOS_STEPS.length}`;
+export function formatStepProgressText(step: SosStepNumber, t: SosText = SOS_TEXT_TH): string {
+  return format(t.stepProgress, { step, total: SOS_STEPS.length });
 }
 
 export type SubmitSosDraftResult =
@@ -1273,6 +1303,8 @@ export interface SubmitSosDraftOptions {
   generateIdempotencyKey?: () => string;
   timeoutMs?: number;
   photoTimeoutMs?: number;
+  /** TF-63: ข้อความตามภาษาของหน้า และภาษาผู้แจ้งที่เก็บกับเคส (reporter_locale) */
+  text?: SosText;
 }
 
 interface CaseSubmitApiResponse {
@@ -1358,59 +1390,69 @@ export async function submitSosDraft(
       generateIdempotencyKey = () => crypto.randomUUID(),
       timeoutMs = SOS_SUBMIT_TIMEOUT_MS,
       photoTimeoutMs = SOS_PHOTO_UPLOAD_TIMEOUT_MS,
+      text: t = SOS_TEXT_TH,
     } = options;
+    const list = (items: string[], joiner: string) => items.join(joiner);
 
-    const check5 = validateStep5Draft(draft);
+    const check5 = validateStep5Draft(draft, t);
     if (!check5.valid) {
       return {
         status: "invalid_step",
         step: 5,
         step5Errors: check5.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาตรวจสอบ: ${check5.errors.missingSummary.join(", ")}`,
+        error: format(t.submit.invalidStep5, {
+          items: list(check5.errors.missingSummary, t.listComma),
+        }),
       };
     }
 
-    const check1 = validateStep1Draft(draft);
+    const check1 = validateStep1Draft(draft, undefined, t);
     if (!check1.valid) {
       return {
         status: "invalid_step",
         step: 1,
         step1Errors: check1.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาตอบ${check1.errors.missingSummary.join("และ")} ในขั้นที่ 1`,
+        error: format(t.submit.invalidStep1, {
+          items: list(check1.errors.missingSummary, t.listAnd),
+        }),
       };
     }
 
-    const check2 = validateStep2Draft(draft);
+    const check2 = validateStep2Draft(draft, t);
     if (!check2.valid) {
       return {
         status: "invalid_step",
         step: 2,
         step2Errors: check2.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาตรวจสอบข้อมูลในขั้นที่ 2: ${check2.errors.missingSummary.join(", ")}`,
+        error: format(t.submit.invalidStep2, {
+          items: list(check2.errors.missingSummary, t.listComma),
+        }),
       };
     }
 
-    const check4 = validateStep4Draft(draft);
+    const check4 = validateStep4Draft(draft, t);
     if (!check4.valid) {
       return {
         status: "invalid_step",
         step: 4,
         step4Errors: check4.errors,
-        error: "ยังส่งคำขอไม่ได้ กรุณาระบุรายละเอียดสิ่งที่ต้องการอื่นๆ ในขั้นที่ 4",
+        error: t.submit.invalidStep4,
       };
     }
 
-    const check3 = validateStep3Draft(draft);
+    const check3 = validateStep3Draft(draft, t);
     if (!check3.valid || typeof draft.lat !== "number" || typeof draft.lng !== "number") {
       return {
         status: "invalid_step",
         step: 3,
         step3Errors: check3.errors,
-        error: `ยังส่งคำขอไม่ได้ กรุณาระบุ${check3.errors.missingSummary.join("และ")} ในขั้นที่ 3 ก่อนส่งคำขอ`,
+        error: format(t.submit.invalidStep3, {
+          items: list(check3.errors.missingSummary, t.listAnd),
+        }),
       };
     }
 
-    const normalizedPhone = check5.normalizedPhone ?? draft.phone.replace(/[\s\-]/g, "");
+    const normalizedPhone = check5.normalizedPhone ?? normalizePhoneInput(draft.phone);
     const idempotencyKey =
       draft.idempotencyKey && draft.idempotencyKey.trim().length > 0
         ? draft.idempotencyKey.trim()
@@ -1479,6 +1521,8 @@ export async function submitSosDraft(
       notes: nextDraft.notes || undefined,
       consent: nextDraft.consent,
       healthConsent: nextDraft.healthConsent,
+      // TF-63: ภาษาของฟอร์มที่ผู้แจ้งใช้ (กู้ภัยเห็นป้าย / ลิงก์ติดตามพาไปภาษานี้)
+      reporterLocale: t.locale,
     };
     const hasPhotos = nextDraft.photos.length > 0;
     const caseRequestBody = JSON.stringify(basePayload);
@@ -1512,9 +1556,8 @@ export async function submitSosDraft(
         }
         return {
           status: "api_error",
-          error:
-            data.error ??
-            "ไม่สามารถส่งคำขอได้ในขณะนี้ กรุณาลองใหม่อีกครั้งหรือโทรสายด่วน 1669 / 1784",
+          // ข้อความจากเซิร์ฟเวอร์เป็นภาษาไทย — หน้าอังกฤษใช้ข้อความกลางแทน
+          error: (t.locale === "th" ? data.error : undefined) ?? t.submit.apiError,
           idempotencyKey,
         };
       }
@@ -1523,7 +1566,7 @@ export async function submitSosDraft(
     } catch {
       return {
         status: "network_error",
-        error: "ไม่สามารถเชื่อมต่อเครือข่ายได้ ระบบบันทึกข้อมูลร่างไว้ในเครื่องแล้ว",
+        error: t.submit.networkError,
         idempotencyKey,
         requestBody: fullRequestBody,
       };
@@ -1558,7 +1601,7 @@ export async function submitSosDraft(
             photoResponse.status !== 429;
           if (isPermanent4xx) {
             photoWarning =
-              photoData.error ?? "ไม่สามารถแนบรูปได้ แต่ทีมกู้ภัยได้รับคำขอของคุณแล้ว";
+              (t.locale === "th" ? photoData.error : undefined) ?? t.submit.photoRejected;
           } else if (caseData.trackingToken) {
             return {
               status: "photo_pending",
@@ -1569,7 +1612,7 @@ export async function submitSosDraft(
               confirmationToken: photoData.confirmationToken ?? caseData.confirmationToken,
             };
           } else {
-            photoWarning = "ไม่สามารถแนบรูปได้ในขณะนี้ แต่ทีมกู้ภัยได้รับคำขอของคุณแล้ว";
+            photoWarning = t.submit.photoFailed;
           }
         }
       } catch {
@@ -1583,7 +1626,7 @@ export async function submitSosDraft(
             confirmationToken: caseData.confirmationToken,
           };
         }
-        photoWarning = "ไม่สามารถแนบรูปได้ในขณะนี้ แต่ทีมกู้ภัยได้รับคำขอของคุณแล้ว";
+        photoWarning = t.submit.photoFailed;
       }
     }
 
@@ -1597,7 +1640,12 @@ export async function submitSosDraft(
       trackingToken: finalCaseData.trackingToken,
       confirmationToken: finalCaseData.confirmationToken,
       idempotencyKey,
-      successMessage: `ส่งคำขอสำเร็จ รหัสเคสของคุณคือ ${finalCode}${photoWarning ? ` — ${photoWarning}` : ""}`,
+      successMessage: photoWarning
+        ? format(t.submit.successWithWarning, {
+            code: finalCode,
+            warning: t.locale === "th" ? photoWarning : t.submit.photoFailed,
+          })
+        : format(t.submit.success, { code: finalCode }),
     };
   } finally {
     inFlightRef.current = false;
