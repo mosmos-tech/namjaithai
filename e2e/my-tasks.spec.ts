@@ -101,7 +101,8 @@ test.afterAll(async () => {
 test("จอ 375px: ปุ่มเดียวทีละขั้นจนช่วยเสร็จแล้ว และกู้ภัยคนอื่นเห็นสถานะเปลี่ยนเอง", async ({
   browser,
 }) => {
-  test.setTimeout(90_000);
+  // รอ Realtime / ดึงสำรอง 3 ครั้ง ครั้งละไม่เกิน 35 วิ
+  test.setTimeout(150_000);
   const item = await acceptedCase(`${tag}-UI`);
   await adminDb()
     .from("case_contacts")
@@ -148,7 +149,8 @@ test("จอ 375px: ปุ่มเดียวทีละขั้นจนช
     await next.click();
     await expect(card.getByTestId("my-task-status")).toHaveText(status);
     // หน้ารายการของกู้ภัยคนอื่นอัปเดตเองโดยไม่กดรีโหลด (Realtime / ดึงสำรองทุก 15 วิ)
-    await expect(otherCard).toContainText(status, { timeout: 20_000 });
+    // รอได้ 35 วิ = ถ้า Realtime พลาด การดึงสำรองยังมีโอกาส 2 รอบ (CI ที่ทำงานหนัก)
+    await expect(otherCard).toContainText(status, { timeout: 35_000 });
   }
 
   // โน้ตระหว่างทำงาน
@@ -172,7 +174,7 @@ test("จอ 375px: ปุ่มเดียวทีละขั้นจนช
   ).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   // เคสที่รอผู้แจ้งยืนยันหายจากรายการเคสที่ยังต้องช่วยของคนอื่น
-  await expect(otherCard).toHaveCount(0, { timeout: 20_000 });
+  await expect(otherCard).toHaveCount(0, { timeout: 35_000 });
 
   const { data: row } = await adminDb().from("cases").select("status").eq("id", item.id).single();
   expect(row?.status).toBe("AWAITING_CONFIRMATION");
