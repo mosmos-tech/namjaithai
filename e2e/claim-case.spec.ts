@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { saveEvidence } from "./helpers/evidence";
 import { createServerClient } from "@supabase/ssr";
 import { adminDb, closeTestCases } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
@@ -154,6 +155,9 @@ test("จอ 375px: รับเคสแล้วเห็นปุ่มดู
     `หน่วย ${tag} หน่วยหนึ่ง รับเคสนี้ไปแล้ว`,
   );
   await expect(secondPage.getByRole("button", { name: "รับเคสนี้" })).toHaveCount(0);
+  // TF-39: รอหน้าโหลดใหม่จนปุ่ม "กำลังรับเคส…" หายด้วย (เดิมผ่านทั้งที่ปุ่มยังค้างอยู่)
+  await expect(secondPage.getByRole("button", { name: /รับเคส/ })).toHaveCount(0);
+  await saveEvidence(secondPage, "2-claim-race-loser", test.info());
   await expect(secondPage.getByText(first.displayName)).toHaveCount(0);
 
   // ปล่อยเคส: ต้องมีเหตุผล

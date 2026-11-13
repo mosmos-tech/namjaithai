@@ -113,14 +113,24 @@ npm run e2e             # รันทั้งหมดแบบไม่เห
 npm run e2e:headed      # เห็นเบราว์เซอร์กดทีละขั้น
 npm run e2e:ui          # UI mode: เลือก test, ดูทีละขั้น, ย้อนดูหน้าจอ
 npx playwright test e2e/auth.spec.ts --project=mobile   # รันเฉพาะไฟล์/ขนาดจอ
+npm run e2e:prod        # TF-39: build แล้วรันกับ production build (next start) แบบเดียวกับ CI
 ```
+
+**รันแบบเดียวกับ CI (`npm run e2e:prod`)** — CI รัน E2E กับ production build ไม่ใช่ dev server
+เพราะ dev server compile แต่ละหน้าตอนเปิดครั้งแรก (บน CI หน้า `/track/[code]` ราว 9 วินาที) test ที่บังเอิญเปิดหน้านั้นก่อนจึงล้มเป็นบางครั้ง
+
+1. ปิด `npm run dev` ก่อน แล้ว `npm run db:start` และ `npm run env:sync` ให้ `.env.local` ตรงกับ Supabase ในเครื่อง
+2. `npm run e2e:prod` = `npm run build` แล้ว `E2E_SERVER=production playwright test` (รันเฉพาะไฟล์: `npm run build` ครั้งเดียว แล้ว `E2E_SERVER=production npx playwright test e2e/<ไฟล์>.spec.ts`)
+3. ค่า `NEXT_PUBLIC_*` ถูกฝังตอน build — แก้ `.env.local` หรือ `db:reset` แล้วคีย์เปลี่ยน ต้อง build ใหม่ ถ้า build ใช้ URL/key คนละชุด `global-setup` จะหยุดพร้อมบอกให้ build ใหม่ (กัน MalformedJWT แบบ TF-68)
+4. ชุดนี้ปิด service worker ไว้ (`serviceWorkers: "block"`) — การทำงานออฟไลน์ทดสอบแยกใน `npm run e2e:pwa`
+5. ภาพหลักฐานเกณฑ์ขอบเขต (TF-39): `E2E_EVIDENCE=1 E2E_SERVER=production npx playwright test` เก็บภาพไว้ใน `test-results/evidence/` แล้วแปลงเป็น webp ลง `docs/e2e-scope/` (รันปกติไม่เขียนไฟล์) ดูขั้นตอนและตารางใน `docs/e2e-scope/README.md`
 
 - ต้องมี Google Chrome ในเครื่อง ครั้งแรกรัน `npx playwright install ffmpeg` (ใช้อัดวิดีโอตอน test ล้ม)
 - test ล้มแล้วดูวิดีโอ/ภาพหน้าจอได้ใน `test-results/` (ใน CI โหลดได้จาก Artifacts ของ job **e2e**)
 - ก่อนรัน ระบบล้างตัวนับ rate limit ในฐานข้อมูลในเครื่องให้ (`e2e/global-setup.ts`) และจะไม่ยอมรันถ้าชี้ไป Supabase ที่ไม่ใช่ในเครื่อง
 - **ห้ามเปิด `npm run dev` ค้างไว้ตอนรัน E2E** (TF-68): ถ้าพอร์ต 3000 ถูกใช้อยู่ Playwright จะหยุดพร้อมบอกวิธีปิด
 - คีย์ใน `.env.local` ไม่ตรงกับ Supabase ในเครื่อง E2E จะหยุดพร้อมบอกให้รัน `npm run env:sync` (ดูหัวข้อ "Realtime ในเครื่องตอบ MalformedJWT" ใน `docs/environments.md`)
-- ก่อนเริ่ม test ระบบเปิดหน้าหลักทุกหน้า 1 รอบให้ dev server compile ไว้ก่อน (เวลาแต่ละหน้าอยู่ในบรรทัด `[global-setup]`)
+- รันกับ dev server (`npm run e2e`): ก่อนเริ่ม test ระบบเปิดหน้าหลักทุกหน้า 1 รอบให้ compile ไว้ก่อน (เวลาแต่ละหน้าอยู่ในบรรทัด `[global-setup]`) — production build ไม่ต้อง
 - หน้าที่ต้องใช้ JS ให้รอ "กำลังโหลด..." หาย (`waitForSosFormReady`) หรือรอปุ่มกดได้ ห้ามใช้ `waitForTimeout`
 
 **เพิ่ม test ใหม่**

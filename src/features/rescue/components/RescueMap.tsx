@@ -736,6 +736,8 @@ export function RescueMap({
       <div
         data-testid="rescue-map-container"
         data-active-pins={visibleCases.length}
+        // TF-39: แผนที่สร้าง source/layer หมุดเสร็จแล้ว (หลัง style.load) — test รอค่านี้ก่อนเริ่มนับเวลาหมุดขึ้น
+        data-map-ready={sourceLoaded}
         className="border-border-default bg-bg-subtle relative h-[560px] w-full overflow-hidden rounded-[20px] border sm:h-[640px] lg:h-[720px]"
       >
         <div ref={containerRef} className="size-full" />

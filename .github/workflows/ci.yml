@@ -84,10 +84,16 @@ jobs:
       # ใช้ Google Chrome ที่มีในเครื่อง CI อยู่แล้ว โหลดเพิ่มแค่ ffmpeg สำหรับอัดวิดีโอ
       - run: npx playwright install ffmpeg
 
+      # TF-39: build ครั้งเดียวหลังเปิด Supabase และเขียน .env.local แล้ว (NEXT_PUBLIC_* ถูกฝังตอน build
+      # ต้องเป็น URL/key ของ Supabase ในเครื่อง CI ชุดนี้ ไม่งั้น Realtime ตอบ MalformedJWT — global-setup ตรวจซ้ำ)
+      - run: npm run build
+
+      # TF-39: รัน E2E กับ production build (next start) — dev server compile หน้าตอนเปิดครั้งแรกจน test ล้มเป็นบางครั้ง
       - run: npm run e2e
+        env:
+          E2E_SERVER: production
 
       # TF-41: service-worker/offline behavior must run against a production build.
-      - run: npm run build
       - run: npm run e2e:pwa
 
       - name: Upload videos and report

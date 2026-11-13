@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { saveEvidence } from "./helpers/evidence";
 import { expectStep, nextButton } from "./helpers/sos";
 
 /**
@@ -48,6 +49,7 @@ test("ฟอร์ม SOS ตอน JS ยังไม่มา: กำลัง
   await expect(help).toContainText("ถ้าเว็บโหลดช้า โทร 1669 หรือส่ง SMS ได้ทันที");
   await expectCallable(page, "โทร 1669", /^tel:1669$/);
   await expectCallable(page, "ส่ง SMS", /^sms:/);
+  await saveEvidence(page, "7-call-before-hydrate", test.info());
 
   // JS มาแล้ว: ข้อความโหลดหาย ฟอร์มใช้ได้
   release();

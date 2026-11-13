@@ -4,7 +4,8 @@ import { applySession, createAccount, deleteAccount, type TestAccount } from "./
 
 /**
  * TF-23 รายการเคสสำหรับกู้ภัย (/rescue/cases)
- * จอคอมกับมือถือรันพร้อมกัน จึงแยกข้อมูลคนละจังหวัด (ตราด / จันทบุรี) ไม่ให้เห็นเคสของกันและกัน
+ * จอคอมกับมือถือรันพร้อมกัน จึงแยกข้อมูลคนละจังหวัด (สกลนคร / นครพนม) ไม่ให้เห็นเคสของกันและกัน
+ * TF-39: ย้ายจาก ตราด / จันทบุรี ซึ่ง spec อื่นสร้างเคสเปิดไว้ตรงจุดกลางพอดี จนนับได้ 8 เคสแทน 4 — จังหวัดนี้ห้ามไฟล์อื่นใช้
  *
  * เคส (กู้ภัยอยู่ที่จุดศูนย์กลาง)
  *   C1 RED    NEW       ~1 กม.  รอ 2 ชม. 15 นาที  GPS ±16,238 ม.  ผู้ป่วยติดเตียง 1
@@ -16,8 +17,8 @@ import { applySession, createAccount, deleteAccount, type TestAccount } from "./
 test.describe.configure({ mode: "serial" });
 
 const CENTER: Record<string, { province: string; lat: number; lng: number }> = {
-  desktop: { province: "ตราด", lat: 12.24, lng: 102.52 },
-  mobile: { province: "จันทบุรี", lat: 12.61, lng: 102.1 },
+  desktop: { province: "สกลนคร", lat: 17.155, lng: 104.135 },
+  mobile: { province: "นครพนม", lat: 17.41, lng: 104.78 },
 };
 const SECRET_PHONE = "0899992323";
 const SECRET_NAME = "ชื่อลับ TF23";
