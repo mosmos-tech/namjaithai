@@ -3,6 +3,9 @@ type Params = Record<string, string | string[] | undefined>;
 export function parseStatsFilters(params: Params) {
   const value = (key: string) => (typeof params[key] === "string" ? (params[key] as string) : "");
   const province = value("province").trim();
+  // TF-38: ตัวกรองประเภทเหตุ (ชุดเดียวกับ CSV) · ข้อความ error ของการดาวน์โหลดที่ส่งกลับมา
+  const incident = value("incident").trim();
+  const exportError = value("exportError");
   const from = value("from");
   const to = value("to");
   const valid = (s: string) => {
@@ -15,5 +18,5 @@ export function parseStatsFilters(params: Params) {
     !valid(from) || !valid(to) || (from && to && from > to)
       ? "กรุณาเลือกช่วงวันที่ให้ถูกต้อง"
       : null;
-  return { province, from, to, error };
+  return { province, from, to, incident, exportError, error };
 }

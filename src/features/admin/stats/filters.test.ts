@@ -7,6 +7,8 @@ describe("ตัวกรองสถิติแอดมิน", () => {
       province: "ตราด",
       from: "2026-02-01",
       to: "2026-02-28",
+      incident: "",
+      exportError: "",
       error: null,
     });
   });
@@ -19,7 +21,14 @@ describe("ตัวกรองสถิติแอดมิน", () => {
       province: "",
       from: "",
       to: "",
+      incident: "",
+      exportError: "",
       error: null,
     });
+  });
+  it("TF-38: รับประเภทเหตุและข้อความ error ของการดาวน์โหลด", () => {
+    expect(
+      parseStatsFilters({ incident: "FIRE", exportError: "tooLong" }),
+    ).toMatchObject({ incident: "FIRE", exportError: "tooLong" });
   });
 });
