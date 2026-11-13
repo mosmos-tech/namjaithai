@@ -67,7 +67,10 @@ function rememberLocale(response: NextResponse, locale: Locale | undefined): Nex
 export async function proxy(request: NextRequest) {
   const language = firstVisitLocale(request);
   if (language.redirect) {
-    return rememberLocale(NextResponse.redirect(language.redirect), language.remember);
+    const session = await handleSession(request);
+    const redirect = NextResponse.redirect(language.redirect);
+    session.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return rememberLocale(redirect, language.remember);
   }
   return rememberLocale(await handleSession(request), language.remember);
 }
