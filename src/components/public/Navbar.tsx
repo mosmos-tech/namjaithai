@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ReporterText } from "@/lib/i18n/reporter-text";
 import { Logo } from "./Logo";
@@ -20,14 +20,17 @@ const serverNotReady = () => false;
 
 // account: คนที่ล็อกอินอยู่ (ส่งมาจาก NavbarWithAccount) — ไม่มี = ปุ่ม "เข้าสู่ระบบ"
 // text: ข้อความของหน้า /en (TF-63) ส่งมาจาก layout — ไม่ส่งมา = ภาษาไทย (ไม่ต้องโหลด dictionary)
+// languageSwitch: ปุ่มสลับภาษาของหน้าแรก (TF-63) แสดงนอกเมนู เห็นได้ทันทีทั้งจอคอมและมือถือ
 export function Navbar({
   account,
   text,
   homeHref = "/",
+  languageSwitch,
 }: {
   account?: { href: string } | null;
   text?: ReporterText["chrome"];
   homeHref?: string;
+  languageSwitch?: ReactNode;
 }) {
   const navLinks = text?.nav ?? NAV_LINKS;
   const accountHref = account?.href ?? "/login";
@@ -58,46 +61,50 @@ export function Navbar({
           ))}
         </div>
 
-        {/* Desktop login — outline */}
-        <div className="hidden md:block">
-          <Link
-            prefetch={false}
-            href={accountHref}
-            className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle active:bg-bg-subtle inline-flex h-12 items-center rounded-full border px-5 text-sm font-semibold transition-colors"
-          >
-            {accountLabel}
-          </Link>
-        </div>
+        <div className="flex items-center gap-2">
+          {languageSwitch}
 
-        {/* Mobile hamburger */}
-        <button
-          type="button"
-          disabled={!ready}
-          aria-label={open ? (text?.closeMenu ?? "ปิดเมนู") : (text?.openMenu ?? "เปิดเมนู")}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="text-text-primary hover:bg-primary-50 flex h-12 w-12 items-center justify-center rounded-full transition-colors md:hidden"
-        >
-          {open ? (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M4 4L16 16M16 4L4 16"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M3 5h14M3 10h14M3 15h14"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          )}
-        </button>
+          {/* Desktop login — outline */}
+          <div className="hidden md:block">
+            <Link
+              prefetch={false}
+              href={accountHref}
+              className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle active:bg-bg-subtle inline-flex h-12 items-center rounded-full border px-5 text-sm font-semibold transition-colors"
+            >
+              {accountLabel}
+            </Link>
+          </div>
+
+          {/* Mobile hamburger */}
+          <button
+            type="button"
+            disabled={!ready}
+            aria-label={open ? (text?.closeMenu ?? "ปิดเมนู") : (text?.openMenu ?? "เปิดเมนู")}
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="text-text-primary hover:bg-primary-50 flex h-12 w-12 items-center justify-center rounded-full transition-colors md:hidden"
+          >
+            {open ? (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M4 4L16 16M16 4L4 16"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M3 5h14M3 10h14M3 15h14"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}

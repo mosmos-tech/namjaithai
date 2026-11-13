@@ -33,7 +33,17 @@ export function HomeContent() {
                 SOS
               </span>
             </Link>
-            <p className="text-text-secondary mt-6">
+            {/* TF-63: นักท่องเที่ยว · <a> ธรรมดา (ข้ามไป App Router) กดได้ก่อน JS โหลด */}
+            <a
+              href="/en/request"
+              hrefLang="en"
+              lang="en"
+              data-testid="home-english-sos"
+              className="text-primary-700 mt-3 inline-flex min-h-12 items-center font-semibold underline"
+            >
+              Request help in English
+            </a>
+            <p className="text-text-secondary mt-3">
               เคยแจ้งไว้แล้ว?{" "}
               <Link className="text-primary-700 font-semibold underline" href="/track">
                 ติดตามเคสของฉัน
