@@ -61,6 +61,8 @@ test.describe("TF-65 ความแม่นยำของตำแหน่�
     const point = await openStep2WithGps(page, context, 30);
     await expect(map(page)).toHaveAttribute("data-pin-lat", String(point.lat));
     await expect(map(page)).toHaveAttribute("data-accuracy-radius-m", "30");
+    // TF-77: นโยบาย OSM บังคับแสดงเครดิตบนแผนที่
+    await expect(map(page).getByText("© OpenStreetMap contributors")).toBeVisible();
   });
 
   test("ปักหมุดไม่ได้ ส่งพร้อมที่อยู่แทน: ต้องกรอกที่อยู่ แล้วส่งได้ เก็บ GPS + accuracy เดิม", async ({

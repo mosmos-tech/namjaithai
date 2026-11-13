@@ -62,7 +62,8 @@ export default function TrackMap({ scene, team }: { scene: Point; team: Point | 
           style: OSM_RASTER_STYLE,
           center: [sceneLng, sceneLat],
           zoom: 14,
-          attributionControl: { compact: true },
+          // TF-77: เครดิต OSM ต้องเห็นตลอด (แบบ compact บนจอแคบยุบเหลือปุ่ม i)
+          attributionControl: { compact: false },
         });
         const reporter = document.createElement("div");
         reporter.dataset.testid = "track-reporter-pin";

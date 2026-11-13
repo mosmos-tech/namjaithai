@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      // TF-77: ทุกหน้าส่งให้เว็บอื่นได้แค่โดเมน ไม่ส่ง path/query (กัน token ใน URL รั่ว)
+      // หน้าติดตามเคสตั้ง strict-origin เพิ่มเองใน metadata — ห้ามใช้ no-referrer เพราะ OSM บังคับ Referer
+      {
+        source: "/:path*",
+        headers: [{ key: "Referrer-Policy", value: "strict-origin-when-cross-origin" }],
+      },
       {
         source: "/sw.js",
         headers: [
