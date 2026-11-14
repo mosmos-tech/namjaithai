@@ -86,7 +86,13 @@ test("หัวหน้าตั้งพิกัดด้วยลิงก�
           ?.location_lat,
     )
     .toBeCloseTo(18.79, 4);
-  await context.grantPermissions([]);
+  // จำลองคำตอบปฏิเสธจาก browser โดยตรง: การถอน permission หลังอนุญาตแล้ว
+  // มีพฤติกรรมต่างกันระหว่าง Chrome บน Windows และ Linux
+  await page.evaluate(() => {
+    navigator.geolocation.getCurrentPosition = (_success, error) => {
+      error?.({ code: 1, message: "Permission denied", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 });
+    };
+  });
   await panel.getByRole("button", { name: /ใช้ตำแหน่งปัจจุบัน/ }).click();
   await expect(panel.getByRole("alert")).toContainText("ใช้ GPS ไม่ได้หรือไม่ได้รับอนุญาต");
   await panel.getByLabel("ลิงก์ Google Maps").fill("https://www.google.com/maps?q=18.7883,98.9853");
