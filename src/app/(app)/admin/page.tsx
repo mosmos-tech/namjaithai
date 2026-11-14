@@ -20,12 +20,6 @@ export default function Page({ searchParams }: PageProps<"/admin">) {
         denied={searchParams.then((p) => p.denied === "1")}
       >
         <AdminStats searchParams={searchParams} />
-        <Link href="/admin/cases" className="inline-flex min-h-12 items-center underline">
-          จัดการเคส
-        </Link>
-        <Link href="/admin/audit" className="inline-flex min-h-12 items-center underline">
-          บันทึกการตรวจสอบ
-        </Link>
         <LineDeliveryNotice />
         <LeadConfirmationQueue />
         <PerformanceReviewQueue />

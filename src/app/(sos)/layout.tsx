@@ -6,9 +6,9 @@ import { Navbar } from "@/components/public/Navbar";
 export default function SosLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <header className="sticky top-0 z-50 hidden lg:block">
+      <header className="sticky top-0 z-50">
         <HotlineBar />
-        <Navbar />
+        <Navbar resolveAccount />
       </header>
       <main className="bg-bg-page flex-1">{children}</main>
     </>

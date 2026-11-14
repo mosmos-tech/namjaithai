@@ -28,6 +28,9 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
   await reopened.goto("/request");
   // TF-66: ขั้น 1 เลือกประเภทเหตุ (ใช้รายการที่จำไว้ในเครื่องตอนออนไลน์)
   await expect(reopened.getByRole("radio", { name: "น้ำท่วม" })).toBeVisible();
+  await expect(
+    reopened.getByRole("navigation").first().locator('a[href="/request"]').first(),
+  ).toHaveAttribute("aria-current", "page");
   await expect
     .poll(() =>
       reopened

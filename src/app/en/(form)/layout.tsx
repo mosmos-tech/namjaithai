@@ -7,9 +7,9 @@ export default function EnglishSosLayout({ children }: { children: React.ReactNo
   const chrome = REPORTER_TEXT_EN.chrome;
   return (
     <>
-      <header className="sticky top-0 z-50 hidden lg:block">
+      <header className="sticky top-0 z-50">
         <HotlineBar text={{ label: chrome.hotlineBarLabel, items: chrome.hotlineBar }} />
-        <Navbar text={chrome} homeHref="/en/hotlines" />
+        <Navbar text={chrome} homeHref="/en/hotlines" resolveAccount />
       </header>
       <main className="bg-bg-page flex-1">{children}</main>
     </>

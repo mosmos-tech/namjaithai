@@ -1,9 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import type { ReporterText } from "@/lib/i18n/reporter-text";
+import { homePathForRole, navigationForRole, type UserRole } from "@/lib/domain/roles";
 import { Logo } from "./Logo";
 
 const NAV_LINKS = [
@@ -17,6 +26,20 @@ const NAV_LINKS = [
 const subscribeHydration = () => () => {};
 const browserReady = () => true;
 const serverNotReady = () => false;
+const browserPath = () => window.location.pathname;
+const serverPath = () => "";
+
+const CurrentPath = lazy(() => import("./NavbarPath"));
+
+class PathBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 // account: คนที่ล็อกอินอยู่ (ส่งมาจาก NavbarWithAccount) — ไม่มี = ปุ่ม "เข้าสู่ระบบ"
 // text: ข้อความของหน้า /en (TF-63) ส่งมาจาก layout — ไม่ส่งมา = ภาษาไทย (ไม่ต้องโหลด dictionary)
@@ -26,24 +49,92 @@ export function Navbar({
   text,
   homeHref = "/",
   languageSwitch,
+  resolveAccount = false,
+  trackPath = true,
 }: {
-  account?: { href: string } | null;
+  account?: { href: string; role: UserRole } | null;
   text?: ReporterText["chrome"];
   homeHref?: string;
   languageSwitch?: ReactNode;
+  resolveAccount?: boolean;
+  trackPath?: boolean;
 }) {
-  const navLinks = text?.nav ?? NAV_LINKS;
-  const accountHref = account?.href ?? "/login";
-  const accountLabel = account ? (text?.myPage ?? "หน้าของฉัน") : (text?.signIn ?? "เข้าสู่ระบบ");
+  const [resolvedAccount, setResolvedAccount] = useState(account ?? null);
+  const [accountPending, setAccountPending] = useState(resolveAccount);
+  const [accountUnknown, setAccountUnknown] = useState(false);
+  const [pathname, setPathname] = useState<string | null>(null);
+  const initialPath = useSyncExternalStore(subscribeHydration, browserPath, serverPath);
+  useEffect(() => {
+    if (!resolveAccount) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setAccountUnknown(true);
+      setAccountPending(false);
+    }, 1500);
+    fetch("/api/auth/navigation", { cache: "no-store", signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("navigation unavailable");
+        return response.json();
+      })
+      .then((data: { role?: UserRole | null } | null) => {
+        setAccountUnknown(false);
+        const role = data?.role;
+        if (role && ["USER", "RESCUER", "UNIT_LEAD", "ADMIN"].includes(role)) {
+          setResolvedAccount({ role, href: homePathForRole(role) });
+        } else setResolvedAccount(null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setAccountUnknown(true);
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        if (!controller.signal.aborted) setAccountPending(false);
+      });
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [resolveAccount]);
+  const currentAccount = resolveAccount ? resolvedAccount : account;
+  const staffLinks = currentAccount ? navigationForRole(currentAccount.role) : [];
+  const isStaff = staffLinks.length > 0;
+  const navLinks = isStaff ? staffLinks : (text?.nav ?? NAV_LINKS);
+  const accountHref = currentAccount?.href ?? "/login";
+  const accountLabel = currentAccount
+    ? (text?.myPage ?? "หน้าของฉัน")
+    : accountUnknown
+      ? text
+        ? "Check account"
+        : "ตรวจสอบบัญชี"
+      : (text?.signIn ?? "เข้าสู่ระบบ");
+  const path = pathname ?? initialPath;
+  const activePath = path === "/rescue" ? "/rescue/map" : path;
+  const currentHref = [...navLinks]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find(({ href }) => activePath === href || activePath?.startsWith(`${href}/`))?.href;
 
   const [open, setOpen] = useState(false);
   const ready = useSyncExternalStore(subscribeHydration, browserReady, serverNotReady);
 
   return (
-    <nav className="bg-bg-nav rounded-b-[20px] sm:rounded-b-3xl">
+    <nav
+      data-nav-role={currentAccount?.role ?? "guest"}
+      className="bg-bg-nav rounded-b-[20px] sm:rounded-b-3xl"
+    >
+      {trackPath && (
+        <PathBoundary>
+          <Suspense fallback={null}>
+            <CurrentPath onChange={setPathname} />
+          </Suspense>
+        </PathBoundary>
+      )}
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
         {/* Logo */}
-        <Link prefetch={false} href={homeHref} onClick={() => setOpen(false)}>
+        <Link
+          prefetch={false}
+          href={isStaff ? accountHref : homeHref}
+          onClick={() => setOpen(false)}
+        >
           <Logo />
         </Link>
 
@@ -54,6 +145,7 @@ export function Navbar({
               prefetch={false}
               key={href}
               href={href}
+              aria-current={currentHref === href ? "page" : undefined}
               className="font-heading text-text-primary hover:bg-primary-50 hover:text-primary-700 rounded-full px-3 py-2 text-sm font-semibold transition-colors"
             >
               {label}
@@ -65,20 +157,22 @@ export function Navbar({
           {languageSwitch}
 
           {/* Desktop login — outline */}
-          <div className="hidden md:block">
-            <Link
-              prefetch={false}
-              href={accountHref}
-              className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle active:bg-bg-subtle inline-flex h-12 items-center rounded-full border px-5 text-sm font-semibold transition-colors"
-            >
-              {accountLabel}
-            </Link>
+          <div className="hidden md:block" aria-busy={accountPending}>
+            {!accountPending && (
+              <Link
+                prefetch={false}
+                href={accountHref}
+                className="border-border-strong bg-bg-surface font-heading text-text-primary hover:bg-bg-subtle active:bg-bg-subtle inline-flex h-12 items-center rounded-full border px-5 text-sm font-semibold transition-colors"
+              >
+                {accountLabel}
+              </Link>
+            )}
           </div>
 
           {/* Mobile hamburger */}
           <button
             type="button"
-            disabled={!ready}
+            disabled={!ready || accountPending}
             aria-label={open ? (text?.closeMenu ?? "ปิดเมนู") : (text?.openMenu ?? "เปิดเมนู")}
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
@@ -116,6 +210,7 @@ export function Navbar({
                 prefetch={false}
                 key={href}
                 href={href}
+                aria-current={currentHref === href ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 className="font-heading text-text-primary hover:bg-primary-50 hover:text-primary-700 rounded-full px-4 py-3 text-base font-semibold transition-colors"
               >
