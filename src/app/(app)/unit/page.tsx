@@ -1,3 +1,4 @@
+import { UnitLocationPanel } from "@/features/units/components/UnitLocationPanel";
 import { LeadConfirmationQueue } from "@/features/notifications/components/LeadConfirmationQueue";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -26,6 +27,7 @@ export default function Page({ searchParams }: PageProps<"/unit">) {
           <LeadConfirmationQueue />
           <UnitMemberApprovalPanel />
           <UnitCapabilitiesPanel />
+          <UnitLocationPanel />
           <UnitInvitePanel />
         </div>
       </SignedInShell>
