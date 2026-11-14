@@ -8,7 +8,7 @@ import {
 import { applySession, createAccount, deleteAccount, type TestAccount } from "./helpers/accounts";
 import { adminDb, closeTestCases, createCaseViaApi, randomPhone, stepTestCase } from "./helpers/db";
 import { saveEvidence } from "./helpers/evidence";
-import { goToStep5, openFreshSosForm } from "./helpers/sos";
+import { goToStep5, openFreshSosForm, expectSentCase } from "./helpers/sos";
 
 /**
  * TF-27 อัปเดตแบบเรียลไทม์
@@ -410,12 +410,8 @@ test.describe("TF-27 อัปเดตแบบเรียลไทม์", ()
     const body = (await submitResponse.json()) as { caseCode: string };
     createdCaseCodes.push(body.caseCode);
 
-    const successBanner = page.getByTestId("step5-submit-success");
-    await expect(successBanner).toBeVisible({ timeout: 10_000 });
-    await expect(successBanner).toContainText(body.caseCode);
-    await successBanner.getByRole("link", { name: "ดูรายละเอียดการแจ้งและติดตามเคส" }).click();
-    await expect(page).toHaveURL(/\/sos\/sent$/, { timeout: 10_000 });
-    await expect(page.getByText(body.caseCode, { exact: true })).toBeVisible();
+    // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่เอง
+    await expectSentCase(page, body.caseCode);
 
     // ฝั่งกู้ภัยเปิดหน้ารายการและแผนที่ได้ปกติในโหมด 15 วินาทีและไม่ล้นจอ 375px
     await openAsRescuer(page, context, testInfo.project.name, "/rescue/cases");

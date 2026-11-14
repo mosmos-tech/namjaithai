@@ -4,7 +4,11 @@ const CACHE = "namjaithai-public-" + __CACHE_VERSION__;
 
 // ปุ่ม SOS บนหน้าแรกพาไป /request ตรงๆ (TF-66 เลือกประเภทเหตุในขั้นที่ 1) ต้องเปิดได้ตอนออฟไลน์ด้วย
 // TF-63: หน้าภาษาอังกฤษของผู้แจ้งต้องเปิดได้ตอนออฟไลน์ด้วย
-const PAGES = ["/", "/request", "/sos", "/hotlines", "/survival", "/en/request", "/en/sos", "/en/hotlines"];
+// TF-80: หน้ารหัสเคสหลังส่งสำเร็จ (อ่านรหัสจาก sessionStorage) ต้องเปิดได้แม้เน็ตหลุดพอดีตอนเปลี่ยนหน้า
+const PAGES = [
+  "/", "/request", "/sos", "/sos/sent", "/hotlines", "/survival",
+  "/en/request", "/en/sos", "/en/sos/sent", "/en/hotlines",
+];
 const PUBLIC_ASSETS = [
   "/favicon.ico",
   "/manifest.webmanifest",

@@ -19,6 +19,8 @@ export type SentCase = {
   trackingToken: string;
   confirmationToken?: string;
   phoneLast4: string;
+  /** TF-80: เคสถึงแล้วแต่รูปมีปัญหา */
+  photoWarning?: string;
 };
 
 const STORAGE_KEY = "namjaithai:sent-case";
@@ -62,4 +64,25 @@ export function getSentCaseServerSnapshot(): SentCase | null {
 // sessionStorage ไม่มี event เวลาแท็บเดียวกันเขียน และหน้านี้ไม่ได้แก้ค่าเอง เลยไม่ต้องฟังอะไร
 export function subscribeSentCase(): () => void {
   return () => {};
+}
+
+/**
+ * TF-80: เปิดหน้า /sos/sent ได้ไหม ก่อนพาผู้แจ้งไป (ส่งสำเร็จแล้วแต่เน็ตหลุดพอดี ห้ามเห็นหน้า error)
+ * - "network": ดึงหน้าจากเซิร์ฟเวอร์ได้
+ * - "cache": ไม่มีเน็ต แต่ service worker เก็บหน้าไว้ (TF-41) — เปิดแบบโหลดทั้งหน้าให้ service worker ตอบ
+ * - null: เปิดไม่ได้ ให้ฟอร์มแสดงรหัสเคสใหญ่แทน
+ */
+export async function sentPageAvailability(path: string): Promise<"network" | "cache" | null> {
+  try {
+    const response = await fetch(path, { cache: "no-store", credentials: "same-origin" });
+    if (response.ok) return "network";
+  } catch {
+    // เน็ตหลุด — ลองแคชของ service worker
+  }
+  try {
+    if (navigator.serviceWorker?.controller && (await caches.match(path))) return "cache";
+  } catch {
+    // เบราว์เซอร์ไม่มี Cache Storage
+  }
+  return null;
 }

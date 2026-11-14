@@ -7,7 +7,7 @@ import {
   randomPhone,
   uniqueTestPoint,
 } from "./helpers/db";
-import { goToStep5, openFreshSosForm } from "./helpers/sos";
+import { goToStep5, openFreshSosForm, expectSentCase } from "./helpers/sos";
 
 /**
  * TF-74 ส่ง SOS ซ้ำแล้วไม่ติดตัน และไม่เห็นข้อมูลเคสของคนอื่น
@@ -185,9 +185,7 @@ test("เบอร์เดิม: กดสร้างเคสใหม่ร
   await expect(createNew).toBeDisabled();
   await createNew.dispatchEvent("click");
   release();
-  const success = page.getByTestId("step5-submit-success");
-  await expect(success).toContainText(/รหัสเคสของคุณคือ FL-/);
-  const code = (await success.textContent())!.match(/FL-\d{4}-\d+/)![0];
+  const code = await expectSentCase(page);
   caseCodes.push(code);
   expect(code).not.toBe(existing.caseCode);
   expect(await countCasesByPhone(existing.phone)).toBe(2);
@@ -209,9 +207,7 @@ test("ใกล้กัน 50 ม. แต่คนละเบอร์: เห
   await expect(prompt(page).getByRole("button", { name: "อัปเดตเคสเดิม" })).toHaveCount(0);
   await expect(page.getByText(existing.caseCode)).toHaveCount(0);
   await prompt(page).getByRole("button", { name: "ส่งคำขอของฉัน" }).click();
-  const success = page.getByTestId("step5-submit-success");
-  await expect(success).toContainText(/รหัสเคสของคุณคือ FL-/);
-  caseCodes.push((await success.textContent())!.match(/FL-\d{4}-\d+/)![0]);
+  caseCodes.push(await expectSentCase(page));
   expect(await countCasesByPhone(phone)).toBe(1);
 });
 
@@ -227,7 +223,7 @@ test("หน้า /en: กล่องถามเป็นภาษาอั�
   await expect(prompt(page)).toContainText("This phone number already has an open request");
   await expect(prompt(page)).not.toContainText(existing.caseCode);
   await prompt(page).getByRole("button", { name: "Create a new request" }).click();
-  await expect(page.getByText("Your request for help was sent").first()).toBeVisible();
+  await expectSentCase(page);
   expect(await countCasesByPhone(existing.phone)).toBe(2);
   const { data } = await adminDb()
     .from("cases")

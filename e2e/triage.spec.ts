@@ -7,6 +7,7 @@ import {
   nextButton,
   openFreshSosForm,
   seedLocationIntoDraft,
+  expectSentCase,
 } from "./helpers/sos";
 
 // TF-55: ระบบคำนวณความเร่งด่วนจากคำตอบ ผู้แจ้งไม่เลือกสีและไม่เห็นระดับที่ได้
@@ -56,7 +57,7 @@ test("ส่งจากฟอร์มพร้อมสัญญาณอั�
   // เบราว์เซอร์ของผู้แจ้งไม่ได้รับระดับหรือคะแนน
   expect(body).not.toHaveProperty("urgency");
   expect(body).not.toHaveProperty("priorityScore");
-  await expect(page.getByText(/รหัสเคสของคุณคือ/)).toBeVisible({ timeout: 15_000 });
+  await expectSentCase(page);
   await expect(page.getByText(/วิกฤต|สีแดง/)).toHaveCount(0);
 
   const saved = await caseInDb(body.caseCode as string);

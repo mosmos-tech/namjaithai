@@ -121,3 +121,13 @@ export async function goToStep5(page: Page) {
   await nextButton(page).click();
   await expectStep(page, 5);
 }
+
+/**
+ * TF-80: ส่งสำเร็จแล้วระบบพาไปหน้ารหัสเคสใหญ่เอง (/sos/sent หรือ /en/sos/sent) — คืนรหัสเคส
+ */
+export async function expectSentCase(page: Page, code?: string): Promise<string> {
+  await expect(page).toHaveURL(/\/sos\/sent$/, { timeout: 20_000 });
+  const sentCode = page.getByTestId("sent-case-code");
+  await expect(sentCode).toHaveText(code ?? /^FL-\d{4}-\d{4,}$/);
+  return (await sentCode.textContent())!.trim();
+}

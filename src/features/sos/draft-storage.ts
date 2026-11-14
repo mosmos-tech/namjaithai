@@ -1301,6 +1301,8 @@ export type SubmitSosDraftResult =
       successMessage: string;
       /** TF-74: อัปเดตเคสเดิมจากเครื่องที่ส่งเคสนั้น — พาไปหน้าติดตามเคสนั้น */
       updatedExisting?: boolean;
+      /** TF-80: เคสถึงแล้วแต่รูปมีปัญหา — แสดงบนหน้ารหัสเคสด้วย */
+      photoWarning?: string;
     };
 
 /** เวลารอสูงสุดของคำขอส่ง SOS หลัก (12 วิ) เพื่อไม่ให้ปุ่มหมุนค้างหลายนาทีบนเน็ตช้าแล้วส่งเข้าคิว TF-15 */
@@ -1694,6 +1696,9 @@ export async function submitSosDraft(
       confirmationToken: finalCaseData.confirmationToken,
       idempotencyKey,
       ...(finalCaseData.updatedExisting ? { updatedExisting: true } : {}),
+      ...(photoWarning
+        ? { photoWarning: t.locale === "th" ? photoWarning : t.submit.photoFailed }
+        : {}),
       successMessage: photoWarning
         ? format(t.submit.successWithWarning, {
             code: finalCode,
