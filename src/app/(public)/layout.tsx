@@ -1,5 +1,6 @@
 import { HotlineBar } from "@/components/public/HotlineBar";
 import { NavbarWithAccount } from "@/features/auth/components/NavbarWithAccount";
+import { HomeConfirmationLoader } from "@/features/sos/components/HomeConfirmationLoader";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,6 +9,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         <HotlineBar />
         <NavbarWithAccount />
       </header>
+      <HomeConfirmationLoader />
       <main className="bg-bg-page flex-1">{children}</main>
     </>
   );

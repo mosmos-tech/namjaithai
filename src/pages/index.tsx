@@ -6,6 +6,7 @@ import { Navbar } from "@/components/public/Navbar";
 import { HotlineBar } from "@/components/public/HotlineBar";
 import { LanguageSwitch } from "@/components/public/LanguageSwitch";
 import { HomeContent } from "@/features/home/HomeContent";
+import { HomeConfirmationLoader } from "@/features/sos/components/HomeConfirmationLoader";
 import { getSessionUserRow } from "@/features/auth/server/session-user";
 import { PwaSupport } from "@/features/pwa/PwaSupport";
 import { homePathForRole, type UserRole } from "@/lib/domain";
@@ -49,6 +50,7 @@ export default function HomePage({ account, yearBE }: HomeProps) {
           }
         />
       </header>
+      <HomeConfirmationLoader />
       <main className="flex-1">
         <HomeContent />
       </main>

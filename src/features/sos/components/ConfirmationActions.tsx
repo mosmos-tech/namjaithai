@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { forgetDeviceCase } from "../device-cases";
+import { forgetDeviceCase, updateDeviceCaseStatus } from "../device-cases";
+import { CaseStatus } from "@/lib/domain/case-status";
 import { useI18n } from "../../../lib/i18n/I18nProvider";
 export function ConfirmationActions({
   caseCode,
@@ -31,6 +32,12 @@ export function ConfirmationActions({
       if (decision === "CONFIRM") {
         try {
           forgetDeviceCase(window.localStorage, caseCode);
+        } catch {
+          /* storage can be unavailable */
+        }
+      } else if (decision === "NOT_RECEIVED") {
+        try {
+          updateDeviceCaseStatus(window.localStorage, caseCode, CaseStatus.NEW);
         } catch {
           /* storage can be unavailable */
         }
