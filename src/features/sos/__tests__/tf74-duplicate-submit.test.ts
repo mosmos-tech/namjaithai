@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { WaterLevel } from "../../../lib/domain";
+import { IncidentType, WaterLevel } from "../../../lib/domain";
 import { createInitialSosDraft, loadSosDraft, submitSosDraft } from "../draft-storage";
 import { SOS_TEXT_EN } from "../sos-text.en";
 
@@ -20,6 +20,7 @@ function memoryStorage(initial: Record<string, string> = {}) {
 
 const fullDraft = {
   ...createInitialSosDraft(),
+  incidentType: IncidentType.FLOOD,
   consent: true,
   healthConsent: true,
   currentStep: 5 as const,

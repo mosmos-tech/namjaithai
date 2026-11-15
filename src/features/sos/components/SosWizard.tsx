@@ -10,6 +10,7 @@ import { WaitingAdvice } from "./WaitingAdvice";
 import { DuplicateCasePrompt } from "./DuplicateCasePrompt";
 import {
   IncidentType,
+  UNIVERSAL_DANGER_SIGNS,
   Need,
   trackPath,
   type DuplicateMatchReason,
@@ -144,6 +145,41 @@ export function SosWizard() {
     null,
   );
   const router = useRouter();
+  const [restoredDraft, setRestoredDraft] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const restored = Boolean(getSosDraftSnapshot().updatedAt);
+    void Promise.resolve().then(() => {
+      if (active) setRestoredDraft(restored);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Only a fresh network response proves a saved incident has been disabled.
+  useEffect(() => {
+    if (enabledIncidents.source !== "network") return;
+    const current = getSosDraftSnapshot();
+    if (!current.incidentType || enabledIncidents.types.includes(current.incidentType)) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("type")) {
+      url.searchParams.delete("type");
+      window.history.replaceState(window.history.state, "", url);
+    }
+    saveSosDraft({
+      ...current,
+      currentStep: 1,
+      incidentType: undefined,
+      details: {},
+      waterLevel: undefined,
+      dangerSigns: current.dangerSigns?.filter((key) =>
+        UNIVERSAL_DANGER_SIGNS.some((sign) => sign.key === key),
+      ),
+      hasInjured: false,
+    });
+  }, [enabledIncidents, draft.incidentType]);
 
   useEffect(() => {
     return () => {
@@ -188,7 +224,6 @@ export function SosWizard() {
 
     updateDraft((prev) => ({
       ...prev,
-      incidentType: prev.incidentType ?? IncidentType.FLOOD,
       atScene: true,
       currentStep: 2,
     }));
@@ -634,6 +669,21 @@ export function SosWizard() {
             <LanguageSwitch locale={locale} path="/request" label={t.common.languageSwitchLabel} />
           </div>
           {!hydrated && <HydrationPending emergencyHelp />}
+          {hydrated && restoredDraft && draft.updatedAt && !submitSuccessMessage && (
+            <div role="status" className="flex flex-wrap items-center gap-2 text-base">
+              <span>{t.wizard.draftRestored}</span>
+              <button
+                type="button"
+                className="font-semibold underline"
+                onClick={() => {
+                  clearSosDraft();
+                  setRestoredDraft(false);
+                }}
+              >
+                {t.wizard.startFresh}
+              </button>
+            </div>
+          )}
 
           {/* กล่องแจ้งผลส่งคำขอสำเร็จ (แสดงหลังล้างร่างกลับเป็นขั้นที่ 1 แล้ว) */}
           {hydrated && submitSuccessMessage && draft.currentStep !== 5 && (
@@ -721,61 +771,63 @@ export function SosWizard() {
             />
           )}
 
-          {hydrated && draft.currentStep === 5 && (() => {
-            const slowSms = buildSosSmsLink(
-              {
-                incidentType: draft.incidentType,
-                waterLevel: draft.waterLevel,
-                lat: draft.lat,
-                lng: draft.lng,
-                phone: draft.phone,
-                landmark: draft.landmark,
-                adults: draft.adults,
-                elderly: draft.elderly,
-                bedridden: draft.bedridden,
-                children: draft.children,
-              },
-              process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER ?? "",
-            );
-            return (
-              <Step5Contact
-                name={draft.name}
-                phone={draft.phone}
-                lineId={draft.lineId}
-                notes={draft.notes}
-                photos={draft.photos}
-                consent={draft.consent}
-                healthConsent={draft.healthConsent}
-                onConsentChange={(field, value) => {
-                  const next = updateDraft((prev) => ({ ...prev, [field]: value }));
-                  if (step5Attempted) setStep5Errors(validateStep5Draft(next, t.sos).errors);
-                }}
-                errors={step5Errors}
-                isSubmitting={isSubmitting}
-                isSlowSubmitting={isSlowSubmitting}
-                slowSmsHref={slowSms.href}
-                slowSmsToSystem={slowSms.toSystem}
-                submitError={submitError}
-                submitSuccessMessage={submitSuccessMessage}
-                duplicatePrompt={
-                  duplicatePrompt && (
-                    <DuplicateCasePrompt
-                      matchReason={duplicatePrompt.matchReason}
-                      options={duplicatePrompt.options}
-                      pendingAction={pendingDuplicateAction}
-                      onSelectAction={(action) => void handleStep5Submit(action)}
-                      onCancel={() => setDuplicatePrompt(null)}
-                    />
-                  )
-                }
-                onChangeField={handleChangeContactField}
-                onAddPhoto={handleAddPhoto}
-                onRemovePhoto={handleRemovePhoto}
-                onPrev={() => handleGoToStep(4)}
-                onSubmit={() => void handleStep5Submit()}
-              />
-            );
-          })()}
+          {hydrated &&
+            draft.currentStep === 5 &&
+            (() => {
+              const slowSms = buildSosSmsLink(
+                {
+                  incidentType: draft.incidentType,
+                  waterLevel: draft.waterLevel,
+                  lat: draft.lat,
+                  lng: draft.lng,
+                  phone: draft.phone,
+                  landmark: draft.landmark,
+                  adults: draft.adults,
+                  elderly: draft.elderly,
+                  bedridden: draft.bedridden,
+                  children: draft.children,
+                },
+                process.env.NEXT_PUBLIC_SMS_GATEWAY_NUMBER ?? "",
+              );
+              return (
+                <Step5Contact
+                  name={draft.name}
+                  phone={draft.phone}
+                  lineId={draft.lineId}
+                  notes={draft.notes}
+                  photos={draft.photos}
+                  consent={draft.consent}
+                  healthConsent={draft.healthConsent}
+                  onConsentChange={(field, value) => {
+                    const next = updateDraft((prev) => ({ ...prev, [field]: value }));
+                    if (step5Attempted) setStep5Errors(validateStep5Draft(next, t.sos).errors);
+                  }}
+                  errors={step5Errors}
+                  isSubmitting={isSubmitting}
+                  isSlowSubmitting={isSlowSubmitting}
+                  slowSmsHref={slowSms.href}
+                  slowSmsToSystem={slowSms.toSystem}
+                  submitError={submitError}
+                  submitSuccessMessage={submitSuccessMessage}
+                  duplicatePrompt={
+                    duplicatePrompt && (
+                      <DuplicateCasePrompt
+                        matchReason={duplicatePrompt.matchReason}
+                        options={duplicatePrompt.options}
+                        pendingAction={pendingDuplicateAction}
+                        onSelectAction={(action) => void handleStep5Submit(action)}
+                        onCancel={() => setDuplicatePrompt(null)}
+                      />
+                    )
+                  }
+                  onChangeField={handleChangeContactField}
+                  onAddPhoto={handleAddPhoto}
+                  onRemovePhoto={handleRemovePhoto}
+                  onPrev={() => handleGoToStep(4)}
+                  onSubmit={() => void handleStep5Submit()}
+                />
+              );
+            })()}
         </div>
       </div>
     </div>

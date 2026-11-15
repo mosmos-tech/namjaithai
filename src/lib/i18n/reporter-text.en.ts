@@ -28,6 +28,8 @@ export const REPORTER_TEXT_EN: ReporterText = {
     takesAboutAMinute: "Takes about 1 minute",
     noSignUp: "No sign-up needed",
     autosaved: "Your answers are saved on this device automatically",
+    draftRestored: "Continue your saved draft",
+    startFresh: "Start over",
     stepHints: [
       "Incident type and whether you are at the scene",
       "Danger, incident questions, and number of people",
