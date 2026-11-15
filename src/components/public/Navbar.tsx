@@ -135,7 +135,7 @@ export function Navbar({
           href={isStaff ? accountHref : homeHref}
           onClick={() => setOpen(false)}
         >
-          <Logo />
+          <Logo subtitle={text?.logoSubtitle} />
         </Link>
 
         {/* Desktop nav */}

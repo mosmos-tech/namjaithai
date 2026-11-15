@@ -31,6 +31,23 @@ export async function listDistricts(provinceCode: number): Promise<AdminArea[]> 
   return data.map(toArea);
 }
 
+export async function listAllDistricts(): Promise<
+  { code: number; provinceCode: number; nameTh: string; nameEn: string }[]
+> {
+  "use cache";
+  cacheLife("weeks");
+  const { data, error } = await createPublicClient()
+    .from("districts")
+    .select("code, province_code, name_th, name_en");
+  if (error) throw error;
+  return data.map((r) => ({
+    code: r.code,
+    provinceCode: r.province_code,
+    nameTh: r.name_th,
+    nameEn: r.name_en,
+  }));
+}
+
 export async function listSubdistricts(districtCode: number): Promise<AdminArea[]> {
   "use cache";
   cacheLife("weeks");

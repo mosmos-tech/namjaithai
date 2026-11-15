@@ -3,8 +3,17 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { groupUnitsByProvince, unitMatchesQuery } from "@/lib/domain";
+import { format } from "@/lib/i18n/locale";
+import { REPORTER_TEXT_TH } from "@/lib/i18n/reporter-text";
+import { REPORTER_TEXT_EN } from "@/lib/i18n/reporter-text.en";
 
-export type UnitPickerOption = { id: string; label: string; province: string; isDemo: boolean };
+export type UnitPickerOption = {
+  id: string;
+  label: string;
+  province: string;
+  isDemo: boolean;
+  searchText?: string;
+};
 
 // รายการยาวมาก (หน่วย OSM ทั้งประเทศ) วาดแค่ส่วนแรก ที่เหลือให้พิมพ์ค้น
 const MAX_SHOWN = 100;
@@ -22,7 +31,8 @@ export function UnitPicker({
   value,
   name,
   navigatePrefix,
-  placeholder = "เลือกหน่วย",
+  placeholder,
+  locale = "th",
 }: {
   label: string;
   options: UnitPickerOption[];
@@ -30,7 +40,10 @@ export function UnitPicker({
   name?: string;
   navigatePrefix?: string;
   placeholder?: string;
+  locale?: "th" | "en";
 }) {
+  const t = (locale === "en" ? REPORTER_TEXT_EN : REPORTER_TEXT_TH).units;
+  const resolvedPlaceholder = placeholder ?? t.pickerDefaultPlaceholder;
   const router = useRouter();
   const id = useId();
   const [selectedId, setSelectedId] = useState(value ?? "");
@@ -41,11 +54,14 @@ export function UnitPicker({
   const selected = options.find((option) => option.id === selectedId);
 
   const matches = useMemo(
-    () => options.filter((option) => unitMatchesQuery(option.label, query)),
+    () =>
+      options.filter((option) =>
+        unitMatchesQuery(option.searchText ?? option.label, query),
+      ),
     [options, query],
   );
   const shown = matches.slice(0, MAX_SHOWN);
-  const groups = groupUnitsByProvince(shown);
+  const groups = groupUnitsByProvince(shown, locale);
   // ลำดับบนจอ (ตามกลุ่มจังหวัด) ใช้กับลูกศรขึ้นลง
   const flat = groups.flatMap((group) => group.units);
   const positionOf = new Map(flat.map((option, position) => [option.id, position]));
@@ -108,7 +124,7 @@ export function UnitPicker({
         data-testid="unit-picker-button"
       >
         <span id={`${id}-value`} className="min-w-0 flex-1 break-words">
-          {selected?.label ?? <span className="text-text-secondary">{placeholder}</span>}
+          {selected?.label ?? <span className="text-text-secondary">{resolvedPlaceholder}</span>}
         </span>
         <span aria-hidden="true" className="text-text-secondary shrink-0">
           {open ? "▴" : "▾"}
@@ -125,8 +141,8 @@ export function UnitPicker({
             aria-controls={`${id}-listbox`}
             aria-autocomplete="list"
             aria-activedescendant={flat[activeIndex] ? optionId(activeIndex) : undefined}
-            aria-label={`ค้นหา${label}`}
-            placeholder="พิมพ์ชื่อหน่วย อำเภอ หรือจังหวัด"
+            aria-label={format(t.pickerSearchAria, { label })}
+            placeholder={t.pickerSearchPlaceholder}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -143,7 +159,7 @@ export function UnitPicker({
           >
             {groups.length === 0 && (
               <p className="text-text-secondary p-3" role="status">
-                ไม่พบหน่วยที่ตรงกับคำค้น
+                {t.pickerNoMatch}
               </p>
             )}
             {groups.map((group) => (
@@ -171,7 +187,7 @@ export function UnitPicker({
                       <span className="min-w-0">{option.label}</span>
                       {option.isDemo && (
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-                          ข้อมูลตัวอย่าง
+                          {t.demoBadge}
                         </span>
                       )}
                     </div>
@@ -181,7 +197,7 @@ export function UnitPicker({
             ))}
             {matches.length > shown.length && (
               <p className="text-text-secondary p-3 text-sm">
-                {`แสดง ${shown.length} จาก ${matches.length} หน่วย พิมพ์ชื่อเพื่อค้นหาเพิ่ม`}
+                {format(t.pickerTruncated, { shown: shown.length, total: matches.length })}
               </p>
             )}
           </div>

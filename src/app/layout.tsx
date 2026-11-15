@@ -1,6 +1,6 @@
 import { DeviceConfirmationBanner } from "@/features/sos/components/DeviceConfirmationBanner";
 import type { Metadata, Viewport } from "next";
-import { PwaSupport } from "@/features/pwa/PwaSupport";
+import { AppPwaSupport } from "@/features/pwa/AppPwaSupport";
 import { OfflineSosSupport } from "@/features/sos/components/OfflineSosSupport";
 import { Bai_Jamjuree, IBM_Plex_Mono, IBM_Plex_Sans_Thai_Looped } from "next/font/google";
 import { EnvBanner } from "@/components/EnvBanner";
@@ -45,7 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <OfflineSosSupport />
         <DeviceConfirmationBanner />
         {children}
-        <PwaSupport />
+        <AppPwaSupport />
         <Footer />
       </body>
     </html>

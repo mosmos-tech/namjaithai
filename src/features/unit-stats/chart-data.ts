@@ -1,4 +1,5 @@
 import {
+  fullPeriodLabel,
   INCIDENT_REGISTRY,
   INCIDENT_TYPE_ORDER,
   incidentTypesIn,
@@ -7,6 +8,8 @@ import {
   type IncidentType,
   type UnitPeriodBar,
 } from "@/lib/domain";
+import { REPORTER_TEXT_TH } from "@/lib/i18n/reporter-text";
+import { REPORTER_TEXT_EN } from "@/lib/i18n/reporter-text.en";
 
 // ข้อมูลของ HelpedChart เป็นค่าล้วน (ไม่มีฟังก์ชัน) ส่งจาก Server Component เข้า Client Component ได้
 
@@ -84,26 +87,30 @@ export function incidentChartData(bars: UnitPeriodBar[], period: "month" | "day"
 }
 
 /** TF-61 /units/[id]: 30 วันล่าสุด แยกสี ผู้แจ้งยืนยัน / หัวหน้าปิด (ตรวจสีด้วย validator ของ dataviz แล้ว) */
-export function dailyHelpedChartData(bars: DailyHelpedBar[]): ChartData {
+export function dailyHelpedChartData(
+  bars: DailyHelpedBar[],
+  locale: "th" | "en" = "th",
+): ChartData {
+  const t = (locale === "en" ? REPORTER_TEXT_EN : REPORTER_TEXT_TH).units;
   return {
     series: [
-      { key: "helped", label: "ผู้แจ้งยืนยัน", color: SERIES_COLORS[0] },
-      { key: "lead-closed", label: "หัวหน้าปิด", color: SERIES_COLORS[1] },
+      { key: "helped", label: t.chartSeriesHelped, color: SERIES_COLORS[0] },
+      { key: "lead-closed", label: t.chartSeriesLeadClosed, color: SERIES_COLORS[1] },
     ],
     bars: bars.map((bar) => ({
       key: bar.key,
       label: bar.label,
-      fullLabel: thaiFullPeriodLabel(bar.key),
+      fullLabel: fullPeriodLabel(bar.key, locale),
       axisLabel: bar.axisLabel,
       axisOnNarrow: bar.axisOnNarrow,
       axisOnWide: bar.axisOnWide,
       values: [bar.helped, bar.leadClosed],
     })),
-    legendLabel: "คำอธิบายสี",
-    totalLabel: "รวม",
+    legendLabel: t.chartLegendLabel,
+    totalLabel: t.chartTotalLabel,
     table: {
-      periodHeader: "วันที่",
-      columns: ["ผู้แจ้งยืนยัน", "หัวหน้าปิด"],
+      periodHeader: t.chartPeriodHeader,
+      columns: [t.chartSeriesHelped, t.chartSeriesLeadClosed],
       rows: bars.map((bar) => [bar.helped, bar.leadClosed]),
     },
   };
