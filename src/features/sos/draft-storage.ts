@@ -1555,8 +1555,8 @@ export async function submitSosDraft(
       // TF-74: token ยืนยันของเครื่องนี้ (TF-58) — เซิร์ฟเวอร์ใช้เทียบว่าเป็นเครื่องที่ส่งเคสเดิมไหม
       ...(options.duplicateAction === "UPDATE_EXISTING" && storage
         ? {
-            deviceConfirmationTokens: readDeviceCases(storage as Storage).map(
-              (item) => item.confirmationToken,
+            deviceConfirmationTokens: readDeviceCases(storage as Storage).flatMap(
+              (item) => (item.confirmationToken ? [item.confirmationToken] : []),
             ),
           }
         : {}),

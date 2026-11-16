@@ -1,4 +1,3 @@
-import { DeviceConfirmationBanner } from "@/features/sos/components/DeviceConfirmationBanner";
 import type { Metadata, Viewport } from "next";
 import { AppPwaSupport } from "@/features/pwa/AppPwaSupport";
 import { OfflineSosSupport } from "@/features/sos/components/OfflineSosSupport";
@@ -43,7 +42,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <EnvBanner />
         <OfflineSosSupport />
-        <DeviceConfirmationBanner />
         {children}
         <AppPwaSupport />
         <Footer />

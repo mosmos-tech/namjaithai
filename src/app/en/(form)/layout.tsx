@@ -1,5 +1,6 @@
 import { HotlineBar } from "@/components/public/HotlineBar";
 import { Navbar } from "@/components/public/Navbar";
+import { HomeConfirmationLoader } from "@/features/sos/components/HomeConfirmationLoader";
 import { REPORTER_TEXT_EN } from "@/lib/i18n/reporter-text.en";
 
 // เหมือน (sos)/layout.tsx: จอคอมมีแถบสายด่วน + navbar มือถือใช้แถบบนของฟอร์มเอง (TF-63 ภาษาอังกฤษ)
@@ -11,6 +12,7 @@ export default function EnglishSosLayout({ children }: { children: React.ReactNo
         <HotlineBar text={{ label: chrome.hotlineBarLabel, items: chrome.hotlineBar }} />
         <Navbar text={chrome} homeHref="/en/hotlines" resolveAccount />
       </header>
+      <HomeConfirmationLoader />
       <main className="bg-bg-page flex-1">{children}</main>
     </>
   );

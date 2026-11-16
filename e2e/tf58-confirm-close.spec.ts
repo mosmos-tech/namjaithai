@@ -70,7 +70,10 @@ test("เปิดเว็บจากเครื่องเดิมแล�
   if (info.project.name === "mobile") await page.setViewportSize({ width: 375, height: 812 });
   const item = cases[0];
   await page.addInitScript(
-    (ref) => localStorage.setItem("namjaithai:confirmation-cases", JSON.stringify([ref])),
+    (ref) => {
+      localStorage.setItem("namjaithai-onboarding-seen-v1", "true");
+      localStorage.setItem("namjaithai:confirmation-cases", JSON.stringify([ref]));
+    },
     {
       caseCode: item.case_code,
       trackingToken: item.tracking_token,
