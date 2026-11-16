@@ -217,6 +217,7 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
 
     const draftWithoutLocation = {
       ...createInitialSosDraft(),
+      incidentType: IncidentType.FLOOD,
       consent: true,
       healthConsent: true,
       currentStep: 5 as const,
@@ -267,6 +268,7 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
 
     const fullDraft = {
       ...createInitialSosDraft(),
+      incidentType: IncidentType.FLOOD,
       consent: true,
       healthConsent: true,
       currentStep: 5 as const,
@@ -351,6 +353,7 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
     const result = await submitSosDraft({
       draft: {
         ...createInitialSosDraft(),
+        incidentType: IncidentType.FLOOD,
         consent: true,
         healthConsent: true,
         currentStep: 5,
@@ -405,6 +408,7 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
     };
     const draft = {
       ...createInitialSosDraft(),
+      incidentType: IncidentType.FLOOD,
       consent: true,
       healthConsent: true,
       currentStep: 5 as const,
@@ -452,6 +456,7 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
 
     const fullDraft = {
       ...createInitialSosDraft(),
+      incidentType: IncidentType.FLOOD,
       consent: true,
       healthConsent: true,
       currentStep: 5 as const,
@@ -883,9 +888,7 @@ describe("TF-69: ส่ง SOS ตอนเน็ตช้ามาก (timeout 
     expect(result.status).toBe("network_error");
     if (result.status !== "network_error") throw new Error("Expected network_error");
     expect(result.idempotencyKey).toBe("idem-timeout-1");
-    expect(JSON.parse(result.requestBody ?? "{}").photos).toEqual([
-      "data:image/jpeg;base64,AAAA",
-    ]);
+    expect(JSON.parse(result.requestBody ?? "{}").photos).toEqual(["data:image/jpeg;base64,AAAA"]);
     // ร่างต้องยังอยู่เมื่อส่งไม่สำเร็จ
     expect(storage.getItem(SOS_DRAFT_STORAGE_KEY)).not.toBeNull();
   });

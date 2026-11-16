@@ -45,6 +45,7 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
     .toBe(true);
   await reopened.screenshot({ path: test.info().outputPath("offline-sos.png"), fullPage: true });
   const next = reopened.getByRole("button", { name: /^ถัดไป/ }).filter({ visible: true });
+  await reopened.getByRole("radio", { name: "น้ำท่วม" }).click();
   await next.click();
   await expect(reopened.getByText("ขั้นที่ 2 จาก 5")).toBeVisible();
   await reopened.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" }).click();

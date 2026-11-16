@@ -54,6 +54,7 @@ test("ฟอร์ม SOS ตอน JS ยังไม่มา: กำลัง
   // JS มาแล้ว: ข้อความโหลดหาย ฟอร์มใช้ได้
   release();
   await expect(pending).toHaveCount(0);
+  await page.getByTestId("incident-type-FLOOD").click();
   await nextButton(page).click();
   await expectStep(page, 2);
 });
