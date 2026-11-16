@@ -60,6 +60,20 @@ const THAI_MONTHS_LONG = [
   "พฤศจิกายน",
   "ธันวาคม",
 ];
+const EN_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 /** เดือนปัจจุบันตามเวลาไทย (YYYY-MM) */
 export function bangkokMonth(now: Date): string {
@@ -80,6 +94,12 @@ function shiftMonth(month: string, delta: number): string {
 export function thaiMonthLabel(month: string): string {
   const [year, m] = month.split("-").map(Number);
   return `${THAI_MONTHS[m - 1]} ${String(year + 543).slice(-2)}`;
+}
+
+/** ป้ายเดือนแบบอังกฤษ ปี ค.ศ. เช่น "Oct 2026" */
+export function enMonthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  return `${EN_MONTHS[month - 1]} ${year}`;
 }
 
 /** ชื่อเดือนเต็ม ปี พ.ศ. เช่น "ตุลาคม 2569" */
@@ -182,6 +202,13 @@ export function thaiFullPeriodLabel(key: string): string {
   return day ? `${day} ${label}` : label;
 }
 
+export function fullPeriodLabel(key: string, locale: "th" | "en" = "th"): string {
+  if (locale !== "en") return thaiFullPeriodLabel(key);
+  const [year, month, day] = key.split("-").map(Number);
+  const label = `${EN_MONTHS[month - 1]} ${year}`;
+  return day ? `${day} ${label}` : label;
+}
+
 export type DailyAxisLabel = { axisLabel: string; axisOnNarrow: boolean; axisOnWide: boolean };
 
 /**
@@ -194,6 +221,7 @@ export type DailyAxisLabel = { axisLabel: string; axisOnNarrow: boolean; axisOnW
 export function dailyAxisLabels(
   keys: readonly string[],
   isRegularTick: (index: number) => boolean,
+  locale: "th" | "en" = "th",
 ): DailyAxisLabel[] {
   const day = (key: string) => Number(key.slice(8, 10));
   const monthStarts = keys.flatMap((key, i) => (i > 0 && day(key) === 1 ? [i] : []));
@@ -203,8 +231,9 @@ export function dailyAxisLabels(
     (i > 0 && i <= firstReach) || monthStarts.some((j) => j !== i && Math.abs(i - j) <= 3);
   const nearWide = (i: number) =>
     (i > 0 && i <= 1) || monthStarts.some((j) => j !== i && Math.abs(i - j) <= 1);
+  const months = locale === "en" ? EN_MONTHS : THAI_MONTHS;
   return keys.map((key, i) => {
-    const month = THAI_MONTHS[Number(key.slice(5, 7)) - 1];
+    const month = months[Number(key.slice(5, 7)) - 1];
     if (i === 0) {
       // เดือนใหม่เริ่มใกล้ป้ายแรกมาก: ป้ายเดือนใหม่สำคัญกว่า ซ่อนป้ายแรกแทน
       return {

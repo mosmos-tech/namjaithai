@@ -81,6 +81,12 @@ test("TF-63 หน้าภาษาอังกฤษ /en/request และ /en
   context,
 }) => {
   await offlineReady(page);
+  await page.goto("/en/request");
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Offline ready: SOS form, hotlines, and survival guide available offline",
+    }),
+  ).toBeVisible({ timeout: 60_000 });
   await context.setOffline(true);
   const form = await context.newPage();
   await form.goto("/en/request");
@@ -98,6 +104,12 @@ test("TF-63 หน้าภาษาอังกฤษ /en/request และ /en
     "href",
     "tel:1155",
   );
+  const survival = await context.newPage();
+  await survival.goto("/en/survival");
+  await expect(survival.getByRole("heading", { name: "Flood survival guide" })).toBeVisible();
+  const checkbox = survival.getByRole("checkbox").first();
+  await checkbox.check();
+  await expect(checkbox).toBeChecked();
 });
 
 test("TF-46 เปิดหน้าแรกและเลือก SOS ขณะออฟไลน์", async ({ page, context }) => {
@@ -129,7 +141,14 @@ test("ไม่แคชข้อมูลบัญชี เคส หรือ
     return result;
   });
   expect(urls).toEqual(
-    expect.arrayContaining(["/request", "/hotlines", "/survival", "/en/request", "/en/hotlines"]),
+    expect.arrayContaining([
+      "/request",
+      "/hotlines",
+      "/survival",
+      "/en/request",
+      "/en/hotlines",
+      "/en/survival",
+    ]),
   );
   expect(urls.some((url) => /\.(?:woff2?|ttf|otf)$/i.test(url))).toBe(false);
   expect(urls.some((url) => /^(\/en)?\/(api|auth|track|admin|unit|my-cases)(\/|$)/.test(url))).toBe(

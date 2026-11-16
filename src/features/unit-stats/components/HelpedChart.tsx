@@ -1,6 +1,9 @@
 "use client";
 
 import { Fragment, useState, type KeyboardEvent } from "react";
+import { format } from "@/lib/i18n/locale";
+import { REPORTER_TEXT_TH } from "@/lib/i18n/reporter-text";
+import { REPORTER_TEXT_EN } from "@/lib/i18n/reporter-text.en";
 import type { ChartData } from "../chart-data";
 
 // พื้นที่วาดแท่งอย่างเดียว (สัดส่วน 3:1) — ตัวหนังสือแกนอยู่นอก SVG เป็น HTML 12px
@@ -19,8 +22,17 @@ const GAP = 2; // ช่องว่างสีพื้นระหว่า�
  * - แตะ/ชี้ที่แท่ง หรือกดลูกศรซ้ายขวา เห็นวันที่และจำนวนในแถบเหนือกราฟ
  * - มีตารางตัวเลขชุดเดียวกันให้โปรแกรมอ่านหน้าจอและคนที่แยกสีไม่ออก
  */
-export function HelpedChart({ title, data }: { title: string; data: ChartData }) {
+export function HelpedChart({
+  title,
+  data,
+  locale = "th",
+}: {
+  title: string;
+  data: ChartData;
+  locale?: "th" | "en";
+}) {
   const { series, bars, table } = data;
+  const t = (locale === "en" ? REPORTER_TEXT_EN : REPORTER_TEXT_TH).units;
   const [active, setActive] = useState<number | null>(null);
   const totals = bars.map((bar) => bar.values.reduce((sum, value) => sum + value, 0));
   const max = Math.max(1, ...totals);
@@ -77,12 +89,12 @@ export function HelpedChart({ title, data }: { title: string; data: ChartData })
       >
         {/* ตัดบรรทัดได้เฉพาะที่ตัวคั่น · (วันที่ "21 ต.ค. 2569" และแต่ละตัวเลขอยู่บรรทัดเดียวเสมอ) */}
         {active === null ? (
-          <span className="text-text-secondary">แตะที่แท่งเพื่อดูวันที่และจำนวน</span>
+          <span className="text-text-secondary">{t.chartTapHint}</span>
         ) : (
           <>
             <span className="font-semibold whitespace-nowrap">{bars[active].fullLabel}</span>
             {" · "}
-            <span className="whitespace-nowrap">{`${data.totalLabel} ${totals[active]} เคส`}</span>
+            <span className="whitespace-nowrap">{`${data.totalLabel} ${totals[active]} ${t.casesUnit}`}</span>
             {series.map((item, index) =>
               series.length > 2 && bars[active].values[index] === 0 ? null : (
                 <Fragment key={item.key}>
@@ -119,7 +131,7 @@ export function HelpedChart({ title, data }: { title: string; data: ChartData })
           className="focus-visible:outline-primary-600 relative aspect-[3/1] min-w-0 flex-1 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
           tabIndex={0}
           role="group"
-          aria-label={`${title} ใช้ลูกศรซ้ายขวาเลื่อนดูทีละแท่ง`}
+          aria-label={format(t.chartKeyboardAria, { title })}
           onKeyDown={onKeyDown}
           onPointerLeave={(event) => {
             // เมาส์ออกนอกกราฟแล้วล้าง แต่นิ้วแตะค้างค่าไว้ให้อ่าน
@@ -130,7 +142,7 @@ export function HelpedChart({ title, data }: { title: string; data: ChartData })
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="absolute inset-0 h-full w-full overflow-visible"
             role="img"
-            aria-label={`กราฟแท่ง${title} รายละเอียดอยู่ในตารางด้านล่าง`}
+            aria-label={format(t.chartSvgAria, { title })}
             data-testid="helped-chart"
           >
             {active !== null && (
@@ -219,7 +231,7 @@ export function HelpedChart({ title, data }: { title: string; data: ChartData })
 
       <details className="rounded-[12px] border p-3">
         <summary className="min-h-12 cursor-pointer content-center font-semibold">
-          ดูเป็นตาราง
+          {t.chartViewTable}
         </summary>
         <div className="overflow-x-auto">
           <table className="mt-2 w-full min-w-[320px] text-left text-sm">
