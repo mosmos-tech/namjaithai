@@ -59,7 +59,7 @@ function FooterContentLocalized({
     <footer className="border-border-default bg-bg-nav mt-auto border-t">
       <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <Logo size="sm" />
+          <Logo size="sm" subtitle={text.logoSubtitle} />
           <p className="text-text-secondary text-xs leading-relaxed sm:text-right">
             {text.footerNotGov}
             <span className="mx-2 opacity-50 select-none">·</span>
@@ -67,7 +67,7 @@ function FooterContentLocalized({
             <span className="mx-2 opacity-50 select-none">·</span>
             <Link
               prefetch={false}
-              href="/units"
+              href="/en/units"
               className="hover:text-primary-600 underline underline-offset-2"
             >
               {text.footerUnits}

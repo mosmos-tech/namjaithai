@@ -28,6 +28,9 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
   await reopened.goto("/request");
   // TF-66: ขั้น 1 เลือกประเภทเหตุ (ใช้รายการที่จำไว้ในเครื่องตอนออนไลน์)
   await expect(reopened.getByRole("radio", { name: "น้ำท่วม" })).toBeVisible();
+  await expect(
+    reopened.getByRole("navigation").first().locator('a[href="/request"]').first(),
+  ).toHaveAttribute("aria-current", "page");
   await expect
     .poll(() =>
       reopened
@@ -42,6 +45,7 @@ test("เปิดครั้งแรกแล้วปิดเน็ต ย�
     .toBe(true);
   await reopened.screenshot({ path: test.info().outputPath("offline-sos.png"), fullPage: true });
   const next = reopened.getByRole("button", { name: /^ถัดไป/ }).filter({ visible: true });
+  await reopened.getByRole("radio", { name: "น้ำท่วม" }).click();
   await next.click();
   await expect(reopened.getByText("ขั้นที่ 2 จาก 5")).toBeVisible();
   await reopened.getByRole("checkbox", { name: "ไม่มีข้อใดเลย" }).click();
@@ -78,6 +82,12 @@ test("TF-63 หน้าภาษาอังกฤษ /en/request และ /en
   context,
 }) => {
   await offlineReady(page);
+  await page.goto("/en/request");
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Offline ready: SOS form, hotlines, and survival guide available offline",
+    }),
+  ).toBeVisible({ timeout: 60_000 });
   await context.setOffline(true);
   const form = await context.newPage();
   await form.goto("/en/request");
@@ -95,6 +105,12 @@ test("TF-63 หน้าภาษาอังกฤษ /en/request และ /en
     "href",
     "tel:1155",
   );
+  const survival = await context.newPage();
+  await survival.goto("/en/survival");
+  await expect(survival.getByRole("heading", { name: "Flood survival guide" })).toBeVisible();
+  const checkbox = survival.getByRole("checkbox").first();
+  await checkbox.check();
+  await expect(checkbox).toBeChecked();
 });
 
 test("TF-46 เปิดหน้าแรกและเลือก SOS ขณะออฟไลน์", async ({ page, context }) => {
@@ -126,7 +142,14 @@ test("ไม่แคชข้อมูลบัญชี เคส หรือ
     return result;
   });
   expect(urls).toEqual(
-    expect.arrayContaining(["/request", "/hotlines", "/survival", "/en/request", "/en/hotlines"]),
+    expect.arrayContaining([
+      "/request",
+      "/hotlines",
+      "/survival",
+      "/en/request",
+      "/en/hotlines",
+      "/en/survival",
+    ]),
   );
   expect(urls.some((url) => /\.(?:woff2?|ttf|otf)$/i.test(url))).toBe(false);
   expect(urls.some((url) => /^(\/en)?\/(api|auth|track|admin|unit|my-cases)(\/|$)/.test(url))).toBe(
@@ -313,13 +336,13 @@ test("TF-15 เก็บคำขอออฟไลน์และส่งร�
   await expect(page.getByRole("heading", { name: "ส่งถึงระบบแล้ว รอทีมกู้ภัยรับเคส" })).toBeVisible(
     { timeout: 30000 },
   );
-  await expect(page.getByText("FL-TEST-1234")).toBeVisible();
+  await expect(page.getByText("FL-TEST-1234", { exact: true })).toBeVisible();
   expect(requests).toBe(1);
   expect(keys).toEqual([queued.id]);
   await expect(page.getByRole("button", { name: /มี 1 คำขอรอส่ง/ })).toHaveCount(0);
   await page.getByRole("link", { name: "ดูรายละเอียดและติดตามเคส" }).click();
   await expect(page).toHaveURL(/\/sos\/sent$/);
-  await expect(page.getByText("FL-TEST-1234")).toBeVisible();
+  await expect(page.getByText("FL-TEST-1234", { exact: true })).toBeVisible();
   const remaining = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("namjaithai-offline-sos");
@@ -648,7 +671,7 @@ test("TF-15 ส่งคิวที่ยินยอมแล้วเข้�
   expect(media.data).toHaveLength(1);
   const stored = await db.storage.from("case-media").download(media.data![0].storage_path);
   expect(stored.error).toBeNull();
-  await expect(page.getByText(result.data![0].case_code)).toBeVisible();
+  await expect(page.getByText(result.data![0].case_code, { exact: true })).toBeVisible();
   await closeTestCases([result.data![0].id]);
 });
 

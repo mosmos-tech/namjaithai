@@ -1,6 +1,7 @@
 import { UnitCapability } from "./incidents";
 import {
   dailyAxisLabels,
+  enMonthLabel,
   thaiMonthLabel,
   unitDisplayName,
   type DailyAxisLabel,
@@ -46,7 +47,58 @@ export type PublicUnit = {
   isDemo: boolean;
   hotline: string | null;
   helpedTotal: number;
+  searchText?: string;
 };
+
+export type AreaNameLookup = {
+  provinceEn: ReadonlyMap<string, string>;
+  districtEn: ReadonlyMap<string, string>;
+};
+
+export function buildAreaNameLookup(
+  provinces: readonly { code: number; nameTh: string; nameEn: string }[],
+  districts: readonly { provinceCode: number; nameTh: string; nameEn: string }[],
+): AreaNameLookup {
+  const provinceByCode = new Map<number, string>();
+  const provinceEn = new Map<string, string>();
+  for (const p of provinces) {
+    provinceByCode.set(p.code, p.nameTh);
+    provinceEn.set(p.nameTh, p.nameEn);
+  }
+  const districtEn = new Map<string, string>();
+  for (const d of districts) {
+    const provTh = provinceByCode.get(d.provinceCode);
+    if (provTh) districtEn.set(`${provTh}::${d.nameTh}`, d.nameEn);
+    if (!districtEn.has(d.nameTh)) districtEn.set(d.nameTh, d.nameEn);
+  }
+  return { provinceEn, districtEn };
+}
+
+export function localizePublicUnit<T extends PublicUnit>(
+  unit: T,
+  locale: "th" | "en",
+  lookup?: AreaNameLookup,
+): T {
+  if (locale !== "en" || !lookup) return unit;
+  const provEn = lookup.provinceEn.get(unit.province) ?? unit.province;
+  const distEn = unit.district
+    ? (lookup.districtEn.get(`${unit.province}::${unit.district}`) ??
+      lookup.districtEn.get(unit.district) ??
+      unit.district)
+    : null;
+  const thaiSuffix = `(${[unit.district, unit.province].filter(Boolean).join(" ")})`;
+  const enSuffix = `(${[distEn, provEn].filter(Boolean).join(", ")})`;
+  const label = unit.label.endsWith(thaiSuffix)
+    ? `${unit.label.slice(0, unit.label.length - thaiSuffix.length)}${enSuffix}`
+    : unit.label;
+  return {
+    ...unit,
+    label,
+    province: provEn,
+    district: distEn,
+    searchText: `${unit.label} ${label}`,
+  };
+}
 
 const isCapability = (value: unknown): value is UnitCapability =>
   typeof value === "string" && value in UnitCapability;
@@ -132,7 +184,7 @@ export function filterUnits(units: readonly PublicUnit[], filters: UnitDirectory
       (!filters.district || unit.district === filters.district) &&
       (!filters.organization || unit.organization === filters.organization) &&
       (!filters.capability || unit.capabilities.includes(filters.capability)) &&
-      (!filters.query || unitMatchesQuery(unit.label, filters.query)),
+      (!filters.query || unitMatchesQuery(unit.searchText ?? unit.label, filters.query)),
   );
 }
 
@@ -145,6 +197,7 @@ export function organizationsOf(units: readonly PublicUnit[]): string[] {
 /** จัดกลุ่มตามจังหวัด (เรียงจังหวัดตามตัวอักษร ในกลุ่มคงลำดับเดิม) */
 export function groupUnitsByProvince<T extends { province: string }>(
   units: readonly T[],
+  locale: "th" | "en" = "th",
 ): { province: string; units: T[] }[] {
   const groups = new Map<string, T[]>();
   for (const unit of units) {
@@ -153,7 +206,7 @@ export function groupUnitsByProvince<T extends { province: string }>(
     groups.set(unit.province, list);
   }
   return [...groups.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, "th"))
+    .sort(([a], [b]) => a.localeCompare(b, locale === "en" ? "en" : "th"))
     .map(([province, list]) => ({ province, units: list }));
 }
 
@@ -172,13 +225,16 @@ export type DailyHelpedBar = DailyAxisLabel & {
  * แท่งรายวันจาก RPC (RPC เติมวันที่ไม่มีเคสเป็น 0 ให้แล้ว เรียงเก่า → ใหม่)
  * ป้ายแกนตาม dailyAxisLabels — จอแคบแสดงเลขวันทุก 5 แท่งนับถอยจากวันล่าสุด
  */
-export function dailyHelpedBars(rows: readonly PublicDailyHelpedRow[]): DailyHelpedBar[] {
+export function dailyHelpedBars(
+  rows: readonly PublicDailyHelpedRow[],
+  locale: "th" | "en" = "th",
+): DailyHelpedBar[] {
   const keys = rows.map((row) => row.day.slice(0, 10));
   const last = keys.length - 1;
-  const axis = dailyAxisLabels(keys, (index) => (last - index) % 5 === 0);
+  const axis = dailyAxisLabels(keys, (index) => (last - index) % 5 === 0, locale);
   return rows.map((row, index) => ({
     key: keys[index],
-    label: `${Number(keys[index].slice(8, 10))} ${thaiMonthLabel(keys[index].slice(0, 7))}`,
+    label: `${Number(keys[index].slice(8, 10))} ${locale === "en" ? enMonthLabel(keys[index].slice(0, 7)) : thaiMonthLabel(keys[index].slice(0, 7))}`,
     ...axis[index],
     helped: row.helped,
     leadClosed: row.lead_closed,

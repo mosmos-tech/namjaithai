@@ -2,11 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- ไอคอนหมุด SVG จาก Figma */
 import { useEffect, useRef, useState } from "react";
-import type {
-  Map as MapLibreMap,
-  MapMouseEvent,
-  Marker as MapLibreMarker,
-} from "maplibre-gl";
+import type { Map as MapLibreMap, MapMouseEvent, Marker as MapLibreMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { OSM_RASTER_STYLE } from "../../../lib/map/osm-style";
 import { useI18n } from "../../../lib/i18n/I18nProvider";
@@ -22,6 +18,7 @@ export interface Step3LocationMapProps {
   // กรอบพื้นที่ที่ให้แผนที่เลื่อนไปดู เช่น ตำบลที่ผู้แจ้งเลือก (TF-65)
   focusBounds?: AreaBounds;
   onPinChange: (coords: { lat: number; lng: number }) => void;
+  disableFallbackPin?: boolean;
 }
 
 const CIRCLE_SOURCE = "gps-accuracy";
@@ -65,6 +62,7 @@ export default function Step3LocationMap({
   accuracyCircle,
   focusBounds,
   onPinChange,
+  disableFallbackPin = false,
 }: Step3LocationMapProps) {
   const { t } = useI18n();
   const lat = pin?.lat;
@@ -112,10 +110,7 @@ export default function Step3LocationMap({
           attributionControl: { compact: false },
         });
 
-        map.addControl(
-          new maplibregl.NavigationControl({ showCompass: false }),
-          "top-right",
-        );
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
         const pinElement = document.createElement("div");
         pinElement.className =
@@ -268,7 +263,7 @@ export default function Step3LocationMap({
       <div ref={containerRef} className="size-full" />
 
       {/* โหมดสำรองเมื่อกำลังโหลดแผนที่หรือไม่มี WebGL: แสดงลายเส้นถนนและหมุดตาม Figma พร้อมให้แตะปักหมุดได้ทันที */}
-      {!mapReady && (
+      {!mapReady && !disableFallbackPin && (
         <button
           type="button"
           onClick={handleFallbackMapClick}
@@ -290,6 +285,11 @@ export default function Step3LocationMap({
           />
 
           {/* แสดงหมุดเมื่อปักแล้วเท่านั้น (TF-65) */}
+          {!mapReady && disableFallbackPin && (
+            <p className="absolute inset-0 grid place-items-center p-4 text-center">
+              แผนที่ยังไม่พร้อม กรุณาใช้ GPS หรือลิงก์ Google Maps
+            </p>
+          )}
           {hasExplicitPin && (
             <>
               {/* หมุดมือถือ (Figma MB2: วงกลมแดง 40px มีไอคอนเตือนสีขาวตรงกลาง) */}
@@ -317,6 +317,11 @@ export default function Step3LocationMap({
       )}
 
       {/* ป้ายพิกัดมุมล่างซ้ายช่วยให้ตรวจสอบได้ว่าหมุดอยู่ที่พิกัดใด */}
+      {!mapReady && disableFallbackPin && (
+        <p className="absolute inset-0 grid place-items-center p-4 text-center">
+          แผนที่ยังไม่พร้อม กรุณาใช้ GPS หรือลิงก์ Google Maps
+        </p>
+      )}
       {hasExplicitPin && (
         <div
           data-testid="step3-pin-coordinates"

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { WaterLevel } from "../../../lib/domain";
+import { IncidentType, WaterLevel } from "../../../lib/domain";
 import { createInitialSosDraft, loadSosDraft, submitSosDraft } from "../draft-storage";
 import { SOS_TEXT_EN } from "../sos-text.en";
 
@@ -20,6 +20,7 @@ function memoryStorage(initial: Record<string, string> = {}) {
 
 const fullDraft = {
   ...createInitialSosDraft(),
+  incidentType: IncidentType.FLOOD,
   consent: true,
   healthConsent: true,
   currentStep: 5 as const,
@@ -103,6 +104,28 @@ describe("TF-74: พบเคสที่อาจซ้ำตอนส่ง SO
       trackingToken: "t1",
       updatedExisting: true,
     });
+  });
+
+  it('UPDATE_EXISTING filters out cases without confirmationToken from deviceConfirmationTokens', async () => {
+    const storage = memoryStorage({
+      "namjaithai:confirmation-cases": JSON.stringify([
+        { caseCode: "FL-2611-0001", trackingToken: "t1" },
+        { caseCode: "FL-2611-0002", trackingToken: "t2", confirmationToken: "device-secret-2" },
+      ]),
+    });
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      json(
+        { caseCode: "FL-2611-0002", trackingToken: "t2", replayed: false, updatedExisting: true },
+        200,
+      ),
+    );
+    await submitSosDraft({
+      draft: { ...fullDraft, idempotencyKey: "idem-tf74" },
+      storage,
+      fetchImpl: fetchMock,
+      duplicateAction: "UPDATE_EXISTING",
+    });
+    expect(sentBody(fetchMock).deviceConfirmationTokens).toEqual(["device-secret-2"]);
   });
 
   it('เบอร์เดิมจากเครื่องอื่น: ได้แค่ "ส่งข้อมูลเพิ่มให้ทีมแล้ว" ไม่มีรหัสเคส และล้างร่าง', async () => {

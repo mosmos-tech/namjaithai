@@ -42,4 +42,24 @@ describe("ข้อมูลกราฟผลงานหน่วย (ใช�
     expect(data.bars[0].values).toEqual([3, 1]);
     expect(data.table.rows[0]).toEqual([3, 1]);
   });
+
+  it("หน้าสาธารณะภาษาอังกฤษ (/en/units/[id]): ป้าย series ตาราง และวันที่เต็มเป็นภาษาอังกฤษ", () => {
+    const data = dailyHelpedChartData(
+      dailyHelpedBars([{ day: "2026-11-11", helped: 3, lead_closed: 1 }], "en"),
+      "en",
+    );
+    expect(data.series.map((item) => item.label)).toEqual([
+      "Confirmed by reporter",
+      "Closed by unit lead",
+    ]);
+    expect(data.legendLabel).toBe("Legend");
+    expect(data.totalLabel).toBe("Total");
+    expect(data.table.periodHeader).toBe("Date");
+    expect(data.table.columns).toEqual(["Confirmed by reporter", "Closed by unit lead"]);
+    expect(data.bars[0]).toMatchObject({
+      label: "11 Nov 2026",
+      fullLabel: "11 Nov 2026",
+      axisLabel: "11 Nov",
+    });
+  });
 });

@@ -8,6 +8,16 @@ const CACHE = "namjaithai-public-" + __CACHE_VERSION__;
 const PAGES = [
   "/", "/request", "/sos", "/sos/sent", "/hotlines", "/survival",
   "/en/request", "/en/sos", "/en/sos/sent", "/en/hotlines",
+const PAGES = [
+  "/",
+  "/request",
+  "/sos",
+  "/hotlines",
+  "/survival",
+  "/en/request",
+  "/en/sos",
+  "/en/hotlines",
+  "/en/survival",
 ];
 const PUBLIC_ASSETS = [
   "/favicon.ico",

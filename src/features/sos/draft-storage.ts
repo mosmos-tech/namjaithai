@@ -264,7 +264,7 @@ export interface Step1ValidationErrors {
 /**
  * ตรวจสอบข้อมูลขั้นที่ 1 "เกิดเหตุอะไร" (TF-50, TF-66)
  * - ถ้าตอบว่าไม่ได้อยู่ที่จุดเกิดเหตุ (atScene === false) จะไม่ผ่านและไม่สร้างเคส
- * - ยังไม่เลือกประเภท = น้ำท่วม (เหมือนเดิม) แต่ประเภทนั้นต้องเปิดรับแจ้งอยู่
+ * - ต้องเลือกประเภทเหตุที่เปิดรับแจ้งก่อนเสมอ
  *   enabledTypes = รายการที่แอดมินเปิดไว้ (TF-30) ไม่ส่งมา = ไม่ตรวจ (เซิร์ฟเวอร์ตรวจซ้ำอยู่แล้ว)
  */
 export function validateStep1Draft(
@@ -292,7 +292,11 @@ export function validateStep1Draft(
         errors.missingSummary.push(t.v.sumIncident);
       }
     }
-  } else if (enabledTypes && !enabledTypes.includes(draft.incidentType ?? IncidentType.FLOOD)) {
+  }
+  if (
+    !errors.incidentType &&
+    (!draft.incidentType || (enabledTypes && !enabledTypes.includes(draft.incidentType)))
+  ) {
     errors.incidentType = t.v.incidentRequired;
     errors.missingSummary.push(t.v.sumIncident);
   }
@@ -530,12 +534,15 @@ export interface GpsStatusBanner {
  * - ถ้าความแม่นยำเกิน 100 ม. จะแสดงข้อความเตือนให้ปักหมุดเพิ่มบนแผนที่
  * - ถ้าไม่อนุญาต GPS จะแสดงข้อความว่ายังสามารถแตะ/ลากหมุดปักเองบนแผนที่ได้
  */
-export function getGpsStatusMessage(params: {
-  lat?: number;
-  lng?: number;
-  accuracyM?: number;
-  gpsError?: GpsErrorCode | null;
-}, t: SosText = SOS_TEXT_TH): GpsStatusBanner | null {
+export function getGpsStatusMessage(
+  params: {
+    lat?: number;
+    lng?: number;
+    accuracyM?: number;
+    gpsError?: GpsErrorCode | null;
+  },
+  t: SosText = SOS_TEXT_TH,
+): GpsStatusBanner | null {
   if (params.gpsError === "PERMISSION_DENIED") {
     return {
       tone: "warning",
@@ -729,12 +736,16 @@ function validatePeopleAndQuestions(
             val.length === 0 ||
             !val.every((v) => typeof v === "string" && q.options.some((o) => o.value === v))
           ) {
-            questionErrors[q.key] = format(t.v.questionChoiceInvalid, { label: pickText(q.label, t.locale) });
+            questionErrors[q.key] = format(t.v.questionChoiceInvalid, {
+              label: pickText(q.label, t.locale),
+            });
             errors.missingSummary.push(pickText(q.label, t.locale));
           }
         } else {
           if (typeof val !== "string" || !q.options.some((o) => o.value === val)) {
-            questionErrors[q.key] = format(t.v.questionChoiceInvalid, { label: pickText(q.label, t.locale) });
+            questionErrors[q.key] = format(t.v.questionChoiceInvalid, {
+              label: pickText(q.label, t.locale),
+            });
             errors.missingSummary.push(pickText(q.label, t.locale));
           }
         }
@@ -749,7 +760,9 @@ function validatePeopleAndQuestions(
         }
       } else if (q.kind === "boolean") {
         if (typeof val !== "boolean") {
-          questionErrors[q.key] = format(t.v.questionRequired, { label: pickText(q.label, t.locale) });
+          questionErrors[q.key] = format(t.v.questionRequired, {
+            label: pickText(q.label, t.locale),
+          });
           errors.missingSummary.push(pickText(q.label, t.locale));
         }
       } else if (q.kind === "text") {
@@ -1557,8 +1570,8 @@ export async function submitSosDraft(
       // TF-74: token ยืนยันของเครื่องนี้ (TF-58) — เซิร์ฟเวอร์ใช้เทียบว่าเป็นเครื่องที่ส่งเคสเดิมไหม
       ...(options.duplicateAction === "UPDATE_EXISTING" && storage
         ? {
-            deviceConfirmationTokens: readDeviceCases(storage as Storage).map(
-              (item) => item.confirmationToken,
+            deviceConfirmationTokens: readDeviceCases(storage as Storage).flatMap(
+              (item) => (item.confirmationToken ? [item.confirmationToken] : []),
             ),
           }
         : {}),

@@ -22,9 +22,14 @@ interface LogoProps {
   size?: "default" | "sm" | "lg";
   /** onBlue = วางบนพื้นน้ำเงิน: หยดน้ำและตัวหนังสือสีขาว */
   tone?: "default" | "onBlue";
+  subtitle?: string;
 }
 
-export function Logo({ size = "default", tone = "default" }: LogoProps) {
+export function Logo({
+  size = "default",
+  tone = "default",
+  subtitle = "ศูนย์ประสานงานช่วยเหลือเหตุฉุกเฉิน",
+}: LogoProps) {
   const iconSize = size === "sm" ? "h-8 w-8" : size === "lg" ? "size-11" : "h-10 w-10";
   const nameSize = size === "sm" ? "text-base" : size === "lg" ? "text-[28px]" : "text-xl";
   const onBlue = tone === "onBlue";
@@ -40,12 +45,12 @@ export function Logo({ size = "default", tone = "default" }: LogoProps) {
       <div>
         <div className="flex items-center gap-1.5">
           <span
-            className={`font-heading font-bold leading-tight ${onBlue ? "text-text-on-primary" : "text-text-primary"} ${nameSize}`}
+            className={`font-heading leading-tight font-bold ${onBlue ? "text-text-on-primary" : "text-text-primary"} ${nameSize}`}
           >
             น้ำใจไทย
           </span>
           <span
-            className={`rounded bg-red-600 px-1.5 py-0.5 font-heading font-bold leading-none text-white ${size === "lg" ? "text-base" : "text-xs"}`}
+            className={`font-heading rounded bg-red-600 px-1.5 py-0.5 leading-none font-bold text-white ${size === "lg" ? "text-base" : "text-xs"}`}
           >
             SOS
           </span>
@@ -53,7 +58,7 @@ export function Logo({ size = "default", tone = "default" }: LogoProps) {
         <p
           className={`mt-px leading-tight ${onBlue ? "text-text-on-primary" : "text-text-secondary"} ${size === "lg" ? "text-sm" : "text-xs"}`}
         >
-          ศูนย์ประสานงานช่วยเหลือเหตุฉุกเฉิน
+          {subtitle}
         </p>
       </div>
     </div>

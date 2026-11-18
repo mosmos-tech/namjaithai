@@ -10,10 +10,16 @@ const checkOnly = process.argv.includes("--check");
 
 let statusText: string;
 try {
-  statusText = execFileSync("npx", ["supabase", "status", "-o", "env"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  statusText =
+    process.platform === "win32"
+      ? execFileSync("cmd.exe", ["/d", "/s", "/c", "npx", "supabase", "status", "-o", "env"], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        })
+      : execFileSync("npx", ["supabase", "status", "-o", "env"], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        });
 } catch {
   console.error("อ่านค่า Supabase ในเครื่องไม่ได้ — เปิด Supabase ก่อน: npm run db:start");
   process.exit(2);

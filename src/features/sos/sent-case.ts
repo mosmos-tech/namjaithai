@@ -1,4 +1,5 @@
 import { rememberDeviceCase } from "./device-cases";
+import { CaseStatus } from "@/lib/domain/case-status";
 import type { IncidentType } from "@/lib/domain/incidents/types";
 
 /**
@@ -27,12 +28,12 @@ const STORAGE_KEY = "namjaithai:sent-case";
 
 export function rememberSentCase(sent: SentCase): void {
   try {
-    if (sent.confirmationToken)
-      rememberDeviceCase(window.localStorage, {
-        caseCode: sent.caseCode,
-        trackingToken: sent.trackingToken,
-        confirmationToken: sent.confirmationToken,
-      });
+    rememberDeviceCase(window.localStorage, {
+      caseCode: sent.caseCode,
+      trackingToken: sent.trackingToken,
+      ...(sent.confirmationToken ? { confirmationToken: sent.confirmationToken } : {}),
+      lastStatus: CaseStatus.NEW,
+    });
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sent));
   } catch {
     // โหมดส่วนตัวบางเบราว์เซอร์เขียน storage ไม่ได้ หน้า /sos/sent จะพาไปกรอกที่ /track แทน
