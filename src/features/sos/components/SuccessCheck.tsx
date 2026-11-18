@@ -43,9 +43,9 @@ export function SuccessCheck() {
   return (
     <div
       ref={circleRef}
-      className="mx-auto flex size-24 items-center justify-center rounded-full border-[3px] border-green-700 bg-green-50 sm:size-28"
+      className="mx-auto flex size-14 items-center justify-center rounded-full border-[3px] border-green-700 bg-green-50 sm:size-28"
     >
-      <svg viewBox="0 0 48 48" className="size-12 sm:size-14" aria-hidden="true">
+      <svg viewBox="0 0 48 48" className="size-8 sm:size-14" aria-hidden="true">
         <path
           ref={checkRef}
           d="M12 25l8 8 16-17"

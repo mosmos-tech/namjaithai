@@ -18,6 +18,7 @@ import {
   openFreshSosForm,
   readDraft,
   seedLocationIntoDraft,
+  expectSentCase,
 } from "./helpers/sos";
 
 // E. ฟอร์ม SOS 5 ขั้น (TF-66 ลำดับใหม่: 1 เกิดเหตุอะไร · 2 รายละเอียดเหตุ · 3 ตำแหน่ง · 4 สิ่งที่ต้องการ · 5 ติดต่อ)
@@ -548,7 +549,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
     );
     await submit(page).click();
     const request = await sent;
-    await expect(page.getByText(/รหัสเคสของคุณคือ FL-/)).toBeVisible({ timeout: 20_000 });
+    // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่
+    await expectSentCase(page);
     const replay = await page.request.post("/api/cases", {
       headers: {
         "Content-Type": "application/json",
@@ -710,9 +712,8 @@ test.describe("ขั้นที่ 5 ข้อมูลติดต่อแ�
       b.click();
       b.click();
     });
-    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
-      timeout: 15_000,
-    });
+    // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่
+    await expectSentCase(page);
     // นับเฉพาะเคสของเบอร์นี้ (test มือถือ/จอคอมรันพร้อมกัน นับทั้งตารางจะปนกัน)
     expect(await countCasesByPhone(phone)).toBe(1);
     expect(await readDraft(page)).toBeNull();
@@ -848,9 +849,8 @@ test.describe("TF-51: ขั้น 2 และ 4 วาดจากทะเบ�
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
-    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
-      timeout: 15_000,
-    });
+    // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่
+    await expectSentCase(page);
     expect(await countCasesByPhone(phoneFlood)).toBe(1);
 
     // 2. ประเภทที่ 2: อุบัติเหตุทางถนน (ROAD_ACCIDENT)
@@ -882,9 +882,8 @@ test.describe("TF-51: ขั้น 2 และ 4 วาดจากทะเบ�
     const roadRes = await roadResPromise;
     expect(roadRes.status()).toBe(201);
     const roadBody = (await roadRes.json()) as { caseCode: string };
-    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
-      timeout: 15_000,
-    });
+    // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่
+    await expectSentCase(page);
     expect(await countCasesByPhone(phoneRoad)).toBe(1);
 
     // ตรวจในฐานข้อมูลว่า ROAD_ACCIDENT เก็บ vehicleTypes/isTrapped ใน cases.details และแยก injuredCount ไป case_sensitive_details
@@ -930,9 +929,8 @@ test.describe("TF-51: ขั้น 2 และ 4 วาดจากทะเบ�
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
     await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
-    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
-      timeout: 15_000,
-    });
+    // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่
+    await expectSentCase(page);
     expect(await countCasesByPhone(phoneAnimal)).toBe(1);
   });
 });
@@ -1128,9 +1126,8 @@ test.describe("TF-69: ส่ง SOS ตอนเน็ตช้ามาก (tim
     });
 
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
-    await expect(page.getByText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/)).toBeVisible({
-      timeout: 20_000,
-    });
+    // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่
+    await expectSentCase(page);
 
     expect(captured).toHaveLength(2);
     expect(captured[0].hasPhotos).toBe(false);
@@ -1179,11 +1176,9 @@ test.describe("TF-69: ส่ง SOS ตอนเน็ตช้ามาก (tim
     });
 
     await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
-    const successBanner = page.getByTestId("step5-submit-success");
-    await expect(successBanner).toBeVisible({ timeout: 20_000 });
-    await expect(successBanner).toContainText(/รหัสเคสของคุณคือ FL-\d{4}-\d{4,}/);
-    await expect(successBanner).toContainText("ไฟล์รูปไม่ถูกต้อง");
-    await expect(page.getByTestId("step5-submit-error")).toHaveCount(0);
+    // TF-80: ไปหน้ารหัสเคสใหญ่ พร้อมคำเตือนเรื่องรูป
+    await expectSentCase(page);
+    await expect(page.getByTestId("sent-photo-warning")).toContainText("ไฟล์รูปไม่ถูกต้อง");
     expect(await countCasesByPhone(phonePhotoFail)).toBe(1);
 
     const { data: contactsFail } = await db

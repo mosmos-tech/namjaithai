@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 import { saveEvidence } from "./helpers/evidence";
 import { adminDb, closeTestCases, randomPhone, uniqueTestPoint } from "./helpers/db";
 import { applySession, createAccount, type TestAccount } from "./helpers/accounts";
+import { expectSentCase } from "./helpers/sos";
 
 /**
  * TF-63 ฟอร์ม SOS ภาษาอังกฤษ (นักท่องเที่ยว)
@@ -169,16 +170,12 @@ test("ส่ง SOS น้ำท่วมภาษาอังกฤษสำเ
   await page.getByRole("checkbox", { name: /^I consent to the use of health information/ }).check();
   await page.getByRole("button", { name: "Request help now" }).click();
 
-  await expect(page.getByText("Your request for help was sent").first()).toBeVisible({
-    timeout: 20_000,
-  });
-  await page.getByRole("link", { name: "View your request and track the case" }).click();
+  // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่ภาษาอังกฤษเอง
+  const caseCode = await expectSentCase(page);
   await expect(page).toHaveURL(/\/en\/sos\/sent$/);
   await expect(page.getByRole("heading", { name: "Your request was received" })).toBeVisible();
-  const caseCode = (await page.locator("p.font-mono").first().textContent())!.trim();
-  expect(caseCode).toMatch(/^FL-\d{4}-\d+$/);
   // ติดตามเคส: ยังอยู่ในหน้าภาษาอังกฤษ
-  await page.getByRole("link", { name: "Track case status" }).click();
+  await page.getByRole("link", { name: "Track my case" }).click();
   await expect(page).toHaveURL(/\/en\/track\/FL-/);
   await expect(page.getByTestId("track-panel")).toContainText("Waiting for a team");
 

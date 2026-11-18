@@ -6,7 +6,7 @@ import {
   stepTestCase,
   type CreatedCase,
 } from "./helpers/db";
-import { openFreshSosForm, goToStep5 } from "./helpers/sos";
+import { openFreshSosForm, goToStep5, expectSentCase } from "./helpers/sos";
 
 // F. /sos/sent · G. /track · H. /track/[code] (TF-13)
 
@@ -59,8 +59,11 @@ test.describe("/sos/sent หน้าส่งสำเร็จ", () => {
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(sent.caseCode);
     });
 
-    test("ปุ่ม ติดตามสถานะเคส พาไปหน้าติดตามพร้อม token", async ({ page }) => {
-      await page.getByRole("link", { name: "ติดตามสถานะเคส" }).click();
+    test("ปุ่ม ติดตามเคส พาไปหน้าติดตามพร้อม token", async ({ page }) => {
+      await page
+        .getByTestId("sent-case-card")
+        .getByRole("link", { name: "ติดตามเคส", exact: true })
+        .click();
       await expect(page).toHaveURL(
         new RegExp(`/track/${sent.caseCode}\\?t=${sent.trackingToken}$`),
       );
@@ -78,8 +81,8 @@ test.describe("/sos/sent หน้าส่งสำเร็จ", () => {
       expect(text).toContain(`/track/${sent.caseCode}?t=${sent.trackingToken}`);
     });
 
-    test("ปุ่มกลับหน้าแรก", async ({ page }) => {
-      await page.getByRole("link", { name: "กลับหน้าแรก" }).click();
+    test("ปุ่มกลับหน้าหลัก", async ({ page }) => {
+      await page.getByRole("link", { name: "กลับหน้าหลัก" }).click();
       await expect(page).toHaveURL(/\/$/);
     });
   });
@@ -297,10 +300,8 @@ test("TF-53 ส่งฟอร์มจริงแล้วดูคำแน�
   await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลเพื่อ/ }).check();
   await page.getByRole("checkbox", { name: /^ยินยอมให้ใช้ข้อมูลสุขภาพ/ }).check();
   await page.getByRole("button", { name: "แจ้งขอความช่วยเหลือทันที" }).click();
-  const advice = page.getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" });
-  await expect(advice).toContainText("หลีกเลี่ยงการเดินหรือขับรถผ่านน้ำท่วม");
-  await page.getByRole("link", { name: "ดูรายละเอียดการแจ้งและติดตามเคส" }).click();
-  await expect(page).toHaveURL(/\/sos\/sent$/);
+  // TF-80: ส่งสำเร็จแล้วไปหน้ารหัสเคสใหญ่เอง
+  await expectSentCase(page);
   await expect(
     page
       .getByRole("region", { name: "ระหว่างรอทีม ควรทำอะไร" })

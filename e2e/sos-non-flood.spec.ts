@@ -7,6 +7,7 @@ import {
   nextButton,
   openFreshSosForm,
   seedLocationIntoDraft,
+  expectSentCase,
 } from "./helpers/sos";
 
 // TF-66: ส่ง SOS ประเภทที่ไม่ใช่น้ำท่วมครบ 5 ขั้นตามลำดับใหม่
@@ -84,7 +85,7 @@ test("TF-66: ส่ง SOS ไฟไหม้ครบ 5 ขั้น — คำ
   const response = await responsePromise;
   expect(response.status()).toBe(201);
   const { caseCode } = (await response.json()) as { caseCode: string };
-  await expect(page.getByText(`รหัสเคสของคุณคือ ${caseCode}`)).toBeVisible({ timeout: 15_000 });
+  await expectSentCase(page, caseCode);
   await saveEvidence(page, "6-non-flood-fire-sent", test.info());
 
   const { data: created } = await adminDb()

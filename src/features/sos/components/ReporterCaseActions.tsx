@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   isClosedStatus,
   WATER_LEVEL_DISPLAY_ORDER,
@@ -14,6 +14,9 @@ type PeopleKey = "adults" | "elderly" | "bedridden" | "children" | "pets";
 const inputClass =
   "border-border-default bg-bg-surface text-text-primary min-h-12 w-full rounded-lg border px-3 text-lg";
 const buttonClass = "min-h-12 rounded-full px-5 py-3 text-lg font-semibold disabled:opacity-50";
+
+/** TF-80: ลิงก์ "แก้ไขเคส" จากหน้าส่งสำเร็จพามาที่ส่วนนี้ (/track/[code]?t=…#reporter-actions) */
+export const REPORTER_ACTIONS_ID = "reporter-actions";
 
 export function ReporterCaseActions({
   caseCode,
@@ -32,6 +35,13 @@ export function ReporterCaseActions({
   const apiError = (text: string | undefined, fallback: string) =>
     (locale === "th" ? text : undefined) ?? fallback;
   const [details, setDetails] = useState<ReporterDetails | null>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  // ส่วนนี้ขึ้นหลังโหลดสถานะเคสเสร็จ เบราว์เซอร์จึงเลื่อนไปที่ #reporter-actions เองไม่ทัน
+  useEffect(() => {
+    if (window.location.hash !== `#${REPORTER_ACTIONS_ID}`) return;
+    sectionRef.current?.scrollIntoView({ block: "start" });
+    sectionRef.current?.focus({ preventScroll: true });
+  }, []);
   const [mode, setMode] = useState<"idle" | "edit" | "cancel">("idle");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -88,7 +98,13 @@ export function ReporterCaseActions({
   }
 
   return (
-    <section className="bg-bg-surface rounded-[14px] p-5 sm:p-8" aria-label={a.regionLabel}>
+    <section
+      ref={sectionRef}
+      id={REPORTER_ACTIONS_ID}
+      tabIndex={-1}
+      className="bg-bg-surface rounded-[14px] p-5 outline-none sm:p-8"
+      aria-label={a.regionLabel}
+    >
       {message && (
         <p role="status" className="text-text-primary mb-4 text-lg">
           {message}
