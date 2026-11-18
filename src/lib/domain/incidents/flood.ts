@@ -63,7 +63,7 @@ export const flood: IncidentDefinition = {
     ...UNIVERSAL_DANGER_SIGNS,
     { key: "PERSON_IN_WATER", label: { th: "มีคนอยู่ในน้ำ", en: "Someone is in the water" }, source: "https://www.disaster.go.th/" },
   ],
-  needs: Object.values(Need),
+  needs: [Need.EVACUATION_BOAT, Need.EVACUATE_BEDRIDDEN, Need.DRINKING_WATER, Need.FOOD, Need.MEDICINE, Need.BABY_SUPPLIES, Need.FLASHLIGHT_POWER, Need.LIFE_JACKET, Need.PET_FOOD, Need.CUT_POWER, Need.OTHER],
   // FEMA flood guidance; these items are separate from the legacy survival checklist.
   waitingAdvice: [
     {

@@ -57,7 +57,7 @@ import { HydrationPending } from "../../../components/public/HydrationPending";
 import { Step1Incident } from "./Step1Incident";
 import { Step2Details, type PeopleGroupKey } from "./Step2Details";
 import { Step3Location } from "./Step3Location";
-import { Step4Needs } from "./Step4Needs";
+import { Step4Needs, getNeedOptionsForIncident } from "./Step4Needs";
 import { Step5Contact } from "./Step5Contact";
 import { useI18n } from "../../../lib/i18n/I18nProvider";
 import { LanguageSwitch } from "../../../components/public/LanguageSwitch";
@@ -119,6 +119,7 @@ export function SosWizard() {
 
   // สถานะตรวจข้อมูลขั้นที่ 4
   const [step4Attempted, setStep4Attempted] = useState(false);
+  const [retainedLegacyNeeds, setRetainedLegacyNeeds] = useState<Partial<Record<IncidentType, Need[]>>>({});
   const [step4Errors, setStep4Errors] = useState<Step4ValidationErrors>({
     missingSummary: [],
   });
@@ -353,6 +354,13 @@ export function SosWizard() {
   // ── ขั้นที่ 4: สิ่งที่ต้องการ ──────────────────────────────────────────────
   function handleToggleNeed(need: Need) {
     const exists = draft.needs.includes(need);
+    const incidentType = draft.incidentType ?? IncidentType.FLOOD;
+    if (exists && !getNeedOptionsForIncident(incidentType).some((option) => option.value === need)) {
+      setRetainedLegacyNeeds((previous) => ({
+        ...previous,
+        [incidentType]: Array.from(new Set([...(previous[incidentType] ?? []), need])),
+      }));
+    }
     const nextNeeds = exists ? draft.needs.filter((item) => item !== need) : [...draft.needs, need];
 
     const next = updateDraft((prev) => ({
@@ -525,6 +533,7 @@ export function SosWizard() {
               : undefined,
           );
           clearSosDraft();
+          setRetainedLegacyNeeds({});
           window.dispatchEvent(
             new CustomEvent("sos-queued", { detail: { skipImmediateRetry: true } }),
           );
@@ -551,6 +560,7 @@ export function SosWizard() {
       }
 
       if (result.status === "submitted" || result.status === "supplemented") {
+        setRetainedLegacyNeeds({});
         const incidentType = draft.incidentType ?? IncidentType.FLOOD;
         setSubmittedType(incidentType);
         // TF-74: รายงานเพิ่มเติม (เครื่องอื่นของเบอร์เดิม) ไม่มีรหัสเคส/ลิงก์ติดตาม
@@ -677,6 +687,7 @@ export function SosWizard() {
                 className="font-semibold underline"
                 onClick={() => {
                   clearSosDraft();
+                  setRetainedLegacyNeeds({});
                   setRestoredDraft(false);
                 }}
               >
@@ -762,6 +773,7 @@ export function SosWizard() {
             <Step4Needs
               incidentType={draft.incidentType ?? IncidentType.FLOOD}
               needs={draft.needs}
+              retainedLegacyNeeds={retainedLegacyNeeds[draft.incidentType ?? IncidentType.FLOOD]}
               otherDetail={draft.otherDetail}
               errors={step4Errors}
               onToggleNeed={handleToggleNeed}

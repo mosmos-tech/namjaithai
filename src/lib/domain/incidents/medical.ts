@@ -55,11 +55,7 @@ export const medical: IncidentDefinition = {
       source: MEDICAL_OFFICIAL_SOURCE,
     },
   ],
-  needs: [
-    Need.MEDICINE,
-    Need.EVACUATE_BEDRIDDEN,
-    Need.OTHER,
-  ],
+  needs: [Need.AMBULANCE, Need.MEDICINE, Need.EVACUATE_BEDRIDDEN, Need.OTHER],
   waitingAdvice: [
     {
       text: {
