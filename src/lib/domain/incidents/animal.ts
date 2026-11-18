@@ -51,11 +51,7 @@ export const animal: IncidentDefinition = {
       source: ANIMAL_OFFICIAL_SOURCE,
     },
   ],
-  needs: [
-    Need.MEDICINE,
-    Need.FLASHLIGHT_POWER,
-    Need.OTHER,
-  ],
+  needs: [Need.ANIMAL_RESPONSE, Need.AMBULANCE, Need.MEDICINE, Need.OTHER],
   waitingAdvice: [
     {
       text: {

@@ -91,7 +91,11 @@ describe("ทะเบียนประเภทเหตุ (TF-49)", () => {
     expect(water?.kind === "choice" && water.options.map((o) => o.value).sort()).toEqual(
       Object.values(WaterLevel).sort(),
     );
-    expect(flood.needs).toEqual(Object.values(Need));
+    expect(flood.needs).toEqual([
+      Need.EVACUATION_BOAT, Need.EVACUATE_BEDRIDDEN, Need.DRINKING_WATER, Need.FOOD,
+      Need.MEDICINE, Need.BABY_SUPPLIES, Need.FLASHLIGHT_POWER, Need.LIFE_JACKET,
+      Need.PET_FOOD, Need.CUT_POWER, Need.OTHER,
+    ]);
     expect(flood.waitingAdvice.length).toBeGreaterThan(0);
   });
 

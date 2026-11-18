@@ -13,6 +13,10 @@ import {
   PawPrint,
   ZapOff,
   MessageSquarePlus,
+  Ambulance,
+  CarFront,
+  Flame,
+  Building2,
 } from "lucide-react";
 import { INCIDENT_REGISTRY, IncidentType, Need, needLabel } from "../../../lib/domain";
 import type { Step4ValidationErrors } from "../draft-storage";
@@ -87,9 +91,45 @@ export const NEED_OPTIONS: readonly NeedOptionConfig[] = [
   {
     value: Need.CUT_POWER,
     label: needLabel[Need.CUT_POWER],
-    subtitle: "น้ำท่วมปลั๊กไฟ/ตู้ไฟ เสี่ยงไฟดูดในบ้าน",
+    subtitle: "ไฟฟ้ารั่วหรือสายไฟเสียหาย เสี่ยงไฟดูด",
     urgentHighlight: true,
     icon: <ZapOff className="h-5 w-5 text-red-600" aria-hidden="true" />,
+  },
+  {
+    value: Need.AMBULANCE,
+    label: needLabel.AMBULANCE,
+    subtitle: "ต้องการความช่วยเหลือทางการแพทย์ฉุกเฉิน",
+    icon: <Ambulance className="h-5 w-5 text-primary-700" aria-hidden="true" />,
+  },
+  {
+    value: Need.VEHICLE_EXTRICATION,
+    label: needLabel.VEHICLE_EXTRICATION,
+    subtitle: "ต้องการทีมและอุปกรณ์ช่วยผู้ติดค้างในรถ",
+    icon: <CarFront className="h-5 w-5 text-primary-700" aria-hidden="true" />,
+  },
+  {
+    value: Need.FIRE_RESCUE,
+    label: needLabel.FIRE_RESCUE,
+    subtitle: "ต้องการทีมดับเพลิงหรือช่วยผู้ติดค้าง",
+    icon: <Flame className="h-5 w-5 text-primary-700" aria-hidden="true" />,
+  },
+  {
+    value: Need.WATER_RESCUE,
+    label: needLabel.WATER_RESCUE,
+    subtitle: "ต้องการทีมช่วยผู้ประสบเหตุในน้ำ",
+    icon: <LifeBuoy className="h-5 w-5 text-primary-700" aria-hidden="true" />,
+  },
+  {
+    value: Need.DEBRIS_RESCUE,
+    label: needLabel.DEBRIS_RESCUE,
+    subtitle: "ต้องการทีมและอุปกรณ์ช่วยผู้ติดใต้ซาก",
+    icon: <Building2 className="h-5 w-5 text-primary-700" aria-hidden="true" />,
+  },
+  {
+    value: Need.ANIMAL_RESPONSE,
+    label: needLabel.ANIMAL_RESPONSE,
+    subtitle: "ต้องการเจ้าหน้าที่ช่วยจัดการสัตว์อันตราย",
+    icon: <PawPrint className="h-5 w-5 text-primary-700" aria-hidden="true" />,
   },
   {
     value: Need.OTHER,
@@ -104,16 +144,22 @@ export const NEED_OPTIONS: readonly NeedOptionConfig[] = [
  */
 export function getNeedOptionsForIncident(
   incidentType: IncidentType = IncidentType.FLOOD,
+  selectedNeeds: readonly Need[] = [],
 ): readonly NeedOptionConfig[] {
   const registryNeeds = INCIDENT_REGISTRY[incidentType]?.needs ?? [];
   const baseNeeds = registryNeeds.length > 0 ? registryNeeds : Object.values(Need);
-  const allowedSet = new Set<Need>([...baseNeeds, Need.OTHER]);
-  return NEED_OPTIONS.filter((opt) => allowedSet.has(opt.value));
+  // Keep previously saved legacy choices visible so the reporter can remove them.
+  const orderedNeeds = new Set<Need>([...baseNeeds.filter((need) => need !== Need.OTHER), ...selectedNeeds.filter((need) => need !== Need.OTHER), Need.OTHER]);
+  return Array.from(orderedNeeds).flatMap((need) => {
+    const option = NEED_OPTIONS.find((item) => item.value === need);
+    return option ? [option] : [];
+  });
 }
 
 interface Step4NeedsProps {
   incidentType?: IncidentType;
   needs: Need[];
+  retainedLegacyNeeds?: readonly Need[];
   otherDetail: string;
   errors: Step4ValidationErrors;
   onToggleNeed: (need: Need) => void;
@@ -130,6 +176,7 @@ interface Step4NeedsProps {
 export function Step4Needs({
   incidentType = IncidentType.FLOOD,
   needs,
+  retainedLegacyNeeds = [],
   otherDetail,
   errors,
   onToggleNeed,
@@ -139,7 +186,7 @@ export function Step4Needs({
 }: Step4NeedsProps) {
   const { t } = useI18n();
   const isOtherSelected = needs.includes(Need.OTHER);
-  const visibleNeedOptions = getNeedOptionsForIncident(incidentType);
+  const visibleNeedOptions = getNeedOptionsForIncident(incidentType, [...retainedLegacyNeeds, ...needs]);
 
   return (
     <div className="space-y-6">

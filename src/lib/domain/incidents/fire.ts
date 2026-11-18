@@ -60,13 +60,7 @@ export const fire: IncidentDefinition = {
       source: FIRE_OFFICIAL_SOURCE,
     },
   ],
-  needs: [
-    Need.EVACUATE_BEDRIDDEN,
-    Need.MEDICINE,
-    Need.CUT_POWER,
-    Need.DRINKING_WATER,
-    Need.OTHER,
-  ],
+  needs: [Need.FIRE_RESCUE, Need.AMBULANCE, Need.CUT_POWER, Need.OTHER],
   waitingAdvice: [
     {
       text: { th: "หมอบคลานต่ำใต้กลุ่มควัน และใช้ผ้าชุบน้ำปิดจมูกและปาก", en: "Crawl low beneath the smoke and cover your nose and mouth with a wet cloth." },

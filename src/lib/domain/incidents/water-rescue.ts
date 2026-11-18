@@ -65,12 +65,7 @@ export const waterRescue: IncidentDefinition = {
       source: WATER_RESCUE_OFFICIAL_SOURCE,
     },
   ],
-  needs: [
-    Need.EVACUATION_BOAT,
-    Need.LIFE_JACKET,
-    Need.MEDICINE,
-    Need.OTHER,
-  ],
+  needs: [Need.WATER_RESCUE, Need.LIFE_JACKET, Need.AMBULANCE, Need.OTHER],
   waitingAdvice: [
     {
       text: {
