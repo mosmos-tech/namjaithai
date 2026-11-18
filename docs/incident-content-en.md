@@ -226,3 +226,46 @@
 | `PET_FOOD` | อาหารสัตว์เลี้ยง | Pet food |
 | `CUT_POWER` | ตัดไฟด่วน (ไฟรั่ว) | Cut the power urgently (electric leak) |
 | `OTHER` | อื่นๆ (พิมพ์เอง) | Other (type it in) |
+
+## คู่มือเอาตัวรอดจากน้ำท่วม / Flood survival guide (`/survival` · `/en/survival`)
+
+| ช่วง / ข้อ | ไทย | English |
+|---|---|---|
+| หัวข้อช่วง `before` | ก่อนน้ำจะมา | Before the flood |
+| `before` ข้อ 1 | ติดตามระดับน้ำจากกรมชลประทานและกรมป้องกันและบรรเทาสาธารณภัย (โทร 1784) ทุกวัน | Check daily water level updates from the Royal Irrigation Department and DDPM (call 1784). |
+| `before` ข้อ 2 | ย้ายสิ่งของและเครื่องใช้ไฟฟ้าทั้งหมดขึ้นไว้บนที่สูง | Move belongings and all electrical appliances to higher ground. |
+| `before` ข้อ 3 | เตรียมถุงยังชีพ 72 ชั่วโมงตามเช็กลิสต์ด้านขวา | Prepare a 72-hour emergency kit using the checklist on the right. |
+| `before` ข้อ 4 | ถ่ายรูปทรัพย์สินและเก็บเอกสารสำคัญในซองกันน้ำ | Take photos of your property and keep important documents in waterproof bags. |
+| `before` ข้อ 5 | แจ้งญาติและเพื่อนบ้านให้รู้แผนอพยพของคุณล่วงหน้า | Tell relatives and neighbors your evacuation plan in advance. |
+| หัวข้อช่วง `during` | ระหว่างน้ำท่วม | During the flood |
+| `during` ข้อ 1 (`FLOOD_DURING_TIPS`) | อย่าเดินลุยน้ำที่ไม่รู้ความลึก — น้ำแค่ 15 ซม. อาจพัดให้ล้มได้ | Do not walk through flood water of unknown depth — just 15 cm of moving water can knock you down. |
+| `during` ข้อ 2 (`FLOOD_DURING_TIPS`) | ปิดสวิตช์ไฟฟ้าหลักทันทีที่น้ำเข้าบ้าน แล้วโทรแจ้งการไฟฟ้า 1182 | Turn off the main power switch immediately if water enters your home, then call the electricity authority at 1182. |
+| `during` ข้อ 3 (`FLOOD_DURING_TIPS`) | ห้ามขับรถผ่านถนนที่น้ำท่วม แม้รถจะดูสูงพอ | Never drive through flooded roads, even if your vehicle looks high enough. |
+| `during` ข้อ 4 (`FLOOD_DURING_TIPS`) | ฟังประกาศจากวิทยุพกพาหรือ ปภ. อย่างสม่ำเสมอ | Listen regularly to updates from a portable radio or DDPM. |
+| `during` ข้อ 5 (`FLOOD_DURING_TIPS`) | หากติดอยู่บนหลังคา ให้สัญญาณด้วยนกหวีด 3 ครั้งต่อเนื่อง หรือโบกผ้าสีสด | If trapped on a roof, blow a whistle 3 times in a row or wave a brightly colored cloth to signal for help. |
+| หัวข้อช่วง `after` | หลังน้ำลด | After the water recedes |
+| `after` ข้อ 1 | ตรวจสอบโครงสร้างบ้านจากภายนอกก่อนเข้า — ระวังการทรุดตัวและรั่วซึม | Inspect the building structure from outside before entering — watch for subsidence and leaks. |
+| `after` ข้อ 2 | ห้ามเปิดไฟฟ้าจนกว่าช่างจะตรวจและรับรองความปลอดภัยแล้ว | Do not turn on electricity until an electrician has inspected and certified that it is safe. |
+| `after` ข้อ 3 | ทิ้งอาหารทุกอย่างที่สัมผัสน้ำท่วม — เสี่ยงเชื้อโรคสูงมาก | Throw away all food that touched flood water — there is a high risk of contamination. |
+| `after` ข้อ 4 | สวมถุงมือยางและรองเท้าบู๊ตตลอดเวลาที่ทำความสะอาด | Wear rubber gloves and boots at all times while cleaning up. |
+| `after` ข้อ 5 | ถ่ายรูปความเสียหายทันทีเพื่อใช้ยื่นประกันและขอความช่วยเหลือจากภาครัฐ | Take photos of damage immediately for insurance claims and government relief applications. |
+
+## เช็กลิสต์ 72 ชั่วโมง / 72-hour emergency checklist (`SurvivalChecklist`)
+
+| รหัส / ช่อง | ไทย | English |
+|---|---|---|
+| `title` | เช็กลิสต์ 72 ชั่วโมง | 72-hour emergency checklist |
+| `progress` | `{done}/{total} รายการ` | `{done}/{total} items` |
+| `readyBanner` | พร้อมรับมือแล้ว! ตรวจสอบสิ่งของทุก 6 เดือนเพื่อให้แน่ใจว่ายังใช้งานได้ | You are ready! Check your supplies every 6 months to make sure they are still usable. |
+| `water` | น้ำดื่มสำรอง 3 ลิตร/คน/วัน (อย่างน้อย 3 วัน) | Drinking water: 3 liters per person per day (at least 3 days) |
+| `food` | อาหารแห้งหรือบรรจุกระป๋อง (อย่างน้อย 3 วัน) | Dry or canned food (at least 3 days) |
+| `flashlight` | ไฟฉาย พร้อมถ่านสำรอง | Flashlight with spare batteries |
+| `powerbank` | แบตสำรอง (power bank) ที่ชาร์จเต็ม | Fully charged power bank |
+| `radio` | วิทยุพกพา FM/AM สำหรับฟังประกาศฉุกเฉิน | Portable FM/AM radio for emergency broadcasts |
+| `medicine` | ยาสามัญ + ยาประจำตัว (อย่างน้อย 7 วัน) | Basic and personal medications (at least 7 days) |
+| `firstaid` | ชุดปฐมพยาบาลเบื้องต้น | Basic first aid kit |
+| `documents` | สำเนาเอกสารสำคัญ (บัตรประชาชน, ทะเบียนบ้าน, โฉนด) | Copies of important documents (ID card / passport, house registration, title deed) |
+| `clothes` | เสื้อผ้า 3 ชุด + รองเท้ากันน้ำหรือรองเท้าบู๊ต | 3 sets of clothes + waterproof shoes or rubber boots |
+| `cash` | เงินสดสำรองในถุงพลาสติกกันน้ำ | Emergency cash in a waterproof plastic bag |
+| `whistle` | นกหวีดสัญญาณขอความช่วยเหลือ | Signal whistle to call for help |
+| `gloves` | ถุงมือยาง + หน้ากาก N95 | Rubber gloves + N95 mask |

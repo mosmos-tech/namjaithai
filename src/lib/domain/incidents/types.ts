@@ -39,6 +39,23 @@ export const UNIT_CAPABILITY_LABELS: Record<UnitCapability, string> = {
   EVACUATION: "อพยพ",
 };
 
+/** TF-79: ชื่อภาษาอังกฤษของความสามารถหน่วย (หน้า /en/units) */
+export const UNIT_CAPABILITY_LABELS_EN: Record<UnitCapability, string> = {
+  BOAT: "Flat-bottom / rescue boat",
+  EMS: "EMS / First aid",
+  FIRE_SUPPRESSION: "Firefighting",
+  EXTRICATION: "Extrication / collapse rescue",
+  WATER_RESCUE: "Water rescue",
+  ANIMAL_CAPTURE: "Dangerous animal capture",
+  EVACUATION: "Evacuation / transport",
+};
+
+export function unitCapabilityLabels(
+  locale: "th" | "en" = "th",
+): Record<UnitCapability, string> {
+  return locale === "en" ? UNIT_CAPABILITY_LABELS_EN : UNIT_CAPABILITY_LABELS;
+}
+
 /**
  * ข้อความ 2 ภาษา (TF-63): ต้องมีทั้งไทยและอังกฤษ — ขาดภาษาอังกฤษ typecheck ล้ม
  */

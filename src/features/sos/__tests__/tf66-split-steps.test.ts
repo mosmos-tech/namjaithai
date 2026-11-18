@@ -141,6 +141,8 @@ describe("TF-66: ประเภทเหตุที่เปิดรับแ
   it("ขั้น 1 ไม่ผ่านถ้าประเภทที่เลือก (หรือน้ำท่วมที่เป็นค่าเริ่มต้น) ถูกแอดมินปิด", () => {
     const enabled = [IncidentType.FLOOD, IncidentType.FIRE];
     expect(validateStep1Draft({ incidentType: IncidentType.FIRE }, enabled).valid).toBe(true);
+    expect(validateStep1Draft({}, enabled).valid).toBe(false);
+    expect(validateStep1Draft({}).errors.incidentType).toBe("กรุณาเลือกประเภทเหตุ");
     expect(validateStep1Draft({ incidentType: IncidentType.ANIMAL }, enabled).valid).toBe(false);
     expect(validateStep1Draft({}, [IncidentType.FIRE]).errors.incidentType).toBe(
       "กรุณาเลือกประเภทเหตุ",

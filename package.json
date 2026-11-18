@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:db": "supabase test db",
     "e2e": "playwright test",
-    "e2e:prod": "npm run build && E2E_SERVER=production playwright test",
+    "e2e:prod": "npm run build && node -e \"const { spawnSync } = require('child_process'); const args = process.argv.slice(1).filter((a) => a !== '--'); process.exit(spawnSync(process.platform === 'win32' ? 'cmd.exe' : 'npx', process.platform === 'win32' ? ['/d', '/s', '/c', 'npx', 'playwright', 'test', ...args] : ['playwright', 'test', ...args], { stdio: 'inherit', env: { ...process.env, E2E_SERVER: 'production' } }).status ?? 1)\" --",
     "e2e:pwa": "playwright test --config playwright.pwa.config.ts",
     "e2e:headed": "playwright test --headed --workers=1",
     "e2e:ui": "playwright test --ui",

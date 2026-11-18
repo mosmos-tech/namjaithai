@@ -6,16 +6,18 @@ import { Navbar } from "@/components/public/Navbar";
 import { HotlineBar } from "@/components/public/HotlineBar";
 import { LanguageSwitch } from "@/components/public/LanguageSwitch";
 import { HomeContent } from "@/features/home/HomeContent";
+import { HomeConfirmationLoader } from "@/features/sos/components/HomeConfirmationLoader";
 import { getSessionUserRow } from "@/features/auth/server/session-user";
 import { PwaSupport } from "@/features/pwa/PwaSupport";
-import { homePathForRole } from "@/lib/domain";
+import { homePathForRole, type UserRole } from "@/lib/domain";
 import { createPagesClient } from "@/lib/supabase/pages";
 
-type HomeProps = { account: { href: string } | null; yearBE: number };
+type HomeProps = { account: { href: string; role: UserRole } | null; yearBE: number };
 
 export const getServerSideProps: GetServerSideProps<HomeProps> = async ({ req }) => {
   const user = await getSessionUserRow(createPagesClient(req));
-  const account = user?.status === "ACTIVE" ? { href: homePathForRole(user.role) } : null;
+  const account =
+    user?.status === "ACTIVE" ? { href: homePathForRole(user.role), role: user.role } : null;
   return { props: { account, yearBE: new Date().getFullYear() + 543 } };
 };
 
@@ -42,11 +44,13 @@ export default function HomePage({ account, yearBE }: HomeProps) {
         {/* TF-63: หน้าแรกไม่แปล มีแค่ปุ่ม EN พาไปฟอร์มภาษาอังกฤษ (/api/lang จำภาษาแล้วพาไป /en/request) */}
         <Navbar
           account={account}
+          trackPath={false}
           languageSwitch={
             <LanguageSwitch locale="th" path="/request" label="เปลี่ยนภาษา" compactOnMobile />
           }
         />
       </header>
+      <HomeConfirmationLoader />
       <main className="flex-1">
         <HomeContent />
       </main>

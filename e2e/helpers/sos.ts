@@ -64,8 +64,14 @@ export async function answerDangerQuestions(
     .click();
 }
 
-// ขั้นที่ 1 → 2 (ไม่เลือกประเภท = น้ำท่วม)
+// ขั้นที่ 1 → 2 เลือกน้ำท่วมหากการทดสอบยังไม่ได้เลือกประเภทอื่น
 export async function goToStep2(page: Page) {
+  if (
+    (await page.getByTestId("incident-type-grid").getByRole("radio", { checked: true }).count()) ===
+    0
+  ) {
+    await page.getByTestId("incident-type-FLOOD").click();
+  }
   await nextButton(page).click();
   await expectStep(page, 2);
 }

@@ -35,7 +35,15 @@ async function warmUpPages(baseURL: string) {
 function checkLocalEnv() {
   if (process.env.CI) return;
   try {
-    execFileSync("npm", ["run", "--silent", "env:sync", "--", "--check"], { stdio: ["ignore", "ignore", "pipe"] });
+    if (process.platform === "win32") {
+      execFileSync("cmd.exe", ["/d", "/s", "/c", "npm", "run", "--silent", "env:sync", "--", "--check"], {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+    } else {
+      execFileSync("npm", ["run", "--silent", "env:sync", "--", "--check"], {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+    }
   } catch (error) {
     const stderr = (error as { stderr?: Buffer }).stderr?.toString().trim();
     throw new Error(stderr || "ตรวจ .env.local ไม่สำเร็จ — รัน npm run env:sync");

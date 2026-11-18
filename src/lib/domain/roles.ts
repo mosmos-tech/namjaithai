@@ -52,6 +52,35 @@ export function requiredRolesForPath(pathname: string): readonly UserRole[] | nu
   return PROTECTED.find((p) => matchesPrefix(pathname, p.prefix))?.roles ?? null;
 }
 
+type NavLink = { label: string; href: string };
+const STAFF_NAV: Record<Exclude<UserRole, "USER">, NavLink[]> = {
+  ADMIN: [
+    { label: "ห้องสั่งการ", href: "/admin" },
+    { label: "จัดการเคส", href: "/admin/cases" },
+    { label: "บันทึกการตรวจสอบ", href: "/admin/audit" },
+    { label: "แผนที่เคส", href: "/rescue/map" },
+    { label: "หน่วยกู้ภัย", href: "/units" },
+  ],
+  UNIT_LEAD: [
+    { label: "แผนที่เคส", href: "/rescue/map" },
+    { label: "รายการเคส", href: "/rescue/cases" },
+    { label: "งานของฉัน", href: "/rescue/my-tasks" },
+    { label: "จัดการหน่วย", href: "/unit" },
+    { label: "ผลงานหน่วย", href: "/unit/dashboard" },
+  ],
+  RESCUER: [
+    { label: "แผนที่เคส", href: "/rescue/map" },
+    { label: "รายการเคส", href: "/rescue/cases" },
+    { label: "งานของฉัน", href: "/rescue/my-tasks" },
+    { label: "ผลงานหน่วย", href: "/unit/dashboard" },
+  ],
+};
+
+export function navigationForRole(role: UserRole): NavLink[] {
+  if (role === "USER") return [];
+  return STAFF_NAV[role].filter(({ href }) => requiredRolesForPath(href)?.includes(role) ?? true);
+}
+
 export type AccessDecision =
   { allow: true } | { allow: false; reason: "not-signed-in" | "forbidden" | "inactive" };
 

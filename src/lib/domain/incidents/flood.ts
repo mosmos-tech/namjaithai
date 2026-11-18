@@ -18,6 +18,14 @@ export const FLOOD_DURING_TIPS = [
   "หากติดอยู่บนหลังคา ให้สัญญาณด้วยนกหวีด 3 ครั้งต่อเนื่อง หรือโบกผ้าสีสด",
 ];
 
+export const FLOOD_DURING_TIPS_EN = [
+  "Do not walk through flood water of unknown depth — just 15 cm of moving water can knock you down.",
+  "Turn off the main power switch immediately if water enters your home, then call the electricity authority at 1182.",
+  "Never drive through flooded roads, even if your vehicle looks high enough.",
+  "Listen regularly to updates from a portable radio or DDPM.",
+  "If trapped on a roof, blow a whistle 3 times in a row or wave a brightly colored cloth to signal for help.",
+];
+
 export const flood: IncidentDefinition = {
   code: IncidentType.FLOOD,
   label: { th: "น้ำท่วม", en: "Flood" },

@@ -193,6 +193,7 @@ test.describe("ขั้นที่ 1 เกิดเหตุอะไร (TF-
     isMobile,
   }) => {
     test.skip(isMobile, "จอคอมเท่านั้น");
+    await page.getByTestId("incident-type-FLOOD").click();
     await page.getByRole("button", { name: /^\s*3\s*ตำแหน่ง/ }).click();
     await expectStep(page, 2);
     await expect(

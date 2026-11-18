@@ -37,7 +37,40 @@ function subscribeBrowser(listener: () => void) {
   };
 }
 
-export function PwaSupport() {
+export type PwaText = {
+  offlineStatus: string;
+  bannerAriaLabel: string;
+  title: string;
+  iosSubtitle: string;
+  defaultSubtitle: string;
+  iosInstallButton: string;
+  defaultInstallButton: string;
+  dismissAriaLabel: string;
+  dismissButton: string;
+  iosFigureAriaLabel: string;
+  iosSvgAddText: string;
+  iosCaption: string;
+  readyStatus: string;
+};
+
+export const THAI_PWA_TEXT: PwaText = {
+  offlineStatus:
+    "ออฟไลน์: กรอกและบันทึกคำขอ SOS ไว้ในเครื่องได้ ระบบจะลองส่งเมื่อกลับมาออนไลน์ หากต้องการความช่วยเหลือด่วน โทร 1669 / 1784",
+  bannerAriaLabel: "เพิ่มลงหน้าจอหลัก",
+  title: "เพิ่มน้ำใจไทยไว้บนหน้าจอหลัก",
+  iosSubtitle: "ช่วยให้เปิดใช้งานสะดวก และลดโอกาสที่ iPhone จะลบข้อมูลเว็บ",
+  defaultSubtitle: "เปิด SOS สายด่วน และคู่มือได้สะดวกเหมือนแอป",
+  iosInstallButton: "ดูวิธีเพิ่ม",
+  defaultInstallButton: "เพิ่มหน้าจอหลัก",
+  dismissAriaLabel: "ปิดคำแนะนำเพิ่มหน้าจอหลัก",
+  dismissButton: "ไว้ก่อน",
+  iosFigureAriaLabel: "ภาพปุ่มแชร์ เมนูเพิ่มไปยังหน้าจอโฮม และปุ่มเพิ่มใน Safari",
+  iosSvgAddText: "เพิ่ม",
+  iosCaption: "บน iPhone: เปิดด้วย Safari แล้วกดปุ่มแชร์ → “เพิ่มไปยังหน้าจอโฮม” → “เพิ่ม”",
+  readyStatus: "พร้อมเปิดฟอร์ม SOS สายด่วน และคู่มือแบบออฟไลน์",
+};
+
+export function PwaSupport({ text }: { text?: PwaText } = {}) {
   const browser = useSyncExternalStore(subscribeBrowser, browserSnapshot, () => 0);
   const ios = Boolean(browser & 1);
   const offline = Boolean(browser & 8);
@@ -113,24 +146,25 @@ export function PwaSupport() {
     <>
       {offline && (
         <p role="status" className="bg-amber-50 px-4 py-3 text-center text-base text-amber-700">
-          ออฟไลน์: กรอกและบันทึกคำขอ SOS ไว้ในเครื่องได้ ระบบจะลองส่งเมื่อกลับมาออนไลน์
-          หากต้องการความช่วยเหลือด่วน โทร 1669 / 1784
+          {text?.offlineStatus ??
+            "ออฟไลน์: กรอกและบันทึกคำขอ SOS ไว้ในเครื่องได้ ระบบจะลองส่งเมื่อกลับมาออนไลน์ หากต้องการความช่วยเหลือด่วน โทร 1669 / 1784"}
         </p>
       )}
       {visible && (
         <aside
-          aria-label="เพิ่มลงหน้าจอหลัก"
+          aria-label={text?.bannerAriaLabel ?? "เพิ่มลงหน้าจอหลัก"}
           className="border-border-default bg-bg-surface border-t px-4 py-4"
         >
           <div className="mx-auto flex max-w-2xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <div className="min-w-0 flex-1">
               <p className="font-heading text-text-primary text-lg font-semibold">
-                เพิ่มน้ำใจไทยไว้บนหน้าจอหลัก
+                {text?.title ?? "เพิ่มน้ำใจไทยไว้บนหน้าจอหลัก"}
               </p>
               <p className="text-text-secondary text-base">
                 {ios
-                  ? "ช่วยให้เปิดใช้งานสะดวก และลดโอกาสที่ iPhone จะลบข้อมูลเว็บ"
-                  : "เปิด SOS สายด่วน และคู่มือได้สะดวกเหมือนแอป"}
+                  ? (text?.iosSubtitle ??
+                    "ช่วยให้เปิดใช้งานสะดวก และลดโอกาสที่ iPhone จะลบข้อมูลเว็บ")
+                  : (text?.defaultSubtitle ?? "เปิด SOS สายด่วน และคู่มือได้สะดวกเหมือนแอป")}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -140,22 +174,27 @@ export function PwaSupport() {
                 aria-expanded={ios ? instructions : undefined}
                 className="bg-primary-600 min-h-12 rounded-full px-5 py-3 text-lg font-semibold text-white"
               >
-                {ios ? "ดูวิธีเพิ่ม" : "เพิ่มหน้าจอหลัก"}
+                {ios
+                  ? (text?.iosInstallButton ?? "ดูวิธีเพิ่ม")
+                  : (text?.defaultInstallButton ?? "เพิ่มหน้าจอหลัก")}
               </button>
               <button
                 type="button"
                 onClick={dismiss}
-                aria-label="ปิดคำแนะนำเพิ่มหน้าจอหลัก"
+                aria-label={text?.dismissAriaLabel ?? "ปิดคำแนะนำเพิ่มหน้าจอหลัก"}
                 className="text-text-secondary min-h-12 rounded-full px-5 py-3 text-lg underline"
               >
-                ไว้ก่อน
+                {text?.dismissButton ?? "ไว้ก่อน"}
               </button>
             </div>
             {instructions && (
               <figure className="text-text-primary w-full text-lg">
                 <svg
                   role="img"
-                  aria-label="ภาพปุ่มแชร์ เมนูเพิ่มไปยังหน้าจอโฮม และปุ่มเพิ่มใน Safari"
+                  aria-label={
+                    text?.iosFigureAriaLabel ??
+                    "ภาพปุ่มแชร์ เมนูเพิ่มไปยังหน้าจอโฮม และปุ่มเพิ่มใน Safari"
+                  }
                   viewBox="0 0 320 104"
                   className="bg-bg-subtle mb-2 w-full max-w-sm rounded-xl"
                 >
@@ -179,12 +218,13 @@ export function PwaSupport() {
                       3
                     </text>
                     <text x="286" y="30">
-                      เพิ่ม
+                      {text?.iosSvgAddText ?? "เพิ่ม"}
                     </text>
                   </g>
                 </svg>
                 <figcaption>
-                  บน iPhone: เปิดด้วย Safari แล้วกดปุ่มแชร์ → “เพิ่มไปยังหน้าจอโฮม” → “เพิ่ม”
+                  {text?.iosCaption ??
+                    "บน iPhone: เปิดด้วย Safari แล้วกดปุ่มแชร์ → “เพิ่มไปยังหน้าจอโฮม” → “เพิ่ม”"}
                 </figcaption>
               </figure>
             )}
@@ -193,7 +233,7 @@ export function PwaSupport() {
       )}
       {ready && !offline && (
         <p role="status" className="bg-bg-page text-text-secondary px-4 py-3 text-center text-base">
-          พร้อมเปิดฟอร์ม SOS สายด่วน และคู่มือแบบออฟไลน์
+          {text?.readyStatus ?? "พร้อมเปิดฟอร์ม SOS สายด่วน และคู่มือแบบออฟไลน์"}
         </p>
       )}
     </>

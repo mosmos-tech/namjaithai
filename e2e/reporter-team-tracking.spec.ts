@@ -117,10 +117,29 @@ test("กำลังมา: เห็นหมุดทีมและเวล
   await expect(page.getByTestId("waiting-advice")).toBeVisible();
 
   await stepTestCase(item.code, ["EN_ROUTE"]);
+  // TF-77: คำขอไปเว็บอื่น (เช่น tile ของ OSM) ต้องมี Referer เป็นแค่โดเมน — ไม่ว่างจนโดน OSM บล็อก (403)
+  // และไม่มี path/query ที่มี tracking token
+  const external: { url: string; referer: string | undefined }[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).origin !== new URL(page.url()).origin) {
+      external.push({ url: request.url(), referer: request.headers()["referer"] });
+    }
+  });
   await page.reload();
   await expect(page.getByTestId("track-map")).toHaveAttribute("data-ready", "true", {
     timeout: 15_000,
   });
+  await expect(page.locator('meta[name="referrer"]')).toHaveAttribute("content", "strict-origin");
+  await expect(
+    page.getByTestId("track-map").getByText("© OpenStreetMap contributors"),
+  ).toBeVisible();
+  const origin = new URL(page.url()).origin;
+  const tiles = external.filter(({ url }) => url.startsWith("https://tile.openstreetmap.org/"));
+  expect(tiles.length, "โหลด tile ของ OSM").toBeGreaterThan(0);
+  for (const { url, referer } of external) {
+    expect(referer, url).toBe(`${origin}/`);
+    expect(referer, url).not.toContain(item.token);
+  }
   await expect(page.getByTestId("track-team-pin")).toBeVisible();
   await expect(page.getByTestId("track-reporter-pin")).toBeVisible();
   // 1.8 กม. ÷ 30 กม./ชม. = 3.6 → ปัดขึ้น 4 นาที
