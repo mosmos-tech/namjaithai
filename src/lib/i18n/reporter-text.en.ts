@@ -239,8 +239,14 @@ export const REPORTER_TEXT_EN: ReporterText = {
       PET_FOOD: { label: needLabelEn.PET_FOOD, subtitle: "Dog food, cat food, or a pet carrier" },
       CUT_POWER: {
         label: needLabelEn.CUT_POWER,
-        subtitle: "Water has reached sockets or the fuse box — risk of electric shock",
+        subtitle: "Damaged wiring or electrical equipment may cause electric shock",
       },
+      AMBULANCE: { label: needLabelEn.AMBULANCE, subtitle: "Emergency medical assistance needed" },
+      VEHICLE_EXTRICATION: { label: needLabelEn.VEHICLE_EXTRICATION, subtitle: "Rescue team and equipment for someone trapped in a vehicle" },
+      FIRE_RESCUE: { label: needLabelEn.FIRE_RESCUE, subtitle: "Firefighters or rescue for people trapped" },
+      WATER_RESCUE: { label: needLabelEn.WATER_RESCUE, subtitle: "A team to help someone in the water" },
+      DEBRIS_RESCUE: { label: needLabelEn.DEBRIS_RESCUE, subtitle: "A team and equipment for someone trapped under debris" },
+      ANIMAL_RESPONSE: { label: needLabelEn.ANIMAL_RESPONSE, subtitle: "A response team for a dangerous animal" },
       OTHER: {
         label: needLabelEn.OTHER,
         subtitle: "Describe any other needs yourself (up to 200 characters)",

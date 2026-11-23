@@ -79,7 +79,7 @@ describe("TF-11: ฟอร์ม SOS ผู้ติดค้าง (ขั้�
   });
 
   it('เกณฑ์ข้อ 3: สิ่งที่ต้องการมี 10 อย่าง + "อื่นๆ" และเมื่อเลือก "อื่นๆ" ต้องพิมพ์ไม่เกิน 200 ตัวอักษร', () => {
-    expect(NEED_OPTIONS).toHaveLength(11);
+    expect(getNeedOptionsForIncident(IncidentType.FLOOD)).toHaveLength(11);
     expect(NEED_OPTIONS.some((item) => item.value === Need.OTHER)).toBe(true);
 
     // ไม่ได้เลือก "อื่นๆ" -> ไม่ต้องพิมพ์ก็ผ่าน
