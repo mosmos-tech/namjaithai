@@ -27,7 +27,11 @@ export function ReporterAccountConfirmation({
       try {
         // The device banner already handles cases sent on this device.
         try {
-          if (readDeviceCases(window.localStorage).some((item) => item.caseCode === caseCode)) {
+          if (
+            readDeviceCases(window.localStorage).some(
+              (item) => item.caseCode === caseCode && Boolean(item.confirmationToken),
+            )
+          ) {
             if (!cancelled) setState("device");
             return;
           }

@@ -72,13 +72,7 @@ export const collapse: IncidentDefinition = {
       source: COLLAPSE_OFFICIAL_SOURCE,
     },
   ],
-  needs: [
-    Need.EVACUATE_BEDRIDDEN,
-    Need.MEDICINE,
-    Need.CUT_POWER,
-    Need.FLASHLIGHT_POWER,
-    Need.OTHER,
-  ],
+  needs: [Need.DEBRIS_RESCUE, Need.AMBULANCE, Need.CUT_POWER, Need.OTHER],
   waitingAdvice: [
     {
       text: {

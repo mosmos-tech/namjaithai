@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAreaNameLookup,
   dailyAxisLabels,
   dailyHelpedBars,
+  enMonthLabel,
   filterUnits,
+  fullPeriodLabel,
   groupUnitsByProvince,
+  localizePublicUnit,
   organizationsOf,
   parseUnitDirectoryParams,
   thaiFullPeriodLabel,
@@ -160,5 +164,66 @@ describe("ป้ายกราฟรายวัน", () => {
     expect(axis.map((item) => item.axisLabel)).toEqual(["30 ต.ค.", "31", "1 พ.ย.", "2", "3"]);
     expect(axis[0]).toMatchObject({ axisOnNarrow: false, axisOnWide: false });
     expect(axis[2]).toMatchObject({ axisOnNarrow: true, axisOnWide: true });
+  });
+});
+
+describe("TF-79 หน้าหน่วยกู้ภัยภาษาอังกฤษ (/en/units)", () => {
+  const lookup = buildAreaNameLookup(
+    [
+      { code: 10, nameTh: "กรุงเทพมหานคร", nameEn: "Bangkok" },
+      { code: 50, nameTh: "เชียงใหม่", nameEn: "Chiang Mai" },
+    ],
+    [
+      { provinceCode: 10, nameTh: "บางเขน", nameEn: "Bang Khen" },
+      { provinceCode: 50, nameTh: "เมืองเชียงใหม่", nameEn: "Mueang Chiang Mai" },
+    ],
+  );
+
+  it("localizePublicUnit คงชื่อองค์กร/ศูนย์ภาษาไทย แต่แปลง (อำเภอ จังหวัด) เป็นภาษาอังกฤษ และค้นได้ทั้งสองภาษา", () => {
+    const unit = toPublicUnit(row({}));
+    const localized = localizePublicUnit(unit, "en", lookup);
+    expect(localized.label).toBe("มูลนิธิสายน้ำ · ศูนย์บางเขน (Bang Khen, Bangkok)");
+    expect(localized.province).toBe("Bangkok");
+    expect(localized.district).toBe("Bang Khen");
+    expect(filterUnits([localized], { query: "สายน้ำ" })).toHaveLength(1);
+    expect(filterUnits([localized], { query: "bang khen" })).toHaveLength(1);
+    expect(filterUnits([localized], { query: "bangkok" })).toHaveLength(1);
+    expect(localizePublicUnit(unit, "th", lookup)).toBe(unit);
+  });
+
+  it("groupUnitsByProvince เรียงชื่อจังหวัดภาษาอังกฤษตามตัวอักษร A-Z", () => {
+    const groups = groupUnitsByProvince(
+      [
+        { id: "1", province: "Chiang Mai" },
+        { id: "2", province: "Bangkok" },
+      ],
+      "en",
+    );
+    expect(groups.map((g) => g.province)).toEqual(["Bangkok", "Chiang Mai"]);
+  });
+
+  it("dailyHelpedBars และ fullPeriodLabel ภาษาอังกฤษใช้ชื่อเดือนย่อภาษาอังกฤษและปี ค.ศ.", () => {
+    const rows = Array.from({ length: 30 }, (_, i) => {
+      const date = new Date(Date.UTC(2026, 9, 13 + i));
+      return { day: date.toISOString().slice(0, 10), helped: 1, lead_closed: 0 };
+    });
+    const bars = dailyHelpedBars(rows, "en");
+    expect(bars[0]).toMatchObject({
+      key: "2026-10-13",
+      label: "13 Oct 2026",
+      axisLabel: "13 Oct",
+    });
+    expect(bars.filter((bar) => bar.axisOnNarrow).map((bar) => bar.axisLabel)).toEqual([
+      "13 Oct",
+      "22",
+      "27",
+      "1 Nov",
+      "6",
+      "11",
+    ]);
+    expect(enMonthLabel("2026-10")).toBe("Oct 2026");
+    expect(fullPeriodLabel("2026-10-13", "en")).toBe("13 Oct 2026");
+    expect(fullPeriodLabel("2026-10", "en")).toBe("Oct 2026");
+    expect(fullPeriodLabel("2026-10-21", "th")).toBe("21 ต.ค. 2569");
   });
 });

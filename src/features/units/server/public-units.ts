@@ -52,7 +52,10 @@ export async function getPublicUnitProfile(id: string): Promise<PublicUnitProfil
 }
 
 /** กราฟ 30 วันล่าสุด จาก public_unit_daily_helped ของ TF-57 */
-export async function getPublicDailyHelped(id: string): Promise<DailyHelpedBar[]> {
+export async function getPublicDailyHelped(
+  id: string,
+  locale: "th" | "en" = "th",
+): Promise<DailyHelpedBar[]> {
   "use cache";
   cacheLife("minutes");
   const { data, error } = await createPublicClient().rpc("public_unit_daily_helped", {
@@ -60,5 +63,5 @@ export async function getPublicDailyHelped(id: string): Promise<DailyHelpedBar[]
     p_days: 30,
   });
   if (error) throw error;
-  return dailyHelpedBars((data ?? []) as PublicDailyHelpedRow[]);
+  return dailyHelpedBars((data ?? []) as PublicDailyHelpedRow[], locale);
 }

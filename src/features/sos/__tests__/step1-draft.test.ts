@@ -107,6 +107,7 @@ describe("TF-08 / TF-55 / TF-66: คำถามอันตรายในข�
     const draft = {
       ...createInitialSosDraft(),
       currentStep: 2 as SosStepNumber,
+      incidentType: IncidentType.FLOOD,
       dangerSigns: ["CHEST_PAIN"],
       canSelfEvacuate: false,
       waterLevel: WaterLevel.ANKLE_KNEE,
@@ -138,8 +139,8 @@ describe("TF-08 / TF-55 / TF-66: คำถามอันตรายในข�
     );
     migrateLegacySosDraft(storage);
     const restored = loadSosDraft(storage) as unknown as Record<string, unknown>;
-    // ขั้น 3 เก่า (ผู้ติดค้าง) = ขั้น 2 ใหม่ ซึ่งยังไม่ได้ตอบสัญญาณอันตราย
-    expect(restored.currentStep).toBe(2);
+    // ร่างเก่าไม่ได้ระบุประเภท จึงต้องกลับมาเลือกในขั้น 1
+    expect(restored.currentStep).toBe(1);
     expect(restored.urgency).toBeUndefined();
   });
 

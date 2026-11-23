@@ -17,13 +17,8 @@ export function isLocale(value: unknown): value is Locale {
 
 /** หน้าฝั่งผู้แจ้งที่มีภาษาอังกฤษ (path ภาษาไทย) */
 export function isReporterPath(path: string): boolean {
-  return (
-    path === "/request" ||
-    path === "/sos" ||
-    path === "/sos/sent" ||
-    path === "/hotlines" ||
-    path === "/track" ||
-    path.startsWith("/track/")
+  return /^\/(?:request|sos(?:\/sent)?|hotlines|track(?:\/.*)?|units(?:\/.*)?|survival)$/.test(
+    path,
   );
 }
 

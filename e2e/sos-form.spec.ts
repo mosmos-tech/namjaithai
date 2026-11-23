@@ -193,6 +193,7 @@ test.describe("ขั้นที่ 1 เกิดเหตุอะไร (TF-
     isMobile,
   }) => {
     test.skip(isMobile, "จอคอมเท่านั้น");
+    await page.getByTestId("incident-type-FLOOD").click();
     await page.getByRole("button", { name: /^\s*3\s*ตำแหน่ง/ }).click();
     await expectStep(page, 2);
     await expect(
@@ -774,6 +775,9 @@ test.describe("TF-51: ขั้น 2 และ 4 วาดจากทะเบ�
 
     // ขั้น 4: ความต้องการของ ROAD_ACCIDENT ต้องไม่มี "เรืออพยพด่วน" แต่มี "ยารักษาโรค/ปฐมพยาบาล" และ "อื่นๆ (พิมพ์เอง)"
     await expect(page.getByTestId("need-option-EVACUATION_BOAT")).toHaveCount(0);
+    await expect(page.getByTestId("need-option-EVACUATE_BEDRIDDEN")).toHaveCount(0);
+    await expect(page.getByTestId("need-option-AMBULANCE")).toContainText("รถพยาบาล");
+    await expect(page.getByTestId("need-option-VEHICLE_EXTRICATION")).toBeVisible();
     await expect(page.getByTestId("need-option-MEDICINE")).toBeVisible();
     const otherBtn = page.getByTestId("need-option-OTHER");
     await expect(otherBtn).toBeVisible();
@@ -866,6 +870,8 @@ test.describe("TF-51: ขั้น 2 และ 4 วาดจากทะเบ�
     await seedLocationIntoDraft(page);
     await nextButton(page).click();
     await expectStep(page, 4);
+    await page.getByTestId("need-option-AMBULANCE").click();
+    await page.getByTestId("need-option-VEHICLE_EXTRICATION").click();
     await page.getByTestId("need-option-MEDICINE").click();
     await nextButton(page).click();
     await expectStep(page, 5);
@@ -889,11 +895,15 @@ test.describe("TF-51: ขั้น 2 และ 4 วาดจากทะเบ�
     // ตรวจในฐานข้อมูลว่า ROAD_ACCIDENT เก็บ vehicleTypes/isTrapped ใน cases.details และแยก injuredCount ไป case_sensitive_details
     const { data: roadCase, error: roadErr } = await adminDb()
       .from("cases")
-      .select("incident_type, details, case_sensitive_details(details)")
+      .select("incident_type, details, case_sensitive_details(details), case_needs(need)")
       .eq("case_code", roadBody.caseCode)
       .single();
     expect(roadErr).toBeNull();
     expect(roadCase?.incident_type).toBe("ROAD_ACCIDENT");
+    expect(roadCase?.case_needs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ need: "AMBULANCE" }),
+      expect.objectContaining({ need: "VEHICLE_EXTRICATION" }),
+    ]));
     expect(roadCase?.details).toMatchObject({
       vehicleTypes: ["CAR", "MOTORCYCLE"],
       isTrapped: true,

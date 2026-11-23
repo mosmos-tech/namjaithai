@@ -55,12 +55,7 @@ export const roadAccident: IncidentDefinition = {
       source: ROAD_ACCIDENT_OFFICIAL_SOURCE,
     },
   ],
-  needs: [
-    Need.MEDICINE,
-    Need.EVACUATE_BEDRIDDEN,
-    Need.FLASHLIGHT_POWER,
-    Need.OTHER,
-  ],
+  needs: [Need.AMBULANCE, Need.VEHICLE_EXTRICATION, Need.MEDICINE, Need.OTHER],
   waitingAdvice: [
     {
       text: {

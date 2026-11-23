@@ -9,7 +9,7 @@ import { IncidentType, type IncidentDefinition } from "./types";
 import { waterRescue } from "./water-rescue";
 
 export * from "./types";
-export { FLOOD_DURING_TIPS } from "./flood";
+export { FLOOD_DURING_TIPS, FLOOD_DURING_TIPS_EN } from "./flood";
 
 /**
  * ทะเบียนประเภทเหตุ (TF-49) — ที่เดียวที่บอกว่าแต่ละเหตุถามอะไร ต้องใช้ทีมแบบไหน และแนะนำอะไร

@@ -69,6 +69,12 @@ export const Need = {
   LIFE_JACKET: "LIFE_JACKET",
   PET_FOOD: "PET_FOOD",
   CUT_POWER: "CUT_POWER",
+  AMBULANCE: "AMBULANCE",
+  VEHICLE_EXTRICATION: "VEHICLE_EXTRICATION",
+  FIRE_RESCUE: "FIRE_RESCUE",
+  WATER_RESCUE: "WATER_RESCUE",
+  DEBRIS_RESCUE: "DEBRIS_RESCUE",
+  ANIMAL_RESPONSE: "ANIMAL_RESPONSE",
   OTHER: "OTHER",
 } as const;
 export type Need = (typeof Need)[keyof typeof Need];
@@ -84,6 +90,12 @@ export const needLabel: Record<Need, string> = {
   LIFE_JACKET: "เสื้อชูชีพ/เชือก",
   PET_FOOD: "อาหารสัตว์เลี้ยง",
   CUT_POWER: "ตัดไฟด่วน (ไฟรั่ว)",
+  AMBULANCE: "รถพยาบาลหรือทีมแพทย์ฉุกเฉิน",
+  VEHICLE_EXTRICATION: "ช่วยนำผู้ติดค้างออกจากยานพาหนะ",
+  FIRE_RESCUE: "ทีมดับเพลิงและช่วยเหลือ",
+  WATER_RESCUE: "ทีมช่วยเหลือทางน้ำ",
+  DEBRIS_RESCUE: "ทีมช่วยผู้ติดใต้ซาก",
+  ANIMAL_RESPONSE: "ทีมจัดการสัตว์อันตราย",
   OTHER: "อื่นๆ (พิมพ์เอง)",
 };
 
@@ -99,5 +111,11 @@ export const needLabelEn: Record<Need, string> = {
   LIFE_JACKET: "Life jacket / rope",
   PET_FOOD: "Pet food",
   CUT_POWER: "Cut the power urgently (electric leak)",
+  AMBULANCE: "Ambulance or emergency medical team",
+  VEHICLE_EXTRICATION: "Extrication from a vehicle",
+  FIRE_RESCUE: "Fire and rescue team",
+  WATER_RESCUE: "Water rescue team",
+  DEBRIS_RESCUE: "Debris rescue team",
+  ANIMAL_RESPONSE: "Dangerous animal response team",
   OTHER: "Other (type it in)",
 };
